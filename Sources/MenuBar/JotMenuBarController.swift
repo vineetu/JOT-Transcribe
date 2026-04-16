@@ -100,6 +100,14 @@ final class JotMenuBarController: NSObject {
 
         menu.addItem(.separator())
 
+        let checkUpdates = NSMenuItem(
+            title: "Check for Updates…",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        checkUpdates.target = self
+        menu.addItem(checkUpdates)
+
         let settings = NSMenuItem(
             title: "Settings…",
             action: #selector(openSettings),
@@ -194,6 +202,11 @@ final class JotMenuBarController: NSObject {
             ?? NSApp.windows.first(where: { $0.canBecomeMain }) {
             window.makeKeyAndOrderFront(nil)
         }
+    }
+
+    @objc private func checkForUpdates() {
+        guard let delegate = NSApp.delegate as? AppDelegate else { return }
+        delegate.updaterController.checkForUpdates(nil)
     }
 
     @objc private func openSettings() {

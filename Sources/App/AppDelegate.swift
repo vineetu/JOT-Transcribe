@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Sparkle
 import SwiftData
 import os.log
 
@@ -38,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var recordingPersister: RecordingPersister?
     private(set) var retention: RetentionService?
     private(set) var soundTriggers: SoundTriggers?
+    let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     private var deliveryBridge: AnyCancellable?
 

@@ -113,6 +113,7 @@
 			packageProductDependencies = (
 				A000000000000000000000A1 /* FluidAudio */,
 				A000000000000000000000A2 /* KeyboardShortcuts */,
+				A000000000000000000000A3 /* Sparkle */,
 			);
 			productName = Jot;
 			productReference = A00000000000000000000001 /* Jot.app */;
@@ -145,6 +146,7 @@
 			packageReferences = (
 				A000000000000000000000C1 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 				A000000000000000000000C2 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+				A000000000000000000000C3 /* XCRemoteSwiftPackageReference "Sparkle" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A00000000000000000000041 /* Products */;
@@ -402,6 +404,14 @@
 				minimumVersion = 2.0.0;
 			};
 		};
+		A000000000000000000000C3 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -414,6 +424,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A000000000000000000000C2 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
 			productName = KeyboardShortcuts;
+		};
+		A000000000000000000000A3 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A000000000000000000000C3 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
