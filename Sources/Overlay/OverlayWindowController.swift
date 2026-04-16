@@ -22,8 +22,8 @@ final class OverlayWindowController {
     /// Natural footprint of the pill (visual surface, not including shadow).
     /// We size the hosting window slightly larger so the drop shadow can
     /// render without getting clipped.
-    static let pillSize = NSSize(width: 400, height: 38)
-    static let windowPadding: CGFloat = 14
+    static let pillSize = NSSize(width: 360, height: 36)
+    static let windowPadding: CGFloat = 16
 
     init(recorder: RecorderController, delivery: DeliveryService) {
         self.recorder = recorder
