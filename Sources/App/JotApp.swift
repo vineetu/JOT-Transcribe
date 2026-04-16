@@ -11,6 +11,11 @@ struct JotApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(firstRunState)
+                .environmentObject(appDelegate.recorder)
+                .environmentObject(appDelegate.delivery)
+                .environmentObject(PermissionsService.shared)
+                .environment(\.transcriber, appDelegate.recorder.transcriber)
+                .modelContainer(appDelegate.modelContainer)
         }
 
         JotSettings()
