@@ -32,7 +32,13 @@ final class SetupWizardWindowController: NSWindowController, NSWindowDelegate {
 
         let rootView = SetupWizardView()
             .environmentObject(coordinator)
-        window.contentView = NSHostingView(rootView: rootView)
+        let hostingView = NSHostingView(rootView: rootView)
+        hostingView.frame = NSRect(origin: .zero, size: contentSize)
+        window.contentView = hostingView
+        window.setContentSize(contentSize)
+        let frameSize = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize)).size
+        window.minSize = frameSize
+        window.maxSize = frameSize
 
         super.init(window: window)
         window.delegate = self
