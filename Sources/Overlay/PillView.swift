@@ -40,6 +40,10 @@ struct PillView: View {
                 pillBody {
                     TranscribingContent(reduceMotion: reduceMotion)
                 }
+            case .rewriting:
+                pillBody {
+                    RewritingContent(reduceMotion: reduceMotion)
+                }
             case .success(let preview):
                 pillBody {
                     SuccessContent(preview: preview) {
@@ -206,6 +210,7 @@ private struct TranscribingContent: View {
 private struct ThreeDotLoader: View {
     let reduceMotion: Bool
     @State private var phase = 0
+    @State private var ticker: Timer?
 
     var body: some View {
         HStack(spacing: 4) {
@@ -218,17 +223,49 @@ private struct ThreeDotLoader: View {
         }
         .onAppear {
             guard !reduceMotion else { return }
-            Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+            ticker = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
                 DispatchQueue.main.async {
                     phase = (phase + 1) % 3
                 }
             }
+        }
+        .onDisappear {
+            ticker?.invalidate()
+            ticker = nil
         }
     }
 
     private func opacity(for i: Int) -> Double {
         if reduceMotion { return 0.7 }
         return i == phase ? 1.0 : 0.3
+    }
+}
+
+// MARK: - Rewriting
+
+private struct RewritingContent: View {
+    let reduceMotion: Bool
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 7, height: 7)
+            ThreeDotLoader(reduceMotion: reduceMotion)
+            Spacer(minLength: 4)
+            Text("Rewriting")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(pulse && !reduceMotion ? 0.6 : 0.9))
+                .animation(
+                    reduceMotion ? nil :
+                        .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+                    value: pulse
+                )
+                .onAppear { pulse = true }
+            AppLabel()
+        }
+        .transition(.opacity.animation(.easeOut(duration: 0.14)))
     }
 }
 

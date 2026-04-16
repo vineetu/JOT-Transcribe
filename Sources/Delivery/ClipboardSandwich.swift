@@ -92,6 +92,25 @@ enum ClipboardSandwich {
         up.post(tap: .cghidEventTap)
     }
 
+    /// Post a synthetic ⌘C at the HID event tap. Used by RewriteController
+    /// to grab the current selection before recording the instruction.
+    static func postCommandC() throws {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+            throw PostError.couldNotCreateEventSource
+        }
+        let cKey = CGKeyCode(kVK_ANSI_C)
+        guard
+            let down = CGEvent(keyboardEventSource: source, virtualKey: cKey, keyDown: true),
+            let up = CGEvent(keyboardEventSource: source, virtualKey: cKey, keyDown: false)
+        else {
+            throw PostError.couldNotBuildKeyEvent
+        }
+        down.flags = .maskCommand
+        up.flags = .maskCommand
+        down.post(tap: .cghidEventTap)
+        up.post(tap: .cghidEventTap)
+    }
+
     /// Post a synthetic Return (kVK_Return = 0x24) with no modifiers.
     /// Used when the "auto-press Enter" setting is on (chat apps).
     static func postReturn() throws {

@@ -24,3 +24,21 @@ Packages/
 
 # Distribution output
 dist/
+
+# Secrets / credentials (defensive — none should be in repo)
+.env
+*.p12
+*.p8
+*.pem
+*.key
+*.cer
+
+# Docs not for public repo
+docs/plans/
+docs/research/
+docs/screenshot/
+docs/spike-results/
+docs/task-breakdown-phase1.md
+
+# Pre-flight spike packages (standalone tests)
+Spikes/

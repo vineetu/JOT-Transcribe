@@ -28,10 +28,10 @@ final class OverlayWindowController {
     static let horizontalPadding: CGFloat = 12
     static let bottomPadding: CGFloat = 24
 
-    init(recorder: RecorderController, delivery: DeliveryService) {
+    init(recorder: RecorderController, delivery: DeliveryService, rewriteController: RewriteController? = nil) {
         self.recorder = recorder
         self.delivery = delivery
-        self.model = PillViewModel(recorder: recorder, delivery: delivery)
+        self.model = PillViewModel(recorder: recorder, delivery: delivery, rewriteController: rewriteController)
     }
 
     func install() {
@@ -125,7 +125,7 @@ final class OverlayWindowController {
     private func applyClickThrough(for state: PillViewModel.PillState) {
         guard let panel else { return }
         switch state {
-        case .hidden, .recording, .transcribing:
+        case .hidden, .recording, .transcribing, .rewriting:
             panel.ignoresMouseEvents = true
         case .success, .error:
             panel.ignoresMouseEvents = false

@@ -21,6 +21,7 @@ import os.log
 final class HotkeyRouter {
     private let recorder: RecorderController
     private let delivery: DeliveryService
+    private let rewriteController: RewriteController?
     private let log = Logger(subsystem: "com.jot.Jot", category: "HotkeyRouter")
 
     private var stateObserver: AnyCancellable?
@@ -28,9 +29,10 @@ final class HotkeyRouter {
     private var cancelEnabled = false
     private var pttPendingRelease = false
 
-    init(recorder: RecorderController, delivery: DeliveryService) {
+    init(recorder: RecorderController, delivery: DeliveryService, rewriteController: RewriteController? = nil) {
         self.recorder = recorder
         self.delivery = delivery
+        self.rewriteController = rewriteController
     }
 
     /// Install shortcut handlers and start observing recorder state. Idempotent.
@@ -90,6 +92,15 @@ final class HotkeyRouter {
             guard let self else { return }
             self.log.info("pasteLastTranscription fired")
             Task { @MainActor in await self.delivery.pasteLast() }
+        }
+
+        if let rewriteController {
+            KeyboardShortcuts.onKeyDown(for: .rewriteSelection) { [weak rewriteController] in
+                guard let rewriteController else { return }
+                Task { @MainActor in
+                    await rewriteController.toggle()
+                }
+            }
         }
 
         // Start with cancel disabled so Esc belongs to whoever else wants it.

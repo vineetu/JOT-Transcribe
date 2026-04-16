@@ -118,10 +118,19 @@ final class PermissionsService: ObservableObject {
         switch capability {
         case .microphone:
             await requestMicrophone()
-        case .inputMonitoring, .accessibilityPostEvents, .accessibilityFullAX:
+        case .inputMonitoring:
+            requestInputMonitoring()
+        case .accessibilityPostEvents, .accessibilityFullAX:
             SystemSettingsLinks.open(for: capability)
         }
         refreshAll()
+    }
+
+    private func requestInputMonitoring() {
+        let granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+        if !granted {
+            SystemSettingsLinks.open(for: .inputMonitoring)
+        }
     }
 
     private func requestMicrophone() async {

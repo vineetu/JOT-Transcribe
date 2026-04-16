@@ -3,6 +3,7 @@ import SwiftUI
 struct PermissionsStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
     @ObservedObject private var permissions = PermissionsService.shared
+    @State private var showResetAlert = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
@@ -56,8 +57,25 @@ struct PermissionsStep: View {
             }
 
             Spacer(minLength: 0)
+
+            HStack {
+                Spacer()
+                Button(role: .destructive) {
+                    showResetAlert = true
+                } label: {
+                    Label("Reset permissions…", systemImage: "arrow.counterclockwise")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .alert("Reset permissions?", isPresented: $showResetAlert) {
+            Button("Reset and Relaunch", role: .destructive, action: resetPermissions)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This revokes all permissions for Jot and relaunches the app. You will be prompted again.")
+        }
         .onAppear {
             permissions.refreshAll()
             updateChrome()
@@ -68,6 +86,16 @@ struct PermissionsStep: View {
     private var anyNeedsRelaunch: Bool {
         let interesting: [Capability] = [.inputMonitoring, .accessibilityPostEvents]
         return interesting.contains { permissions.statuses[$0] == .requiresRelaunch }
+    }
+
+    private func resetPermissions() {
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.jot.Jot"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        task.arguments = ["reset", "All", bundleID]
+        try? task.run()
+        task.waitUntilExit()
+        RestartHelper.relaunchApp()
     }
 
     private func updateChrome() {

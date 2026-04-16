@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // process terminates before any side effects land.
     let recorder: RecorderController = RecorderController()
     let delivery: DeliveryService = DeliveryService.shared
+    private(set) var rewriteController: RewriteController!
     /// SwiftData stack. Shared with the SwiftUI scene via
     /// `.modelContainer(modelContainer)` so both the UI and the
     /// `RecordingPersister` write into the same store.
@@ -60,7 +61,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Phase 3 wire-up: recorder → delivery → hotkeys. `recorder` and
         // `delivery` are already eagerly instantiated as stored properties.
         delivery.bind(recorder: recorder)
-        let router = HotkeyRouter(recorder: recorder, delivery: delivery)
+
+        let rewrite = RewriteController(
+            capture: AudioCapture(),
+            transcriber: Transcriber()
+        )
+        self.rewriteController = rewrite
+
+        let router = HotkeyRouter(recorder: recorder, delivery: delivery, rewriteController: rewrite)
         router.activate()
 
         // Any time the recorder publishes a fresh non-nil transcription
@@ -81,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.menuBar = JotMenuBarController(recorder: recorder, delivery: delivery)
         self.menuBar.install()
 
-        self.overlay = OverlayWindowController(recorder: recorder, delivery: delivery)
+        self.overlay = OverlayWindowController(recorder: recorder, delivery: delivery, rewriteController: rewrite)
         self.overlay.install()
 
         // Library persister: subscribes to `recorder.$lastResult` and writes
@@ -106,11 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         retention.start()
         self.retention = retention
 
-        // First-run gate. Deferred to the next main-queue turn so the primary
-        // `WindowGroup` has a chance to materialize before the wizard window
-        // orders itself front — otherwise the main window flashes on top of
-        // the wizard on cold launch.
-        if !FirstRunState.shared.setupComplete {
+        let missingPermissions = [Capability.microphone, .inputMonitoring, .accessibilityPostEvents]
+            .contains { PermissionsService.shared.statuses[$0] != .granted }
+        if !FirstRunState.shared.setupComplete || missingPermissions {
             DispatchQueue.main.async {
                 WizardPresenter.present(reason: .firstRun)
             }
