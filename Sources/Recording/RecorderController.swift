@@ -20,7 +20,9 @@ final class RecorderController: ObservableObject {
         case error(String)
     }
 
-    @Published private(set) var state: State = .idle
+    @Published private(set) var state: State = .idle {
+        didSet { scheduleAutoRecoveryIfNeeded() }
+    }
     @Published private(set) var lastTranscript: String?
     @Published private(set) var lastResult: TranscriptionResult?
 
@@ -31,6 +33,7 @@ final class RecorderController: ObservableObject {
     @Published private(set) var lastAudioRecording: AudioRecording?
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "Recorder")
+    private var autoRecoveryTask: Task<Void, Never>?
 
     private let capture: AudioCapture
     /// Exposed so the Library's Re-transcribe action can run against the
@@ -69,6 +72,13 @@ final class RecorderController: ObservableObject {
         }
     }
 
+    /// Reset state to `.idle` if currently in `.error`. Called by hotkey
+    /// handlers so the user can retry immediately without waiting for the
+    /// auto-recovery timer.
+    func clearError() {
+        if case .error = state { state = .idle }
+    }
+
     /// Drop a recording in progress without transcribing. If the controller
     /// is already idle or transcribing, this is a no-op.
     func cancel() async {
@@ -82,6 +92,17 @@ final class RecorderController: ObservableObject {
     }
 
     // MARK: - Internals
+
+    private func scheduleAutoRecoveryIfNeeded() {
+        autoRecoveryTask?.cancel()
+        autoRecoveryTask = nil
+        guard case .error = state else { return }
+        autoRecoveryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard let self, case .error = self.state else { return }
+            self.state = .idle
+        }
+    }
 
     private func startRecording() async {
         permissions.refreshAll()

@@ -26,6 +26,7 @@ final class HotkeyRouter {
     private var stateObserver: AnyCancellable?
     private var activated = false
     private var cancelEnabled = false
+    private var pttPendingRelease = false
 
     init(recorder: RecorderController, delivery: DeliveryService) {
         self.recorder = recorder
@@ -40,7 +41,12 @@ final class HotkeyRouter {
         KeyboardShortcuts.onKeyDown(for: .toggleRecording) { [weak self] in
             guard let self else { return }
             self.log.info("toggleRecording fired")
-            Task { @MainActor in await self.recorder.toggle() }
+            Task { @MainActor in
+                if case .error = self.recorder.state {
+                    self.recorder.clearError()
+                }
+                await self.recorder.toggle()
+            }
         }
 
         KeyboardShortcuts.onKeyDown(for: .cancelRecording) { [weak self] in
@@ -52,18 +58,30 @@ final class HotkeyRouter {
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { [weak self] in
             guard let self else { return }
             self.log.info("pushToTalk down")
-            Task { @MainActor in
-                if self.recorder.state == .idle {
+            self.pttPendingRelease = false
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if case .idle = self.recorder.state {
                     await self.recorder.toggle()
+                } else if case .error = self.recorder.state {
+                    self.recorder.clearError()
+                    await self.recorder.toggle()
+                }
+                if self.pttPendingRelease, case .recording = self.recorder.state {
+                    await self.recorder.toggle()
+                    self.pttPendingRelease = false
                 }
             }
         }
         KeyboardShortcuts.onKeyUp(for: .pushToTalk) { [weak self] in
             guard let self else { return }
             self.log.info("pushToTalk up")
-            Task { @MainActor in
+            self.pttPendingRelease = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 if case .recording = self.recorder.state {
                     await self.recorder.toggle()
+                    self.pttPendingRelease = false
                 }
             }
         }
