@@ -4,22 +4,28 @@ import SwiftUI
 /// Dynamic Island-style pill. Four visual states (recording, transcribing,
 /// success, error) plus a hidden state that collapses the surface entirely.
 ///
-/// Motion philosophy — short and decisive, per the design requirements:
-///   * width transitions:  200 ms interpolating spring (slight overshoot)
-///   * content cross-fade: 140 ms ease-out
-///   * breathing pulse (record dot): 1.2 s ease-in-out, infinite
-///   * equalizer bar retargets: 180–260 ms randomized per bar
+/// Visual target: pure-black pill that visually grows from the notch. No
+/// material, no gradient — just black plus a subtle drop shadow for depth.
+/// Corner radius matches the notch curvature (height / 2).
 ///
-/// Reduce Motion: pulse + equalizer freeze, width transitions become instant.
-/// Content cross-fades are preserved (they're information, not ornament).
+/// Motion philosophy:
+///   * appearance: slide down from behind the notch (offset -20 → 0, fade in)
+///     over 220 ms spring
+///   * equalizer: periodic sin-based motion, calm and smooth
+///   * width transitions: 200 ms interpolating spring (slight overshoot)
+///   * content cross-fade: 140 ms ease-out
+///
+/// Reduce Motion: equalizer freezes at 50%, appearance becomes a 120 ms
+/// ease-in-out fade with no spring.
 struct PillView: View {
     @ObservedObject var model: PillViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Height of the pill body. The hosting window is sized slightly larger
-    /// to leave room for drop shadow.
-    private static let pillHeight: CGFloat = 38
-    private static let cornerRadius: CGFloat = 19
+    /// Pill surface geometry. Height is tight to the notch strip; corner
+    /// radius equals height/2 so the bottom corners hug the notch curvature.
+    static let pillHeight: CGFloat = 36
+    static let pillWidth: CGFloat = 360
+    private static var cornerRadius: CGFloat { pillHeight / 2 }
 
     var body: some View {
         ZStack {
@@ -59,22 +65,24 @@ struct PillView: View {
         HStack(spacing: 10) {
             content()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .frame(height: Self.pillHeight)
         .background(
             Capsule(style: .continuous)
                 .fill(Color.black)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.9), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.35), radius: 14, x: 0, y: 6)
+                .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 4)
         )
-        .transition(
-            .asymmetric(
-                insertion: .opacity.combined(with: .scale(scale: 0.92)),
-                removal: .opacity.combined(with: .offset(y: -8))
-            )
+        .transition(pillTransition)
+    }
+
+    private var pillTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity.animation(.easeInOut(duration: 0.12))
+        }
+        // Slide down from behind the notch — gives the "grows from notch" feel.
+        return .asymmetric(
+            insertion: .move(edge: .top).combined(with: .opacity),
+            removal: .move(edge: .top).combined(with: .opacity)
         )
     }
 }
@@ -87,19 +95,29 @@ private struct RecordingContent: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                PulsingDot(color: Color(nsColor: .systemRed), reduceMotion: reduceMotion)
-                Equalizer(reduceMotion: reduceMotion)
-                    .frame(width: 24, height: 16)
-            }
+            PulsingDot(color: Color(nsColor: .systemRed), reduceMotion: reduceMotion)
+            Equalizer(reduceMotion: reduceMotion)
+                .frame(width: 24, height: 14)
             Spacer(minLength: 8)
             Text(PillViewModel.formatElapsed(elapsed))
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.9))
                 .monospacedDigit()
                 .contentTransition(.numericText())
+            AppLabel()
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
+    }
+}
+
+/// Small "Jot" tag, right-aligned during active states — mirrors the "oto"
+/// label in the reference image.
+private struct AppLabel: View {
+    var body: some View {
+        Text("Jot")
+            .font(.system(size: 10, weight: .regular))
+            .tracking(0.3)
+            .foregroundStyle(.white.opacity(0.5))
     }
 }
 
@@ -111,7 +129,7 @@ private struct PulsingDot: View {
     var body: some View {
         Circle()
             .fill(color)
-            .frame(width: 8, height: 8)
+            .frame(width: 7, height: 7)
             .scaleEffect(pulsing && !reduceMotion ? 1.15 : 1.0)
             .animation(
                 reduceMotion ? nil :
@@ -122,54 +140,42 @@ private struct PulsingDot: View {
     }
 }
 
+/// Audio-level equalizer. Four thin bars with staggered sin-based motion —
+/// calm and periodic, not jittery. Under Reduce Motion the bars freeze at
+/// 50% height.
 private struct Equalizer: View {
     let reduceMotion: Bool
     private let barCount = 4
-    @State private var heights: [CGFloat]
-    @State private var durations: [Double]
+    private let barWidth: CGFloat = 3
+    private let barSpacing: CGFloat = 4
 
-    init(reduceMotion: Bool) {
-        self.reduceMotion = reduceMotion
-        _heights = State(initialValue: (0..<4).map { _ in CGFloat.random(in: 0.2...1.0) })
-        _durations = State(initialValue: (0..<4).map { _ in Double.random(in: 0.18...0.26) })
-    }
+    // Per-bar frequency (Hz) + phase offset (radians). Chosen so the bars
+    // drift in and out of sync without ever looking synchronized.
+    private let frequencies: [Double] = [2.3, 3.1, 2.7, 3.5]
+    private let phases: [Double] = [0.0, 1.2, 2.4, 3.6]
 
     var body: some View {
-        GeometryReader { geo in
-            HStack(alignment: .center, spacing: 3) {
-                ForEach(0..<barCount, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(Color.white.opacity(0.95))
-                        .frame(width: 3, height: barHeight(for: i, in: geo.size.height))
-                        .animation(
-                            reduceMotion ? nil :
-                                .easeInOut(duration: durations[i]),
-                            value: heights[i]
-                        )
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            GeometryReader { geo in
+                HStack(alignment: .center, spacing: barSpacing) {
+                    ForEach(0..<barCount, id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                            .fill(Color.white.opacity(0.95))
+                            .frame(width: barWidth, height: barHeight(i, available: geo.size.height, t: t))
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        }
-        .onAppear {
-            guard !reduceMotion else { return }
-            scheduleRandomize()
         }
     }
 
-    private func barHeight(for index: Int, in available: CGFloat) -> CGFloat {
-        if reduceMotion { return available * 0.5 }
-        return max(2, available * heights[index])
-    }
-
-    private func scheduleRandomize() {
-        for i in 0..<barCount {
-            Timer.scheduledTimer(withTimeInterval: durations[i], repeats: true) { _ in
-                DispatchQueue.main.async {
-                    heights[i] = CGFloat.random(in: 0.15...1.0)
-                    durations[i] = Double.random(in: 0.18...0.26)
-                }
-            }
-        }
+    private func barHeight(_ index: Int, available: CGFloat, t: Double) -> CGFloat {
+        if reduceMotion { return max(2, available * 0.5) }
+        // sin ∈ [-1, 1]; remap to [0.2, 1.0] so bars never fully collapse.
+        let raw = sin(t * frequencies[index] + phases[index])
+        let normalized = 0.6 + 0.4 * raw  // → [0.2, 1.0]
+        return max(2, available * CGFloat(normalized))
     }
 }
 
@@ -182,13 +188,13 @@ private struct TranscribingContent: View {
         HStack(spacing: 10) {
             Circle()
                 .fill(Color(nsColor: .systemBlue))
-                .frame(width: 8, height: 8)
-            Spacer(minLength: 4)
+                .frame(width: 7, height: 7)
             ThreeDotLoader(reduceMotion: reduceMotion)
             Spacer(minLength: 4)
             Text("Transcribing")
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.8))
+            AppLabel()
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
     }
@@ -203,7 +209,7 @@ private struct ThreeDotLoader: View {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
                     .fill(Color.white)
-                    .frame(width: 5, height: 5)
+                    .frame(width: 4, height: 4)
                     .opacity(opacity(for: i))
             }
         }
@@ -234,16 +240,16 @@ private struct SuccessContent: View {
         HStack(spacing: 10) {
             Circle()
                 .fill(Color(nsColor: .systemGreen))
-                .frame(width: 8, height: 8)
+                .frame(width: 7, height: 7)
             Text(preview)
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: onCopy) {
                 Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(copyHover ? .white : .white.opacity(0.75))
             }
             .buttonStyle(.plain)
@@ -262,16 +268,16 @@ private struct ErrorContent: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color(nsColor: .systemRed))
             Text(shortened)
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "info.circle")
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.75))
                 .help(message)
         }

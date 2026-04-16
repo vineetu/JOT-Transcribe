@@ -2,34 +2,29 @@ import AppKit
 
 /// Computes where the Dynamic Island-style pill should live on a given screen.
 ///
-/// - Notch Macs (`safeAreaInsets.top > 0`): top edge of the pill is flush with
-///   the bottom of the menu bar, directly under the notch cutout. The notch's
-///   horizontal center is always the screen's `midX`, so we center the pill
-///   there.
-/// - Non-notch Macs: the pill floats just below the menu bar, horizontally
-///   centered on the screen, with a small breathing gap.
+/// - Notch Macs (`safeAreaInsets.top > 0`): pill occupies the notch strip —
+///   its top edge is flush with the top of the screen so it visually "grows
+///   from" the notch with no gap between pill and menu bar. The notch's
+///   horizontal center is always `screen.frame.midX`, so we center there.
+/// - Non-notch Macs: pill top edge is flush with the top of the screen
+///   (overlapping the menu bar), matching the "grows from the top" feel.
 enum OverlayPlacement {
-    /// Gap between the menu bar's lower edge and the pill's top edge on
-    /// non-notch displays. Tight but not kissing — lets the drop shadow read.
-    static let nonNotchGap: CGFloat = 4
-
     /// Returns the frame (bottom-left origin, screen coordinates) for a pill
     /// of the given size on the given screen.
     static func frame(for size: NSSize, on screen: NSScreen) -> NSRect {
-        let visibleTop = screen.frame.maxY
-        let topInset = screen.safeAreaInsets.top
+        let screenTop = screen.frame.maxY
         let centerX = screen.frame.midX - size.width / 2
 
-        if topInset > 0 {
-            // Notch display — park the pill's top edge flush under the menu
-            // bar (i.e. flush under the notch's lower edge).
-            let y = visibleTop - topInset - size.height
+        if screen.safeAreaInsets.top > 0 {
+            // Notch display — pin the pill's top edge to the top of the screen
+            // so it occupies the notch strip. `origin.y` in AppKit (bottom-left
+            // origin) is `screenTop - size.height`.
+            let y = screenTop - size.height
             return NSRect(x: centerX, y: y, width: size.width, height: size.height)
         } else {
-            // Non-notch — menu bar is ~24 pt tall on every modern Mac we
-            // support; `frame.maxY - visibleFrame.maxY` is the exact value.
-            let menuBarHeight = screen.frame.maxY - screen.visibleFrame.maxY
-            let y = visibleTop - menuBarHeight - size.height - nonNotchGap
+            // Non-notch — sit flush at the very top of the screen, overlapping
+            // the menu bar area for the same "grows from notch" visual cue.
+            let y = screenTop - size.height
             return NSRect(x: centerX, y: y, width: size.width, height: size.height)
         }
     }
