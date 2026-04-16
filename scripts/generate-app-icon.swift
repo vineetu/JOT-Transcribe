@@ -4,7 +4,7 @@ import CoreGraphics
 import Foundation
 
 // Procedural app icon generator for Jot.
-// Draws a black squircle (Apple-approximate) with a white mic.fill SF Symbol centered.
+// Draws a black squircle (Apple-approximate) with a white "J" monogram centered.
 // Emits the ten PNG sizes required by macOS AppIcon.appiconset.
 
 struct IconSpec {
@@ -36,8 +36,8 @@ try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirector
 
 // Apple's macOS squircle corner-radius ratio is ~0.2237 of the canvas.
 let cornerRadiusRatio: CGFloat = 0.2237
-// Glyph occupies ~52% of the canvas.
-let glyphRatio: CGFloat = 0.52
+// "J" monogram occupies ~55% of the canvas height.
+let glyphRatio: CGFloat = 0.55
 
 func renderIcon(pixels: Int) -> Data? {
     let size = CGFloat(pixels)
@@ -66,32 +66,25 @@ func renderIcon(pixels: Int) -> Data? {
     ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
     ctx.fillPath()
 
-    // White mic.fill glyph, centered.
-    let glyphPointSize = size * glyphRatio
-    let config = NSImage.SymbolConfiguration(pointSize: glyphPointSize, weight: .regular)
-    guard let symbol = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil)?
-        .withSymbolConfiguration(config) else {
-        return nil
-    }
+    // White "J" monogram, centered.
+    let fontSize = size * glyphRatio
+    let font: NSFont = NSFont(name: "SFProRounded-Semibold", size: fontSize)
+        ?? NSFont(name: "SFProDisplay-Bold", size: fontSize)
+        ?? NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+    let attributes: [NSAttributedString.Key: Any] = [
+        .font: font,
+        .foregroundColor: NSColor.white,
+    ]
+    let str = NSAttributedString(string: "J", attributes: attributes)
+    let line = CTLineCreateWithAttributedString(str)
+    let bounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
 
-    // Tint to white by drawing through a mask.
-    let glyphSize = symbol.size
-    let glyphRect = CGRect(
-        x: (size - glyphSize.width) / 2.0,
-        y: (size - glyphSize.height) / 2.0,
-        width: glyphSize.width,
-        height: glyphSize.height
-    )
-
-    var proposedRect = glyphRect
-    guard let cgGlyph = symbol.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
-        return nil
-    }
+    let xOffset = (size - bounds.width) / 2.0 - bounds.origin.x
+    let yOffset = (size - bounds.height) / 2.0 - bounds.origin.y
 
     ctx.saveGState()
-    ctx.clip(to: proposedRect, mask: cgGlyph)
-    ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
-    ctx.fill(proposedRect)
+    ctx.textPosition = CGPoint(x: xOffset, y: yOffset)
+    CTLineDraw(line, ctx)
     ctx.restoreGState()
 
     guard let image = ctx.makeImage() else { return nil }
