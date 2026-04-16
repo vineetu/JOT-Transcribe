@@ -27,13 +27,15 @@ struct RewritePane: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Authentication") {
-                SecureField("API Key", text: $apiKeyInput)
-                    .textFieldStyle(.roundedBorder)
-                    .onAppear { apiKeyInput = config.apiKey }
-                    .onChange(of: apiKeyInput) { _, newValue in
-                        config.apiKey = newValue
-                    }
+            if config.provider != .ollama {
+                Section("Authentication") {
+                    SecureField("API Key", text: $apiKeyInput)
+                        .textFieldStyle(.roundedBorder)
+                        .onAppear { apiKeyInput = config.apiKey }
+                        .onChange(of: apiKeyInput) { _, newValue in
+                            config.apiKey = newValue
+                        }
+                }
             }
 
             Section("Shortcut") {
@@ -52,7 +54,7 @@ struct RewritePane: View {
                     Button(isTesting ? "Testing..." : "Test Connection") {
                         Task { await testConnection() }
                     }
-                    .disabled(isTesting || config.apiKey.isEmpty)
+                    .disabled(isTesting || (config.provider != .ollama && config.apiKey.isEmpty))
                     Spacer()
                     if !testResult.isEmpty {
                         Text(testResult)
@@ -68,14 +70,13 @@ struct RewritePane: View {
     private func testConnection() async {
         isTesting = true
         defer { isTesting = false }
-        do {
-            let result = try await LLMClient().rewrite(
-                selectedText: "Hello world, this is a test.",
-                instruction: "Make this more formal"
-            )
-            testResult = "\u{2713} Success: \(result.prefix(80))"
-        } catch {
-            testResult = "\u{2717} \(error.localizedDescription)"
+        let success = await LLMClient().healthCheck()
+        if success {
+            config.llmVerified = true
+            testResult = "\u{2713} Connection verified"
+        } else {
+            config.llmVerified = false
+            testResult = "\u{2717} Connection failed"
         }
     }
 }

@@ -14,7 +14,9 @@ actor LLMClient {
             )
         }
 
-        guard !config.apiKey.isEmpty else { throw LLMError.noAPIKey }
+        if config.provider != .ollama {
+            guard !config.apiKey.isEmpty else { throw LLMError.noAPIKey }
+        }
 
         let systemPrompt = """
             You are a text rewriting assistant. You receive selected text and a voice instruction. \
@@ -70,7 +72,7 @@ actor LLMClient {
         userPrompt: String
     ) throws -> URLRequest {
         switch provider {
-        case .openai:
+        case .openai, .ollama:
             return try buildOpenAIRequest(
                 baseURL: baseURL, apiKey: apiKey, model: model,
                 systemPrompt: systemPrompt, userPrompt: userPrompt
@@ -177,7 +179,7 @@ actor LLMClient {
 
         let text: String?
         switch provider {
-        case .openai:
+        case .openai, .ollama:
             text = (root["choices"] as? [[String: Any]])?
                 .first?["message"]
                 .flatMap { $0 as? [String: Any] }?["content"] as? String
@@ -199,5 +201,132 @@ actor LLMClient {
         }
 
         return result
+    }
+
+    func transform(transcript: String) async throws -> String {
+        let config = await MainActor.run {
+            let c = LLMConfiguration.shared
+            return (
+                provider: c.provider,
+                apiKey: c.apiKey,
+                baseURL: c.effectiveBaseURL,
+                model: c.effectiveModel
+            )
+        }
+
+        guard config.provider == .ollama || !config.apiKey.isEmpty else {
+            throw LLMError.noAPIKey
+        }
+
+        let systemPrompt = """
+            You are a dictation post-processor. You receive raw speech-to-text output and return clean text.
+
+            Rules:
+            - Remove filler words (um, uh, like, you know, so, basically, I mean, right, actually, literally, well).
+            - Remove false starts and repeated words/phrases.
+            - Fix grammar, punctuation, and capitalization.
+            - Split run-on sentences into natural sentence boundaries.
+            - Convert spoken numbers to digits when appropriate (e.g., "three hundred" -> "300", but keep "a couple" as-is).
+            - Preserve the speaker's original meaning, tone, vocabulary, and level of formality.
+            - Do NOT add words the speaker did not say.
+            - Do NOT remove hedges that convey uncertainty (maybe, probably, I think, sort of) — these carry meaning.
+            - Do NOT replace the speaker's word choices with synonyms or "better" words.
+            - Do NOT merge separate thoughts into one sentence if it changes emphasis or intent.
+            - Return ONLY the cleaned text. No preamble, no "Here is the cleaned text:", no commentary.
+            """
+
+        var request = try buildRequest(
+            provider: config.provider,
+            baseURL: config.baseURL,
+            apiKey: config.apiKey,
+            model: config.model,
+            systemPrompt: systemPrompt,
+            userPrompt: transcript
+        )
+        request.timeoutInterval = 10
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw LLMError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw LLMError.networkError(URLError(.badServerResponse))
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "<unreadable>"
+            let truncatedBody = String(body.prefix(200))
+            throw LLMError.httpError(statusCode: httpResponse.statusCode, body: truncatedBody)
+        }
+
+        let result = try parseResponse(provider: config.provider, data: data)
+
+        let inputLength = Double(transcript.count)
+        let minRatio = inputLength < 50 ? 0.15 : 0.3
+        if Double(result.count) < inputLength * minRatio || Double(result.count) > inputLength * 3.0 {
+            throw LLMError.suspiciousResponse
+        }
+
+        return result
+    }
+
+    // MARK: - Test Helpers
+
+    func testParseResponse(provider: LLMProvider, data: Data) throws -> String {
+        try parseResponse(provider: provider, data: data)
+    }
+
+    func testBuildRequest(
+        provider: LLMProvider, baseURL: String, apiKey: String,
+        model: String, systemPrompt: String, userPrompt: String
+    ) throws -> URLRequest {
+        try buildRequest(provider: provider, baseURL: baseURL, apiKey: apiKey,
+                         model: model, systemPrompt: systemPrompt, userPrompt: userPrompt)
+    }
+
+    // MARK: - Health Check
+
+    func healthCheck() async -> Bool {
+        let config = await MainActor.run {
+            let c = LLMConfiguration.shared
+            return (
+                provider: c.provider,
+                apiKey: c.apiKey,
+                baseURL: c.effectiveBaseURL,
+                model: c.effectiveModel
+            )
+        }
+
+        if config.provider != .ollama {
+            guard !config.apiKey.isEmpty else { return false }
+        }
+
+        do {
+            var request = try buildRequest(
+                provider: config.provider,
+                baseURL: config.baseURL,
+                apiKey: config.apiKey,
+                model: config.model,
+                systemPrompt: "Respond with the word OK.",
+                userPrompt: "OK"
+            )
+            request.timeoutInterval = 15
+
+            let (data, response) = try await session.data(for: request)
+
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode) else {
+                return false
+            }
+
+            let text = try parseResponse(provider: config.provider, data: data)
+            return !text.isEmpty
+        } catch {
+            return false
+        }
     }
 }

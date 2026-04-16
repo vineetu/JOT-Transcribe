@@ -7,6 +7,7 @@ enum LLMError: Error, LocalizedError {
     case decodingError(Error)
     case emptyResponse
     case networkError(Error)
+    case suspiciousResponse
 
     var errorDescription: String? {
         switch self {
@@ -22,6 +23,8 @@ enum LLMError: Error, LocalizedError {
             "The API returned an empty response."
         case .networkError(let error):
             "Network error: \(error.localizedDescription)"
+        case .suspiciousResponse:
+            "The API returned a suspiciously short or long response."
         }
     }
 }

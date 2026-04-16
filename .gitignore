@@ -33,6 +33,9 @@ dist/
 *.key
 *.cer
 
+# Release script (contains deployment config referencing env vars)
+scripts/release.sh
+
 # Docs not for public repo
 docs/plans/
 docs/research/

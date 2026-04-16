@@ -44,6 +44,10 @@ struct PillView: View {
                 pillBody {
                     RewritingContent(reduceMotion: reduceMotion)
                 }
+            case .transforming:
+                pillBody {
+                    TransformingContent(reduceMotion: reduceMotion)
+                }
             case .success(let preview):
                 pillBody {
                     SuccessContent(preview: preview) {
@@ -255,6 +259,34 @@ private struct RewritingContent: View {
             ThreeDotLoader(reduceMotion: reduceMotion)
             Spacer(minLength: 4)
             Text("Rewriting")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(pulse && !reduceMotion ? 0.6 : 0.9))
+                .animation(
+                    reduceMotion ? nil :
+                        .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
+                    value: pulse
+                )
+                .onAppear { pulse = true }
+            AppLabel()
+        }
+        .transition(.opacity.animation(.easeOut(duration: 0.14)))
+    }
+}
+
+// MARK: - Transforming
+
+private struct TransformingContent: View {
+    let reduceMotion: Bool
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(Color(nsColor: .systemPurple))
+                .frame(width: 7, height: 7)
+            ThreeDotLoader(reduceMotion: reduceMotion)
+            Spacer(minLength: 4)
+            Text("Cleaning up")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white.opacity(pulse && !reduceMotion ? 0.6 : 0.9))
                 .animation(

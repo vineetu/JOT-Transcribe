@@ -7,7 +7,7 @@ import SwiftUI
 
 struct GeneralPane: View {
     @AppStorage("jot.inputDeviceUID") private var inputDeviceUID: String = ""
-    @AppStorage("jot.retentionDays") private var retentionDays: Int = 0
+    @AppStorage("jot.retentionDays") private var retentionDays: Int = 7
 
     @StateObject private var deviceWatcher = InputDeviceWatcher()
     @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
@@ -33,6 +33,7 @@ struct GeneralPane: View {
                     get: { launchAtLogin },
                     set: { setLaunchAtLogin($0) }
                 ))
+                .help("Start Jot automatically when you log in to your Mac.")
                 if let loginToggleError {
                     Text(loginToggleError)
                         .font(.system(size: 11))

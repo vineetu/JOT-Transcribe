@@ -144,13 +144,14 @@ final class JotMenuBarController: NSObject {
         case .idle: return "Start Recording"
         case .recording: return "Stop Recording"
         case .transcribing: return "Transcribing…"
+        case .transforming: return "Cleaning up…"
         case .error: return "Retry"
         }
     }
 
     private static func toggleEnabled(for state: RecorderController.State) -> Bool {
         switch state {
-        case .transcribing: return false
+        case .transcribing, .transforming: return false
         case .idle, .recording, .error: return true
         }
     }
@@ -161,6 +162,7 @@ final class JotMenuBarController: NSObject {
         case .idle: symbolName = "mic.fill"
         case .recording: symbolName = "mic.and.signal.meter.fill"
         case .transcribing: symbolName = "waveform"
+        case .transforming: symbolName = "wand.and.stars"
         case .error: symbolName = "exclamationmark.triangle.fill"
         }
 
@@ -177,6 +179,7 @@ final class JotMenuBarController: NSObject {
         case .idle: return "Jot: idle"
         case .recording: return "Jot: recording"
         case .transcribing: return "Jot: transcribing"
+        case .transforming: return "Jot: cleaning up"
         case .error: return "Jot: error"
         }
     }

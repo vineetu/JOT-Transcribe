@@ -17,6 +17,7 @@ final class RecorderController: ObservableObject {
         case idle
         case recording(startedAt: Date)
         case transcribing
+        case transforming
         case error(String)
     }
 
@@ -24,6 +25,7 @@ final class RecorderController: ObservableObject {
         didSet { scheduleAutoRecoveryIfNeeded() }
     }
     @Published private(set) var lastTranscript: String?
+    @Published private(set) var lastTransformedTranscript: String?
     @Published private(set) var lastResult: TranscriptionResult?
 
     /// The `AudioRecording` that produced `lastResult`, if any. Library's
@@ -34,6 +36,8 @@ final class RecorderController: ObservableObject {
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "Recorder")
     private var autoRecoveryTask: Task<Void, Never>?
+    private var transformTask: Task<Void, Never>?
+    private var pendingTransform: (recording: AudioRecording, result: TranscriptionResult, rawText: String)?
 
     private let capture: AudioCapture
     /// Exposed so the Library's Re-transcribe action can run against the
@@ -64,11 +68,8 @@ final class RecorderController: ObservableObject {
             await startRecording()
         case .recording:
             await stopAndTranscribe()
-        case .transcribing:
-            // Ignore toggles while a transcription is running. Policy:
-            // single in-flight. A future "cancel transcription" UI affordance
-            // would call `cancel()` instead.
-            log.info("toggle() ignored — transcription in progress")
+        case .transcribing, .transforming:
+            log.info("toggle() ignored — transcription/transform in progress")
         }
     }
 
@@ -85,6 +86,17 @@ final class RecorderController: ObservableObject {
         switch state {
         case .recording:
             await capture.cancel()
+            state = .idle
+        case .transforming:
+            transformTask?.cancel()
+            transformTask = nil
+            if let pending = pendingTransform {
+                lastTransformedTranscript = nil
+                lastTranscript = pending.rawText
+                lastAudioRecording = pending.recording
+                lastResult = pending.result
+                pendingTransform = nil
+            }
             state = .idle
         case .idle, .transcribing, .error:
             break
@@ -134,12 +146,41 @@ final class RecorderController: ObservableObject {
         do {
             try await transcriber.ensureLoaded()
             let result = try await transcriber.transcribe(recording.samples)
-            // Order matters: set the audio first so any subscriber to
-            // `$lastResult` reading `lastAudioRecording` sees the fresh pair.
-            lastAudioRecording = recording
-            lastResult = result
-            lastTranscript = result.text
-            state = .idle
+            let rawText = result.text
+
+            let llmConfig = LLMConfiguration.shared
+            if llmConfig.transformEnabled && llmConfig.llmVerified {
+                pendingTransform = (recording: recording, result: result, rawText: rawText)
+                state = .transforming
+                let client = LLMClient()
+                transformTask = Task { [weak self] in
+                    guard let self else { return }
+                    defer { self.pendingTransform = nil }
+                    do {
+                        let transformed = try await client.transform(transcript: rawText)
+                        guard !Task.isCancelled else { return }
+                        self.lastTransformedTranscript = transformed
+                        self.lastTranscript = transformed
+                        self.lastAudioRecording = recording
+                        self.lastResult = result
+                        self.state = .idle
+                    } catch {
+                        guard !Task.isCancelled else { return }
+                        self.log.warning("Transform failed, falling back to raw: \(String(describing: error))")
+                        self.lastTransformedTranscript = nil
+                        self.lastTranscript = rawText
+                        self.lastAudioRecording = recording
+                        self.lastResult = result
+                        self.state = .idle
+                    }
+                }
+            } else {
+                lastTransformedTranscript = nil
+                lastTranscript = rawText
+                lastAudioRecording = recording
+                lastResult = result
+                state = .idle
+            }
         } catch TranscriberError.modelMissing {
             state = .error("Parakeet model is not downloaded yet.")
         } catch TranscriberError.audioTooShort {
