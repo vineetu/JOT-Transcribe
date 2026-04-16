@@ -2,66 +2,44 @@
 
 > Speak, and it's written.
 
-Native macOS dictation utility. Press a hotkey, speak, and text appears at your cursor — all on-device. Successor to [Open Voice](https://github.sie.sony.com/vsriram/openvoice).
+Native macOS dictation utility. Press a hotkey, speak, and text appears at your cursor — entirely on-device. No cloud, no accounts, no telemetry.
+
+## Features
+
+**Dictation** — Hit ⌥Space (or your custom shortcut), speak, and the transcript is pasted wherever your cursor is. Works in any app. Push-to-talk mode available too — hold the key, release to transcribe.
+
+**AI Rewrite** — Select text, trigger the rewrite shortcut, and speak an instruction ("make this more formal", "fix the grammar", "translate to Spanish"). Jot sends the selected text + your voice instruction to an LLM, and the rewritten text replaces your selection. Supports OpenAI, Anthropic, and Gemini — configure the provider, endpoint, and API key in Settings.
+
+**Dynamic Island overlay** — A pill-shaped indicator appears under the notch showing recording state, transcription progress, and a preview of the result.
+
+**Recordings library** — Every transcription is saved with its audio. Browse by date, search transcripts, re-transcribe with a different model, or play back the original recording.
+
+**Menu bar** — Start/stop recording, copy last transcript, and access settings from the menu bar icon.
+
+**Sound cues** — Subtle chimes for recording start, stop, cancel, transcription complete, and errors. Configurable in Settings.
+
+## Setup
+
+On first launch, a setup wizard walks you through granting three macOS permissions (Microphone, Input Monitoring, Accessibility), downloading the Parakeet speech model (~1.2 GB, one-time), and configuring shortcuts.
+
+If permissions get into a bad state, go to **Settings → General → Reset Permissions** or **Run Setup Wizard** to redo the flow.
+
+To configure AI Rewrite, go to **Settings → AI Rewrite**, pick your provider, enter your API key, and optionally customize the base URL and model.
 
 ## Stack
 
-Swift · SwiftUI + AppKit where needed · AVFoundation for capture · Core ML / Apple Neural Engine for Parakeet inference · `NSStatusItem` for the menu bar · `NSPanel` for the status indicator.
+Swift · SwiftUI + AppKit · FluidAudio (Parakeet TDT 0.6B v3 on Apple Neural Engine) · AVAudioEngine · SwiftData · KeyboardShortcuts
+
+## Requirements
+
+- Apple Silicon Mac
+- macOS Sonoma 14.0+
 
 ## References
 
-- `docs/design-requirements.md` — product requirements. The source of truth for what Jot must do and how it should feel.
-- `docs/features.md` — feature inventory carried forward from Open Voice for parity tracking.
+- `docs/design-requirements.md` — product requirements
+- `docs/features.md` — feature inventory
 
-## Distribution
+## License
 
-### How to ship a release
-
-Jot v1 ships as an **ad-hoc signed** `.dmg` uploaded to a GitHub Release. Developer ID signing + notarization is a later phase — see [`docs/plans/apple-signing.md`](docs/plans/apple-signing.md).
-
-**1. Set the version.**
-
-The script reads `MARKETING_VERSION` from the Xcode target (bump it in the Jot target's Build Settings), or you can override per-build:
-
-```sh
-VERSION=0.2.0 ./scripts/build-dmg.sh
-```
-
-**2. Build the DMG.**
-
-```sh
-./scripts/build-dmg.sh
-```
-
-The script archives Release (`arm64`), exports the `.app`, re-applies an ad-hoc hardened-runtime signature with the bundled entitlements, and produces:
-
-```
-dist/Jot-<version>-<shortsha>.dmg
-```
-
-The DMG has a drag-to-Applications layout: `Jot.app` next to an `Applications` symlink. The final footer prints path, size, and SHA-256 — copy the SHA into your release notes so downloaders can verify.
-
-Expected caveat: `spctl` will reject the app (Gatekeeper won't trust an ad-hoc signature). The script logs this as a warning and continues — it is **not** a build failure in v1.
-
-**3. Publish.**
-
-Drag both artifacts onto the GitHub Release page for the tag:
-
-- `Jot-<version>-<shortsha>.dmg`
-- A plain-text file with the SHA-256 (e.g. `Jot-<version>-<shortsha>.dmg.sha256`)
-
-Use [`scripts/release-notes-template.md`](scripts/release-notes-template.md) as the starting point for the release body.
-
-No CI, no automation, no auto-updater in v1 — users update by redownloading.
-
-### What the user sees on first launch
-
-Because the DMG is ad-hoc signed and not notarized, macOS Gatekeeper will refuse the first launch with an "unidentified developer" / "Jot is damaged" dialog. Two ways around it:
-
-- **Right-click → Open → Open** (once). macOS then remembers the approval.
-- Or strip the quarantine xattr from the terminal:
-  ```sh
-  xattr -dr com.apple.quarantine /Applications/Jot.app
-  ```
-
-This friction goes away once we ship a Developer ID-signed, notarized build — tracked in [`docs/plans/apple-signing.md`](docs/plans/apple-signing.md).
+MIT — see [LICENSE](LICENSE).
