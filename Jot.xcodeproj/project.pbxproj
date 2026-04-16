@@ -31,6 +31,7 @@
 				Settings/.gitkeep,
 				SetupWizard/.gitkeep,
 				Sounds/.gitkeep,
+				Sounds/README.md,
 				Transcription/.gitkeep,
 			);
 			target = A00000000000000000000060 /* Jot */;
