@@ -14,7 +14,7 @@ final class SetupWizardWindowController: NSWindowController, NSWindowDelegate {
         self.coordinator = coordinator
         self.onClose = onClose
 
-        let contentSize = NSSize(width: 560, height: 440)
+        let contentSize = NSSize(width: 560, height: 520)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: contentSize),
             styleMask: [.titled, .closable],

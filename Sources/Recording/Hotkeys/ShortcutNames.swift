@@ -23,4 +23,6 @@ extension KeyboardShortcuts.Name {
     static let pushToTalk = Self("pushToTalk")
 
     static let pasteLastTranscription = Self("pasteLastTranscription")
+
+    static let rewriteSelection = Self("rewriteSelection")
 }

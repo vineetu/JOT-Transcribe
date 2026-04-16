@@ -12,8 +12,10 @@ struct JotSettings: Scene {
                     .tabItem { Label("Sound", systemImage: "speaker.wave.2") }
                 ShortcutsPane()
                     .tabItem { Label("Shortcuts", systemImage: "command") }
+                RewritePane()
+                    .tabItem { Label("AI Rewrite", systemImage: "sparkles") }
             }
-            .frame(width: 560, height: 420)
+            .frame(width: 560, height: 460)
         }
     }
 }

@@ -28,7 +28,7 @@ struct SetupWizardView: View {
                 .padding(.horizontal, 32)
                 .padding(.vertical, 16)
         }
-        .frame(width: 560, height: 440)
+        .frame(width: 560, height: 520)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

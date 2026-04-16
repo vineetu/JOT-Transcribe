@@ -53,9 +53,7 @@ else
     log "Read MARKETING_VERSION from Xcode: ${MARKETING_VERSION}"
 fi
 
-SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo "nogit")"
-FULL_VERSION="${MARKETING_VERSION}-${SHORT_SHA}"
-DMG_NAME="Jot-${FULL_VERSION}.dmg"
+DMG_NAME="Jot.dmg"
 DMG_PATH="${DIST_DIR}/${DMG_NAME}"
 log "Target DMG: ${DMG_PATH}"
 
@@ -95,10 +93,11 @@ xcodebuild \
 #    (belt-and-braces: the archive is already signed this way, but explicit
 #    is better so the DMG contents match what Gatekeeper will inspect.)
 # -----------------------------------------------------------------------------
-log "Re-signing ad-hoc with hardened runtime"
+SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Vineet Sriram (8VB2ULDN22)}"
+log "Signing with: ${SIGN_IDENTITY}"
 codesign \
     --force --deep \
-    --sign - \
+    --sign "${SIGN_IDENTITY}" \
     --options runtime \
     --entitlements "${ENTITLEMENTS_PATH}" \
     "${APP_PATH}"
@@ -110,15 +109,14 @@ log "codesign --verify:"
 codesign --verify --deep --strict --verbose=2 "${APP_PATH}" 2>&1 || \
     fail "codesign verification failed"
 
-log "spctl assessment (ad-hoc expected to be rejected — not a build failure):"
+log "spctl assessment:"
 set +e
 SPCTL_OUTPUT="$(spctl -a -vv -t install "${APP_PATH}" 2>&1)"
 SPCTL_EXIT=$?
 set -e
 printf '%s\n' "${SPCTL_OUTPUT}"
 if [[ ${SPCTL_EXIT} -ne 0 ]]; then
-    warn "spctl rejected the app — this is expected for ad-hoc signing in v1."
-    warn "Gatekeeper will block first launch for end users until we ship Developer ID."
+    warn "spctl rejected the app. If signed with Developer ID, notarization may be needed."
 fi
 
 # -----------------------------------------------------------------------------
@@ -155,7 +153,19 @@ fi
 [[ -f "${DMG_PATH}" ]] || fail "DMG was not produced at ${DMG_PATH}"
 
 # -----------------------------------------------------------------------------
-# 8. Verify DMG
+# 8. Notarize + staple
+# -----------------------------------------------------------------------------
+NOTARY_PROFILE="${NOTARY_PROFILE:-Jot}"
+log "Submitting DMG to Apple for notarization (profile: ${NOTARY_PROFILE})…"
+xcrun notarytool submit "${DMG_PATH}" \
+    --keychain-profile "${NOTARY_PROFILE}" \
+    --wait
+
+log "Stapling notarization ticket to DMG"
+xcrun stapler staple "${DMG_PATH}"
+
+# -----------------------------------------------------------------------------
+# 9. Verify DMG
 # -----------------------------------------------------------------------------
 log "Verifying DMG integrity"
 hdiutil verify "${DMG_PATH}" >/dev/null
@@ -164,17 +174,17 @@ DMG_SIZE="$(du -h "${DMG_PATH}" | awk '{print $1}')"
 DMG_SHA256="$(shasum -a 256 "${DMG_PATH}" | awk '{print $1}')"
 
 # -----------------------------------------------------------------------------
-# 9. Summary footer
+# 10. Summary footer
 # -----------------------------------------------------------------------------
 cat <<EOF
 
 ---------------------------------------------------------------
   Jot DMG build complete
 ---------------------------------------------------------------
-  Version : ${FULL_VERSION}
+  Version : ${MARKETING_VERSION}
   Path    : ${DMG_PATH}
   Size    : ${DMG_SIZE}
   SHA-256 : ${DMG_SHA256}
-  Signing : ad-hoc (no Developer ID, no notarization)
+  Signing : ${SIGN_IDENTITY}
 ---------------------------------------------------------------
 EOF

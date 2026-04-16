@@ -15,6 +15,7 @@ final class PillViewModel: ObservableObject {
         case hidden
         case recording(elapsed: TimeInterval)
         case transcribing
+        case rewriting
         case success(preview: String)
         case error(message: String)
     }
@@ -31,13 +32,17 @@ final class PillViewModel: ObservableObject {
 
     private var recorderCancellable: AnyCancellable?
     private var deliveryCancellable: AnyCancellable?
+    private var rewriteCancellable: AnyCancellable?
+    private var rewriteResultCancellable: AnyCancellable?
 
     private weak var recorder: RecorderController?
     private weak var delivery: DeliveryService?
+    private weak var rewriteController: RewriteController?
 
-    init(recorder: RecorderController, delivery: DeliveryService) {
+    init(recorder: RecorderController, delivery: DeliveryService, rewriteController: RewriteController? = nil) {
         self.recorder = recorder
         self.delivery = delivery
+        self.rewriteController = rewriteController
 
         recorderCancellable = recorder.$state
             .receive(on: DispatchQueue.main)
@@ -51,6 +56,20 @@ final class PillViewModel: ObservableObject {
             .sink { [weak self] event in
                 self?.deliveryEvent(event)
             }
+
+        if let rewriteController {
+            rewriteCancellable = rewriteController.$state
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] state in
+                    self?.rewriteStateChanged(state)
+                }
+            rewriteResultCancellable = rewriteController.$lastRewrite
+                .compactMap { $0 }
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] result in
+                    self?.showRewriteSuccess(result)
+                }
+        }
     }
 
     deinit {
@@ -81,7 +100,7 @@ final class PillViewModel: ObservableObject {
             // success/error, leave that alone. If we're in recording or
             // transcribing, hide (e.g. a cancel).
             switch self.state {
-            case .success, .error, .hidden:
+            case .success, .error, .hidden, .rewriting:
                 break
             case .recording, .transcribing:
                 transition(to: .hidden)
@@ -98,6 +117,42 @@ final class PillViewModel: ObservableObject {
             transition(to: .error(message: message))
             scheduleDismiss(after: Self.errorLinger)
         }
+    }
+
+    // MARK: - Rewrite transitions
+
+    private func rewriteStateChanged(_ rewriteState: RewriteController.RewriteState) {
+        switch rewriteState {
+        case .idle:
+            switch self.state {
+            case .success, .error, .hidden:
+                break
+            case .recording, .transcribing, .rewriting:
+                transition(to: .hidden)
+            }
+        case .capturing:
+            break
+        case .recording(let startedAt):
+            recordingStartedAt = startedAt
+            transition(to: .recording(elapsed: Date().timeIntervalSince(startedAt)))
+            startTick()
+        case .transcribing:
+            stopTick()
+            transition(to: .transcribing)
+        case .rewriting:
+            stopTick()
+            transition(to: .rewriting)
+        case .error(let message):
+            stopTick()
+            transition(to: .error(message: message))
+            scheduleDismiss(after: Self.errorLinger)
+        }
+    }
+
+    func showRewriteSuccess(_ result: String) {
+        stopTick()
+        transition(to: .success(preview: Self.previewText(result)))
+        scheduleDismiss(after: Self.successLinger)
     }
 
     // MARK: - Delivery transitions

@@ -11,6 +11,7 @@ struct ShortcutsPane: View {
         (.cancelRecording, "Cancel recording"),
         (.pushToTalk, "Push to talk (hold)"),
         (.pasteLastTranscription, "Paste last transcription"),
+        (.rewriteSelection, "Rewrite selection"),
     ]
 
     var body: some View {
@@ -69,7 +70,8 @@ struct ShortcutsPane: View {
             .toggleRecording,
             .cancelRecording,
             .pushToTalk,
-            .pasteLastTranscription
+            .pasteLastTranscription,
+            .rewriteSelection
         )
         refreshToken &+= 1
     }
