@@ -73,16 +73,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let router = HotkeyRouter(recorder: recorder, delivery: delivery, rewriteController: rewrite)
         router.activate()
 
-        // Any time the recorder publishes a fresh non-nil transcription
-        // result, ship it into the delivery pipeline. We observe
-        // `lastResult` rather than `state` because a single transition into
-        // `.idle` from `.transcribing` is the event we actually care about,
-        // and `lastResult` changes exactly once per successful pass.
+        // Deliver the final transcript (transformed if Transform is on,
+        // raw otherwise). We observe `$lastResult` as the trigger because it
+        // fires exactly once per successful pass, but read `lastTranscript`
+        // for the actual text — it holds the post-transform result.
+        // ORDERING INVARIANT: `lastTranscript` must be set BEFORE
+        // `lastResult` in RecorderController so this sink sees the right value.
         deliveryBridge = recorder.$lastResult
             .compactMap { $0 }
-            .sink { [weak delivery] result in
-                Task { @MainActor [weak delivery] in
-                    await delivery?.deliver(result.text)
+            .sink { [weak delivery, weak recorder] _ in
+                Task { @MainActor [weak delivery, weak recorder] in
+                    guard let text = recorder?.lastTranscript, !text.isEmpty else { return }
+                    await delivery?.deliver(text)
                 }
             }
 

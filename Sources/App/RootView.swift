@@ -143,6 +143,7 @@ private struct StatusZone: View {
         case .idle: return Color(nsColor: .systemGreen)
         case .recording: return Color(nsColor: .systemRed)
         case .transcribing: return .accentColor
+        case .transforming: return Color(nsColor: .systemPurple)
         case .error: return Color(nsColor: .systemOrange)
         }
     }
@@ -152,6 +153,7 @@ private struct StatusZone: View {
         case .idle: return "Idle"
         case .recording: return "Recording"
         case .transcribing: return "Transcribing"
+        case .transforming: return "Cleaning up"
         case .error: return "Error"
         }
     }

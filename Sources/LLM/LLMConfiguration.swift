@@ -5,9 +5,16 @@ import SwiftUI
 final class LLMConfiguration: ObservableObject {
     static let shared = LLMConfiguration()
 
-    @AppStorage("jot.llm.provider") var provider: LLMProvider = .openai
-    @AppStorage("jot.llm.baseURL") var baseURL: String = ""
+    @AppStorage("jot.llm.provider") var provider: LLMProvider = .openai {
+        didSet { llmVerified = false }
+    }
+    @AppStorage("jot.llm.baseURL") var baseURL: String = "" {
+        didSet { llmVerified = false }
+    }
     @AppStorage("jot.llm.model") var model: String = ""
+    @AppStorage("jot.transformEnabled") var transformEnabled: Bool = false
+
+    @Published var llmVerified: Bool = false
 
     private static let keychainKey = "jot.llm.apiKey"
 
@@ -22,6 +29,7 @@ final class LLMConfiguration: ObservableObject {
             } else {
                 KeychainHelper.save(key: Self.keychainKey, data: Data(newValue.utf8))
             }
+            llmVerified = false
             objectWillChange.send()
         }
     }

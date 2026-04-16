@@ -44,11 +44,12 @@ final class RecordingPersister {
             return
         }
 
+        let transcript = recorder.lastTransformedTranscript ?? result.text
         let recording = Recording(
             createdAt: audio.createdAt,
-            title: Recording.defaultTitle(from: result.text),
+            title: Recording.defaultTitle(from: transcript),
             durationSeconds: audio.duration,
-            transcript: result.text,
+            transcript: transcript,
             rawTranscript: result.rawText,
             audioFileName: audio.fileURL.lastPathComponent,
             modelIdentifier: modelIdentifier

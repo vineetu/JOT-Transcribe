@@ -80,6 +80,20 @@ Keep each folder to its single layer. Cross-layer shared types (e.g. `Recording`
 
 ---
 
+## Releasing a new version
+
+One command: `./scripts/release.sh <version>` (e.g. `./scripts/release.sh 1.1`).
+
+The script bumps Info.plist version, builds + signs + notarizes the DMG, generates the Sparkle appcast, uploads to the website, commits, tags, and pushes to both remotes (public + sony).
+
+**Signing:** Developer ID Application: Vineet Sriram (8VB2ULDN22). Notarization credentials stored as keychain profile "Jot".
+
+**Auto-update:** Sparkle 2.x checks `appcast.xml` at repo root (served via GitHub raw content). EdDSA private key is in the local Keychain — do not export it. Public key is in Info.plist (`SUPublicEDKey`).
+
+**Website:** https://jot.ideaflow.page/ — static site served from `website/index.html`. DMG hosted alongside it on the server. Deployed via scp (credentials in `scripts/release.sh`).
+
+---
+
 ## Where to read next
 
 - `docs/design-requirements.md` — stack-agnostic product requirements (source of truth for **what**)

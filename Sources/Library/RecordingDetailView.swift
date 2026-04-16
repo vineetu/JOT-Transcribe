@@ -17,6 +17,7 @@ struct RecordingDetailView: View {
     @State private var pendingDelete = false
     @State private var isRetranscribing = false
     @State private var retranscribeError: String?
+    @State private var showRawTranscript = false
 
     var body: some View {
         ScrollView {
@@ -109,10 +110,19 @@ struct RecordingDetailView: View {
 
     // MARK: - Transcript
 
+    private var hasTransformedTranscript: Bool {
+        recording.transcript != recording.rawTranscript && !recording.rawTranscript.isEmpty
+    }
+
+    private var displayedTranscript: String {
+        if showRawTranscript { return recording.rawTranscript }
+        return recording.transcript
+    }
+
     private var transcriptBlock: some View {
         GroupBox {
             ScrollView {
-                Text(recording.transcript.isEmpty ? "(empty transcript)" : recording.transcript)
+                Text(displayedTranscript.isEmpty ? "(empty transcript)" : displayedTranscript)
                     .font(.system(size: 13, design: .monospaced))
                     .lineSpacing(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,9 +131,18 @@ struct RecordingDetailView: View {
             }
             .frame(minHeight: 180, maxHeight: 320)
         } label: {
-            Text("Transcript")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Transcript")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                if hasTransformedTranscript {
+                    Spacer()
+                    Toggle("Show original", isOn: $showRawTranscript)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .font(.system(size: 11))
+                }
+            }
         }
     }
 
@@ -183,7 +202,7 @@ struct RecordingDetailView: View {
     private func copyTranscript() {
         let pb = NSPasteboard.general
         pb.clearContents()
-        pb.setString(recording.transcript, forType: .string)
+        pb.setString(displayedTranscript, forType: .string)
     }
 
     private func format(_ t: TimeInterval) -> String {

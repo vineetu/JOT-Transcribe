@@ -11,11 +11,16 @@ struct SoundPane: View {
     var body: some View {
         Form {
             Section {
-                chimeRow("Recording start", isOn: $recordingStart, effect: .recordingStart)
-                chimeRow("Recording stop", isOn: $recordingStop, effect: .recordingStop)
-                chimeRow("Recording canceled", isOn: $recordingCancel, effect: .recordingCancel)
-                chimeRow("Transcription complete", isOn: $transcriptionComplete, effect: .transcriptionComplete)
-                chimeRow("Error", isOn: $errorSound, effect: .error)
+                chimeRow("Recording start", isOn: $recordingStart, effect: .recordingStart,
+                         help: "Play a chime when recording begins.")
+                chimeRow("Recording stop", isOn: $recordingStop, effect: .recordingStop,
+                         help: "Play a chime when recording stops and transcription starts.")
+                chimeRow("Recording canceled", isOn: $recordingCancel, effect: .recordingCancel,
+                         help: "Play a chime when you cancel a recording with Escape.")
+                chimeRow("Transcription complete", isOn: $transcriptionComplete, effect: .transcriptionComplete,
+                         help: "Play a chime when the transcript is ready and delivered.")
+                chimeRow("Error", isOn: $errorSound, effect: .error,
+                         help: "Play a chime when transcription fails.")
             }
 
             Section {
@@ -34,9 +39,10 @@ struct SoundPane: View {
         .formStyle(.grouped)
     }
 
-    private func chimeRow(_ label: String, isOn: Binding<Bool>, effect: SoundEffect) -> some View {
+    private func chimeRow(_ label: String, isOn: Binding<Bool>, effect: SoundEffect, help: String) -> some View {
         HStack {
             Toggle(label, isOn: isOn)
+                .help(help)
             Spacer()
             Button("Test") { SoundPlayer.shared.play(effect) }
                 .controlSize(.small)

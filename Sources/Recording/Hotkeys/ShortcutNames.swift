@@ -22,7 +22,10 @@ extension KeyboardShortcuts.Name {
 
     static let pushToTalk = Self("pushToTalk")
 
-    static let pasteLastTranscription = Self("pasteLastTranscription")
+    static let pasteLastTranscription = Self(
+        "pasteLastTranscription",
+        default: .init(.v, modifiers: [.option, .shift])
+    )
 
     static let rewriteSelection = Self("rewriteSelection")
 }

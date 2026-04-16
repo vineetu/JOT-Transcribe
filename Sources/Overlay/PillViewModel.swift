@@ -16,6 +16,7 @@ final class PillViewModel: ObservableObject {
         case recording(elapsed: TimeInterval)
         case transcribing
         case rewriting
+        case transforming
         case success(preview: String)
         case error(message: String)
     }
@@ -102,7 +103,7 @@ final class PillViewModel: ObservableObject {
             switch self.state {
             case .success, .error, .hidden, .rewriting:
                 break
-            case .recording, .transcribing:
+            case .recording, .transcribing, .transforming:
                 transition(to: .hidden)
             }
         case .recording(let startedAt):
@@ -112,6 +113,9 @@ final class PillViewModel: ObservableObject {
         case .transcribing:
             stopTick()
             transition(to: .transcribing)
+        case .transforming:
+            stopTick()
+            transition(to: .transforming)
         case .error(let message):
             stopTick()
             transition(to: .error(message: message))
@@ -127,7 +131,7 @@ final class PillViewModel: ObservableObject {
             switch self.state {
             case .success, .error, .hidden:
                 break
-            case .recording, .transcribing, .rewriting:
+            case .recording, .transcribing, .rewriting, .transforming:
                 transition(to: .hidden)
             }
         case .capturing:

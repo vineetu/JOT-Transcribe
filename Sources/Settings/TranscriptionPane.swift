@@ -6,6 +6,8 @@ struct TranscriptionPane: View {
     @AppStorage("jot.autoPressEnter") private var autoPressEnter: Bool = false
     @AppStorage("jot.preserveClipboard") private var preserveClipboard: Bool = true
 
+    @ObservedObject private var llmConfig = LLMConfiguration.shared
+
     @State private var isCached: Bool = false
     @State private var isDownloading = false
     @State private var downloadProgress: Double = 0
@@ -55,10 +57,23 @@ struct TranscriptionPane: View {
 
             Section {
                 Toggle("Automatically paste transcription", isOn: $autoPaste)
+                    .help("Paste the transcript at your cursor via synthetic ⌘V. When off, the transcript is copied to your clipboard instead.")
                 Toggle("Press Return after pasting", isOn: $autoPressEnter)
                     .disabled(!autoPaste)
+                    .help("Send a Return keystroke after pasting. Useful for chat apps and terminal prompts.")
                 if !autoPaste {
                     Text("Requires Automatically paste transcription.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section {
+                Toggle("Clean up transcript with AI", isOn: $llmConfig.transformEnabled)
+                    .disabled(!llmConfig.llmVerified)
+                    .help("Sends transcript text to your LLM provider to remove filler words and fix grammar. Configure a provider in Rewrite settings.")
+                if !llmConfig.llmVerified {
+                    Text("Configure and test an LLM provider in Rewrite settings first.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -69,6 +84,7 @@ struct TranscriptionPane: View {
                     get: { !preserveClipboard },
                     set: { preserveClipboard = !$0 }
                 ))
+                .help("Leave the transcript on your clipboard after pasting. When off, Jot restores whatever was on your clipboard before the transcription.")
                 Text("When off, Jot restores your previous clipboard after pasting.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)

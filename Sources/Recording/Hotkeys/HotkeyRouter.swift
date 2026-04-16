@@ -118,7 +118,7 @@ final class HotkeyRouter {
     private func applyCancelEnablement(for state: RecorderController.State) {
         let shouldEnable: Bool
         switch state {
-        case .recording: shouldEnable = true
+        case .recording, .transforming: shouldEnable = true
         case .idle, .transcribing, .error: shouldEnable = false
         }
         guard shouldEnable != cancelEnabled else { return }
