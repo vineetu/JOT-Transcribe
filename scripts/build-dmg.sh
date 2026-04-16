@@ -96,7 +96,7 @@ xcodebuild \
 SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Vineet Sriram (8VB2ULDN22)}"
 log "Signing with: ${SIGN_IDENTITY}"
 codesign \
-    --force --deep \
+    --force \
     --sign "${SIGN_IDENTITY}" \
     --options runtime \
     --entitlements "${ENTITLEMENTS_PATH}" \

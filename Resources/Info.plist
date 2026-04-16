@@ -32,5 +32,11 @@
 	<string>Jot records audio from your microphone to transcribe it into text on your Mac.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/vineetu/JOT-Transcribe/main/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>XALhRbgfQ4laNkbosSzvH2E7CYSsG6+bNjrv3qfxy3k=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
 </dict>
 </plist>
