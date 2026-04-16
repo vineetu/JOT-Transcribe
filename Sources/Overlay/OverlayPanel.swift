@@ -19,9 +19,12 @@ final class OverlayPanel: NSPanel {
         )
 
         self.level = .screenSaver
-        self.backgroundColor = .clear
         self.isOpaque = false
-        self.hasShadow = true
+        // NSWindow-level shadow is off entirely — when the panel sits flush to
+        // the top of the screen, AppKit's drop shadow has nowhere to render
+        // above the window and clips into a squiggly artifact at the screen
+        // edge. The SwiftUI capsule draws its own shadow inside the pill view.
+        self.hasShadow = false
         self.isMovable = false
         self.isMovableByWindowBackground = false
         self.isFloatingPanel = true
@@ -32,9 +35,13 @@ final class OverlayPanel: NSPanel {
 
         let hosting = NSHostingView(rootView: AnyView(rootView))
         hosting.translatesAutoresizingMaskIntoConstraints = false
+        hosting.wantsLayer = true
+        hosting.layer?.backgroundColor = CGColor.clear
+
         let container = NSView(frame: self.contentView?.bounds ?? .zero)
         container.autoresizingMask = [.width, .height]
         container.wantsLayer = true
+        container.layer?.backgroundColor = CGColor.clear
         container.addSubview(hosting)
         NSLayoutConstraint.activate([
             hosting.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -43,6 +50,10 @@ final class OverlayPanel: NSPanel {
             hosting.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
         self.contentView = container
+
+        // Some AppKit paths reset backgroundColor after contentView is
+        // assigned. Set it here, last, so nothing clobbers it.
+        self.backgroundColor = NSColor.clear
     }
 
     override var canBecomeKey: Bool { false }

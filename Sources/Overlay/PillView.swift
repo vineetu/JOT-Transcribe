@@ -52,7 +52,10 @@ struct PillView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Pin to the top of the hosting window so the pill's top edge lines
+        // up with the window/screen top. Extra vertical space in the window
+        // (for shadow rendering) lives below the pill.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(reduceMotion ? nil : pillSpring, value: model.state)
     }
 

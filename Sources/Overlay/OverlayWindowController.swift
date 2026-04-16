@@ -20,10 +20,13 @@ final class OverlayWindowController {
     private var stateCancellable: AnyCancellable?
 
     /// Natural footprint of the pill (visual surface, not including shadow).
-    /// We size the hosting window slightly larger so the drop shadow can
-    /// render without getting clipped.
+    /// The hosting window is sized larger than this, with extra room on the
+    /// sides and bottom so the SwiftUI drop shadow can render without being
+    /// clipped at the window boundary. No extra room is needed on top — the
+    /// pill hugs the top of the window (and the top of the screen).
     static let pillSize = NSSize(width: 360, height: 36)
-    static let windowPadding: CGFloat = 16
+    static let horizontalPadding: CGFloat = 12
+    static let bottomPadding: CGFloat = 24
 
     init(recorder: RecorderController, delivery: DeliveryService) {
         self.recorder = recorder
@@ -96,17 +99,21 @@ final class OverlayWindowController {
             log.info("no screen available for overlay placement")
             return
         }
-        // Size the window slightly larger than the pill so the drop shadow
-        // has room and so the pill can expand/contract within the frame
-        // without clipping.
+        // Size the window larger than the pill so the SwiftUI shadow has room
+        // to render (primarily below the pill). No padding on top — the pill's
+        // top edge should align with the window's top edge so it sits flush at
+        // the top of the screen.
         let windowSize = NSSize(
-            width: Self.pillSize.width + Self.windowPadding * 2,
-            height: Self.pillSize.height + Self.windowPadding * 2
+            width: Self.pillSize.width + Self.horizontalPadding * 2,
+            height: Self.pillSize.height + Self.bottomPadding
         )
         let pillRect = OverlayPlacement.frame(for: Self.pillSize, on: screen)
+        // Place the window so the pill's top edge lines up with the window's
+        // top edge (= top of screen). In AppKit bottom-left coordinates:
+        //   window.maxY == pill.maxY  →  window.origin.y = pillRect.maxY - windowSize.height
         let windowFrame = NSRect(
             x: pillRect.midX - windowSize.width / 2,
-            y: pillRect.midY - windowSize.height / 2,
+            y: pillRect.maxY - windowSize.height,
             width: windowSize.width,
             height: windowSize.height
         )
