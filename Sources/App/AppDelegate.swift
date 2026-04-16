@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         _ = FirstRunState.shared
+        PermissionsService.shared.refreshAll()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
