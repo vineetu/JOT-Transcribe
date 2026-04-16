@@ -21,3 +21,6 @@ build/
 .swiftpm/
 Packages/
 # Note: Package.resolved IS committed (not ignored)
+
+# Distribution output
+dist/
