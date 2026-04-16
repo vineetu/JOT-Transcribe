@@ -1,9 +1,23 @@
+# macOS
 .DS_Store
-build/
-.build/
-DerivedData/
-*.xcuserdata/
+
+# Xcode
 xcuserdata/
 *.xcworkspace/xcuserdata/
-Package.resolved
+*.xcuserdatad/
+*.xcuserstate
+DerivedData/
+build/
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
 .swiftpm/
+Packages/
+# Note: Package.resolved IS committed (not ignored)
