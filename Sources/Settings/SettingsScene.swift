@@ -3,15 +3,17 @@ import SwiftUI
 struct JotSettings: Scene {
     var body: some Scene {
         Settings {
-            VStack(spacing: 16) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.secondary)
-                Text("Settings coming soon")
-                    .font(.headline)
+            TabView {
+                GeneralPane()
+                    .tabItem { Label("General", systemImage: "gearshape") }
+                TranscriptionPane()
+                    .tabItem { Label("Transcription", systemImage: "waveform") }
+                SoundPane()
+                    .tabItem { Label("Sound", systemImage: "speaker.wave.2") }
+                ShortcutsPane()
+                    .tabItem { Label("Shortcuts", systemImage: "command") }
             }
-            .frame(width: 460, height: 260)
-            .padding()
+            .frame(width: 560, height: 420)
         }
     }
 }
