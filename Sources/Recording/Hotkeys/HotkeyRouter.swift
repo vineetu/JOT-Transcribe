@@ -56,7 +56,12 @@ final class HotkeyRouter {
             guard let self else { return }
             self.log.info("cancelRecording fired")
             Task { @MainActor in
-                if let rewrite = self.rewriteController, rewrite.state != .idle {
+                // Route to whichever pipeline is in a cancellable state.
+                // Rewrite takes precedence because its active window
+                // overlaps recorder.idle, but `.error` must not steal the
+                // key — it auto-recovers in 2.5s and would otherwise
+                // swallow Esc while the main recorder is active.
+                if let rewrite = self.rewriteController, Self.isRewriteCancellable(rewrite.state) {
                     await rewrite.cancel()
                 } else {
                     await self.recorder.cancel()
@@ -128,6 +133,13 @@ final class HotkeyRouter {
         }
     }
 
+    private static func isRewriteCancellable(_ state: RewriteController.RewriteState) -> Bool {
+        switch state {
+        case .idle, .error: false
+        case .capturing, .recording, .transcribing, .rewriting: true
+        }
+    }
+
     private func updateCancelEnablement() {
         let recorderActive: Bool
         switch recorder.state {
@@ -137,10 +149,7 @@ final class HotkeyRouter {
 
         let rewriteActive: Bool
         if let rewriteState = rewriteController?.state {
-            switch rewriteState {
-            case .idle, .error: rewriteActive = false
-            case .capturing, .recording, .transcribing, .rewriting: rewriteActive = true
-            }
+            rewriteActive = Self.isRewriteCancellable(rewriteState)
         } else {
             rewriteActive = false
         }
