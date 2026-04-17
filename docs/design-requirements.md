@@ -7,7 +7,6 @@ Stack-agnostic requirements for the app. This document describes **what** Jot mu
 ## Product Summary
 
 A macOS utility that turns a hotkey press into typed text. The user presses a shortcut, speaks, and the resulting transcription is pasted at their cursor. Everything runs on-device.
-
 ---
 
 ## Functional Requirements
@@ -32,6 +31,13 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 - **Clipboard policy.** Users choose whether the transcript stays on the clipboard or the prior clipboard contents are restored after paste.
 - **Copy last transcription.** A quick command to copy the most recent transcription — available from the main UI, the menu bar, and a dedicated shortcut.
 
+### Optional LLM post-processing
+- **Transcript cleanup (Transform).** Off by default. When enabled and a verified LLM endpoint is configured, Jot runs a lightweight cleanup pass (remove filler words and false starts, fix grammar/punctuation) between transcription and delivery. Must preserve the speaker's meaning, tone, and vocabulary; must fall back to the raw transcript on any failure. Both raw and cleaned transcripts are persisted so the user can review what changed.
+- **Voice-driven rewrite (AI Rewrite).** Select text anywhere, trigger a dedicated shortcut, speak an instruction, and have an LLM rewrite the selection in place. Opt-in; unbound by default.
+- **Provider neutrality.** OpenAI-compatible (GPT / Ollama / any self-hosted endpoint exposing `/chat/completions`), Anthropic, and Gemini (including Vertex-style endpoints) are all supported. Ollama is a first-class option so privacy-sensitive users can keep the LLM path local too.
+- **Verified-before-enabled.** The user must press a "Test Connection" button and succeed before the cleanup toggle unlocks. Changing the provider, base URL, or key resets verification.
+- **Editable prompts.** Both the cleanup and rewrite prompts ship with a sensible default but are user-editable for power users who want to tune behavior, with a "reset to default" escape hatch.
+
 ### Recordings library
 - **Browse history.** A chronologically grouped list of every recording with its transcript.
 - **Search.** Free-text search across title, subtitle, and transcript.
@@ -53,10 +59,14 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 
 ### Settings
 - **Input device** (microphone selection).
-- **Transcription defaults** — model, auto-paste, auto-Enter, clipboard policy.
+- **Transcription defaults** — auto-paste, auto-Enter, clipboard policy, optional transcript-cleanup toggle (gated on a verified LLM provider).
+- **AI** — provider / base URL / model / API key / shortcut / test-connection / editable prompts.
 - **Sounds** — per-event audio feedback (start, stop, cancel, success, error).
-- **Shortcuts** — visibility of the currently-bound global shortcuts. (Editable is the direction; today read-only.)
-- **General** — launch at login, retention policy, reset-permissions escape hatch, re-open setup wizard.
+- **Shortcuts** — editable bindings for every global command, surfaced with `KeyboardShortcuts.Recorder`. Must communicate the platform constraint that global hotkeys require a modifier.
+- **General** — launch at login, retention policy (default 7 days), reset-permissions escape hatch, re-open setup wizard.
+
+### In-app help
+- **Prose walkthrough of every user-facing feature** is available inside the app (not only via external docs). Must cover Basics, Advanced (provider setup, editable prompts, auto-update), and Troubleshooting (permissions, BT-redirect, hotkey constraints). Each Settings field should have a lightweight inline explanation and an affordance to jump to the matching Help section.
 
 ### Setup wizard
 - **Guided first-run.** Walks the user through permissions, model download, microphone selection, and a working test of the full pipeline.
@@ -65,8 +75,9 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 
 ### Permissions
 - **Microphone access** must be explicitly granted before recording.
-- **Accessibility access** must be explicitly granted before global shortcuts and synthetic paste work.
-- **Graceful handling.** The app must continuously observe permission state and guide the user to resolution when access is revoked or deferred (e.g., "Accessibility can only be detected after restart").
+- **Input Monitoring** must be granted so global shortcuts fire from any app.
+- **Accessibility (post events)** must be granted before synthetic paste and AI Rewrite's synthetic copy work. Denied Accessibility must degrade to clipboard-only delivery with a clear toast — never a dead end.
+- **Graceful handling.** The app must continuously observe permission state and guide the user to resolution when access is revoked or deferred. Some grants (Input Monitoring, Accessibility) are cached per-process by macOS, so a restart is offered when the user grants them for the first time.
 - **Reset path.** The user can wipe the app's privacy entries and start fresh.
 
 ### Window behaviour
@@ -109,10 +120,9 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 
 These are not requirements and should not be reintroduced without a new intent brief:
 
-- Cloud transcription providers of any kind.
+- Cloud transcription providers of any kind. (Transcription itself stays on-device; only the optional cleanup and rewrite LLM paths can reach out, and only when the user has explicitly configured and verified a provider.)
 - Voice-activity-detection / continuous listening modes.
 - Transcription from uploaded audio files.
-- LLM post-processing or transformations.
 - Telemetry, usage metrics, or crash reporting.
 - Non-macOS platforms.
 - Multi-user accounts or sync.
@@ -137,8 +147,8 @@ A snapshot of the visual language shipping today. This is meant as a **reference
 - Calm over attention-seeking. The one place motion is given a real budget is the speak → text success transition.
 
 ### Layout
-- Sidebar + content shell on the main window. Sidebar carries a small wordmark, three nav items (Home, Recordings, Settings), and a status zone at the bottom (current model + last transcription state).
-- Settings lives in a separate window (macOS Settings.app convention), fixed size, with its own sub-navigation.
+- Sidebar + content shell on a single main window. The sidebar carries a small wordmark, a source list of sections (Home, Library, Settings with grouped children, Help), and a status zone at the bottom (current model + last transcription state).
+- Settings is a section of the main window — not a separate scene. `⌘,` opens the main window directly on Settings; closing either entry point hides to the tray.
 - Setup wizard lives in its own small, centered window with a horizontal slide between steps.
 - Transparent / inset title bar where applicable so sidebar vibrancy extends into the chrome.
 
@@ -198,7 +208,7 @@ A snapshot of the visual language shipping today. This is meant as a **reference
 - macOS HIG alignment — native controls, native menus, native vibrancy.
 - Dark mode is the design canvas; light mode must mirror.
 - No hedging spinners — state is communicated with named colors and small animated glyphs.
-- Each surface has one purpose: main window, settings window, setup wizard, status indicator, tray.
+- Each surface has one purpose: main window (with sidebar navigation into Home / Library / Settings / Help), setup wizard, status indicator, tray.
 
 ### Rewrite-time notes
 - Sidebar + content, grouped-box settings, and light/dark semantic tokens all map cleanly to native Mac UI frameworks (SwiftUI `Form`/`Section`, `NSSplitViewController`, system colors, `NSVisualEffectView` sidebar material). Keep them.

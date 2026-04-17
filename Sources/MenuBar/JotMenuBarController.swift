@@ -91,7 +91,7 @@ final class JotMenuBarController: NSObject {
         copyLastItem = copyLast
 
         let showWindow = NSMenuItem(
-            title: "Show Window",
+            title: "Open Jot…",
             action: #selector(showMainWindow),
             keyEquivalent: ""
         )
@@ -199,12 +199,59 @@ final class JotMenuBarController: NSObject {
         pasteboard.setString(text, forType: .string)
     }
 
-    @objc private func showMainWindow() {
+    /// Opens the unified "Jot" window with the given sidebar selection
+    /// forced. Used by both `Open Jot…` (which forces `.home`) and
+    /// `Settings…` (which forces `.settings(.general)`).
+    ///
+    /// Two paths, chosen by whether the window already exists:
+    ///
+    ///  • Cold-open (first time this session): write `selection` to
+    ///    `JotAppWindow.pendingSelection` BEFORE ordering-front so the
+    ///    SwiftUI scene picks it up as its initial `@State` value on
+    ///    first render. This avoids a race where a notification posted
+    ///    before the scene materializes would be dropped.
+    ///
+    ///  • Already open: post the `.jotWindowSetSidebarSelection`
+    ///    notification so the running view's `.onReceive` observer
+    ///    updates the existing selection.
+    private func openUnifiedWindow(selection: AppSidebarSelection) {
+        // Seed the cold-open buffer first. Harmless if the window is
+        // already realized — `init` only runs for a new scene instance
+        // and the buffer is nilled out after it's consumed.
+        JotAppWindow.pendingSelection = selection
+
         NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.canBecomeMain && $0.isVisible })
-            ?? NSApp.windows.first(where: { $0.canBecomeMain }) {
-            window.makeKeyAndOrderFront(nil)
+
+        // Find the unified window by id. SwiftUI stamps the scene id into
+        // the `NSWindow.identifier`; a substring match is resilient to
+        // AppKit's id-wrapping conventions across macOS versions.
+        let target = NSApp.windows.first { window in
+            window.identifier?.rawValue.contains("jot-main") == true
         }
+        if let target {
+            // Window already exists — clear the buffer (the scene's
+            // `init` won't run again) and drive the selection change
+            // through the notification path the view is observing.
+            JotAppWindow.pendingSelection = nil
+            NotificationCenter.default.post(
+                name: .jotWindowSetSidebarSelection,
+                object: nil,
+                userInfo: ["selection": selection]
+            )
+            target.makeKeyAndOrderFront(nil)
+        } else {
+            // Fall back to the first main-capable window if the id lookup
+            // misses (e.g. first-ever open in a session where SwiftUI has
+            // not yet materialized the scene). AppKit will still route
+            // `makeKeyAndOrderFront(nil)` via the responder chain to the
+            // Window scene SwiftUI will instantiate — and the scene's
+            // `init` will consume `pendingSelection` on first render.
+            NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    @objc private func showMainWindow() {
+        openUnifiedWindow(selection: .home)
     }
 
     @objc private func checkForUpdates() {
@@ -213,11 +260,7 @@ final class JotMenuBarController: NSObject {
     }
 
     @objc private func openSettings() {
-        // macOS 14 (Sonoma) renamed the AppKit responder-chain selector from
-        // `showPreferencesWindow:` to `showSettingsWindow:` to match the
-        // SwiftUI `Settings` scene. We are macOS 14+ only (see CLAUDE.md), so
-        // the new selector is the only one we need to support.
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        openUnifiedWindow(selection: .settings(.general))
     }
 
     @objc private func quitApp() {

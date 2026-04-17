@@ -10,7 +10,8 @@ actor LLMClient {
                 provider: c.provider,
                 apiKey: c.apiKey,
                 baseURL: c.effectiveBaseURL,
-                model: c.effectiveModel
+                model: c.effectiveModel,
+                systemPrompt: c.rewritePrompt
             )
         }
 
@@ -18,11 +19,7 @@ actor LLMClient {
             guard !config.apiKey.isEmpty else { throw LLMError.noAPIKey }
         }
 
-        let systemPrompt = """
-            You are a text rewriting assistant. You receive selected text and a voice instruction. \
-            Rewrite the text according to the instruction. Output ONLY the rewritten text — no explanations, \
-            no quotes, no markdown formatting, no preamble.
-            """
+        let systemPrompt = config.systemPrompt
 
         let userPrompt = """
             Selected text:
@@ -82,7 +79,10 @@ actor LLMClient {
                 baseURL: baseURL, apiKey: apiKey, model: model,
                 systemPrompt: systemPrompt, userPrompt: userPrompt
             )
-        case .gemini:
+        case .gemini, .vertexGemini:
+            // Vertex Gemini accepts the same contents/parts body shape and
+            // the same `?key=apiKey` auth pattern as Google AI Studio. Route
+            // to the same builder.
             return try buildGeminiRequest(
                 baseURL: baseURL, apiKey: apiKey, model: model,
                 systemPrompt: systemPrompt, userPrompt: userPrompt
@@ -188,7 +188,7 @@ actor LLMClient {
             text = (root["content"] as? [[String: Any]])?
                 .first?["text"] as? String
 
-        case .gemini:
+        case .gemini, .vertexGemini:
             text = (root["candidates"] as? [[String: Any]])?
                 .first?["content"]
                 .flatMap { $0 as? [String: Any] }?["parts"]
@@ -210,7 +210,8 @@ actor LLMClient {
                 provider: c.provider,
                 apiKey: c.apiKey,
                 baseURL: c.effectiveBaseURL,
-                model: c.effectiveModel
+                model: c.effectiveModel,
+                systemPrompt: c.transformPrompt
             )
         }
 
@@ -218,22 +219,7 @@ actor LLMClient {
             throw LLMError.noAPIKey
         }
 
-        let systemPrompt = """
-            You are a dictation post-processor. You receive raw speech-to-text output and return clean text.
-
-            Rules:
-            - Remove filler words (um, uh, like, you know, so, basically, I mean, right, actually, literally, well).
-            - Remove false starts and repeated words/phrases.
-            - Fix grammar, punctuation, and capitalization.
-            - Split run-on sentences into natural sentence boundaries.
-            - Convert spoken numbers to digits when appropriate (e.g., "three hundred" -> "300", but keep "a couple" as-is).
-            - Preserve the speaker's original meaning, tone, vocabulary, and level of formality.
-            - Do NOT add words the speaker did not say.
-            - Do NOT remove hedges that convey uncertainty (maybe, probably, I think, sort of) — these carry meaning.
-            - Do NOT replace the speaker's word choices with synonyms or "better" words.
-            - Do NOT merge separate thoughts into one sentence if it changes emphasis or intent.
-            - Return ONLY the cleaned text. No preamble, no "Here is the cleaned text:", no commentary.
-            """
+        let systemPrompt = config.systemPrompt
 
         var request = try buildRequest(
             provider: config.provider,

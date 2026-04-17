@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Build a Release-configured, ad-hoc signed DMG for Jot.
+# Build a Release-configured, Developer ID–signed DMG for Jot.
 #
 # Usage:
-#   ./scripts/build-dmg.sh                     # uses MARKETING_VERSION from Xcode
-#   VERSION=0.2.0 ./scripts/build-dmg.sh       # override the marketing version
+#   ./scripts/build-dmg.sh                            # full: sign + notarize + staple
+#   VERSION=0.2.0 ./scripts/build-dmg.sh              # override the marketing version
+#   SKIP_NOTARIZE=1 ./scripts/build-dmg.sh            # skip step 8 (for visual iteration)
 #
 # Output:
-#   dist/Jot-<version>-<shortsha>.dmg  (drag-to-Applications layout)
+#   dist/Jot.dmg  (drag-to-Applications layout, Retina-aware background)
 #
-# v1 caveat: the DMG is ad-hoc signed and NOT notarized. Users will see a
-# Gatekeeper warning on first launch. Right-click -> Open to bypass once, or
-# run `xattr -dr com.apple.quarantine /Applications/Jot.app`. Developer ID +
-# notarization is a later phase — see docs/plans/apple-signing.md.
+# SKIP_NOTARIZE=1 is strictly for iterating on the DMG's look. Do NOT ship a
+# DMG built that way — it is signed but not stapled, so first-run Gatekeeper
+# will flag it on machines without network access.
 
 set -euo pipefail
 
@@ -29,6 +29,19 @@ ENTITLEMENTS_PATH="${REPO_ROOT}/Resources/Jot.entitlements"
 APP_PATH="${EXPORT_DIR}/Jot.app"
 SCHEME="Jot"
 CONFIGURATION="Release"
+
+# DMG look & feel assets (see Resources/).
+DMG_BG_1X="${REPO_ROOT}/Resources/dmg-background.png"
+DMG_BG_2X="${REPO_ROOT}/Resources/dmg-background@2x.png"
+APP_ICON_1024="${REPO_ROOT}/Resources/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png"
+
+# DMG Finder window geometry (points).
+DMG_WINDOW_W=640
+DMG_WINDOW_H=400
+DMG_ICON_SIZE=128
+DMG_ICON_Y=210         # vertical center of icons (matches arrow in bg)
+DMG_APP_X=160          # Jot.app icon center x
+DMG_APPLINK_X=480      # Applications symlink icon center x
 
 cd "${REPO_ROOT}"
 
@@ -120,7 +133,7 @@ if [[ ${SPCTL_EXIT} -ne 0 ]]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 7. Build the DMG (drag-to-Applications layout)
+# 7. Build the DMG (drag-to-Applications layout with branded background)
 # -----------------------------------------------------------------------------
 STAGING_DIR="${BUILD_DIR}/dmg-staging"
 rm -rf "${STAGING_DIR}"
@@ -129,40 +142,195 @@ log "Staging DMG contents in ${STAGING_DIR}"
 cp -R "${APP_PATH}" "${STAGING_DIR}/Jot.app"
 ln -s /Applications "${STAGING_DIR}/Applications"
 
-if command -v create-dmg >/dev/null 2>&1; then
-    log "Using create-dmg"
-    create-dmg \
-        --volname "Jot ${MARKETING_VERSION}" \
-        --window-size 540 320 \
-        --icon-size 128 \
-        --icon "Jot.app" 140 150 \
-        --app-drop-link 400 150 \
-        --no-internet-enable \
-        "${DMG_PATH}" \
-        "${STAGING_DIR}"
+# Copy the background image into a hidden dir inside the staging area so Finder
+# can reference it after mount. Both 1x and 2x live side-by-side; the 2x copy
+# (named `background.tiff`) is what Finder prefers for Retina rendering.
+BG_STAGE_DIR="${STAGING_DIR}/.background"
+mkdir -p "${BG_STAGE_DIR}"
+if [[ -f "${DMG_BG_1X}" && -f "${DMG_BG_2X}" ]]; then
+    # Combine 1x + 2x into a multi-resolution TIFF — Finder picks the right one.
+    if command -v tiffutil >/dev/null 2>&1; then
+        tiffutil -cathidpicheck "${DMG_BG_1X}" "${DMG_BG_2X}" \
+            -out "${BG_STAGE_DIR}/background.tiff" >/dev/null 2>&1 || \
+            cp "${DMG_BG_2X}" "${BG_STAGE_DIR}/background.tiff"
+    else
+        cp "${DMG_BG_2X}" "${BG_STAGE_DIR}/background.tiff"
+    fi
+    # Keep a PNG copy too — some scripts / older Finders are happier with PNG.
+    cp "${DMG_BG_2X}" "${BG_STAGE_DIR}/background.png"
+    HAVE_BACKGROUND=1
 else
-    log "create-dmg not installed — falling back to hdiutil"
+    warn "DMG background images missing under Resources/ — building plain DMG."
+    HAVE_BACKGROUND=0
+fi
+
+# Optional: volume icon derived from the app icon (512×512 .icns).
+VOLICON_PATH=""
+if [[ -f "${APP_ICON_1024}" ]] && command -v iconutil >/dev/null 2>&1; then
+    VOLICONSET_DIR="${BUILD_DIR}/VolumeIcon.iconset"
+    rm -rf "${VOLICONSET_DIR}"
+    mkdir -p "${VOLICONSET_DIR}"
+    # Minimal set: macOS actually just needs icon_512x512 + @2x for a clean look,
+    # but we include the common sizes so the volume icon scales everywhere.
+    sips -s format png -z 16   16   "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_16x16.png"      >/dev/null
+    sips -s format png -z 32   32   "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_16x16@2x.png"   >/dev/null
+    sips -s format png -z 32   32   "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_32x32.png"      >/dev/null
+    sips -s format png -z 64   64   "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_32x32@2x.png"   >/dev/null
+    sips -s format png -z 128  128  "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_128x128.png"    >/dev/null
+    sips -s format png -z 256  256  "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_128x128@2x.png" >/dev/null
+    sips -s format png -z 256  256  "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_256x256.png"    >/dev/null
+    sips -s format png -z 512  512  "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_256x256@2x.png" >/dev/null
+    sips -s format png -z 512  512  "${APP_ICON_1024}" --out "${VOLICONSET_DIR}/icon_512x512.png"    >/dev/null
+    cp "${APP_ICON_1024}"                                    "${VOLICONSET_DIR}/icon_512x512@2x.png"
+    if iconutil -c icns "${VOLICONSET_DIR}" -o "${BUILD_DIR}/VolumeIcon.icns" 2>/dev/null; then
+        VOLICON_PATH="${BUILD_DIR}/VolumeIcon.icns"
+    else
+        warn "iconutil failed; volume icon will fall back to the default."
+    fi
+fi
+
+if command -v dmgbuild >/dev/null 2>&1; then
+    log "Using dmgbuild (pure Python, no AppleScript / no TCC prompts)"
+    DMG_SETTINGS="${SCRIPT_DIR}/dmg-settings.py"
+    [[ -f "${DMG_SETTINGS}" ]] || fail "dmgbuild settings missing at ${DMG_SETTINGS}"
+    DMGBUILD_ARGS=(
+        -s "${DMG_SETTINGS}"
+        -D "app=${APP_PATH}"
+    )
+    [[ ${HAVE_BACKGROUND} -eq 1 ]] && DMGBUILD_ARGS+=(-D "background=${DMG_BG_2X}")
+    [[ -n "${VOLICON_PATH}" ]]     && DMGBUILD_ARGS+=(-D "badge_icon=${VOLICON_PATH}")
+    rm -f "${DMG_PATH}"
+    dmgbuild "${DMGBUILD_ARGS[@]}" "Jot" "${DMG_PATH}"
+elif command -v create-dmg >/dev/null 2>&1; then
+    log "Using create-dmg (falls back to AppleScript for layout)"
+    CREATE_DMG_ARGS=(
+        --volname "Jot"
+        --window-size "${DMG_WINDOW_W}" "${DMG_WINDOW_H}"
+        --icon-size "${DMG_ICON_SIZE}"
+        --icon "Jot.app" "${DMG_APP_X}" "${DMG_ICON_Y}"
+        --app-drop-link "${DMG_APPLINK_X}" "${DMG_ICON_Y}"
+        --hide-extension "Jot.app"
+        --no-internet-enable
+    )
+    [[ ${HAVE_BACKGROUND} -eq 1 ]] && CREATE_DMG_ARGS+=(--background "${DMG_BG_2X}")
+    [[ -n "${VOLICON_PATH}" ]]     && CREATE_DMG_ARGS+=(--volicon "${VOLICON_PATH}")
+    create-dmg "${CREATE_DMG_ARGS[@]}" "${DMG_PATH}" "${STAGING_DIR}"
+else
+    log "Neither dmgbuild nor create-dmg installed — falling back to hdiutil + AppleScript"
+
+    # Build a writable DMG first so we can customize the Finder view, then
+    # convert to a compressed read-only UDZO image for distribution.
+    TEMP_DMG="${BUILD_DIR}/Jot.temp.dmg"
+    FINAL_VOLNAME="Jot"
+
+    # Size the sparse image with headroom for the Finder metadata + .DS_Store.
+    APP_BYTES="$(du -sk "${STAGING_DIR}" | awk '{print $1}')"
+    DMG_SIZE_KB=$(( APP_BYTES + 20480 ))  # ~20 MB of slack
+
+    rm -f "${TEMP_DMG}"
     hdiutil create \
-        -volname "Jot ${MARKETING_VERSION}" \
         -srcfolder "${STAGING_DIR}" \
-        -ov \
+        -volname "${FINAL_VOLNAME}" \
+        -fs HFS+ \
+        -format UDRW \
+        -size "${DMG_SIZE_KB}k" \
+        "${TEMP_DMG}" >/dev/null
+
+    # Mount it (skip Spotlight / Trash clutter).
+    MOUNT_ROOT="${BUILD_DIR}/dmg-mount"
+    rm -rf "${MOUNT_ROOT}"
+    mkdir -p "${MOUNT_ROOT}"
+    MOUNT_DIR="${MOUNT_ROOT}/${FINAL_VOLNAME}"
+    hdiutil attach "${TEMP_DMG}" \
+        -mountpoint "${MOUNT_DIR}" \
+        -nobrowse -noautoopen >/dev/null
+
+    # Install the volume icon, if we built one.
+    if [[ -n "${VOLICON_PATH}" ]]; then
+        cp "${VOLICON_PATH}" "${MOUNT_DIR}/.VolumeIcon.icns"
+        # The `has custom icon` attribute is what tells Finder to use it.
+        SetFile -a C "${MOUNT_DIR}" 2>/dev/null || true
+    fi
+
+    # Drive Finder via AppleScript to set window size, icon positions,
+    # background image, and hide the sidebar + toolbar. We retry a couple
+    # times because Finder occasionally needs a beat to notice the new volume.
+    if [[ ${HAVE_BACKGROUND} -eq 1 ]]; then
+        BG_REF='set background picture of theViewOptions to file ".background:background.tiff"'
+    else
+        BG_REF=''
+    fi
+
+    # First time this runs from a new terminal, macOS will prompt for
+    # Automation → Finder permission. If that prompt is denied (or was never
+    # answered), osascript exits with -1743 and the DMG ships with the
+    # default Finder view instead of the custom layout. The DMG is still
+    # valid; just visually plain. Re-grant permission in
+    # System Settings → Privacy & Security → Automation → <your terminal>.
+    APPLESCRIPT_OK=1
+    /usr/bin/osascript <<APPLESCRIPT 2>/tmp/jot-dmg-osascript.err || APPLESCRIPT_OK=0
+tell application "Finder"
+    tell disk "${FINAL_VOLNAME}"
+        open
+        set current view of container window to icon view
+        set toolbar visible of container window to false
+        set statusbar visible of container window to false
+        set sidebar width of container window to 0
+        set the bounds of container window to {200, 150, ${DMG_WINDOW_W} + 200, ${DMG_WINDOW_H} + 150}
+        set theViewOptions to the icon view options of container window
+        set arrangement of theViewOptions to not arranged
+        set icon size of theViewOptions to ${DMG_ICON_SIZE}
+        set text size of theViewOptions to 13
+        ${BG_REF}
+        set position of item "Jot.app" of container window to {${DMG_APP_X}, ${DMG_ICON_Y}}
+        set position of item "Applications" of container window to {${DMG_APPLINK_X}, ${DMG_ICON_Y}}
+        update without registering applications
+        close
+    end tell
+end tell
+APPLESCRIPT
+
+    if [[ ${APPLESCRIPT_OK} -ne 1 ]]; then
+        warn "AppleScript layout failed. DMG will mount with Finder's default view."
+        warn "Cause: $(cat /tmp/jot-dmg-osascript.err 2>/dev/null | head -1)"
+        warn "Fix:   grant your terminal Automation → Finder access in"
+        warn "       System Settings → Privacy & Security → Automation, then re-run."
+    fi
+
+    # Let Finder flush the .DS_Store before we detach.
+    sync
+    sleep 2
+
+    hdiutil detach "${MOUNT_DIR}" -quiet || hdiutil detach "${MOUNT_DIR}" -force -quiet
+
+    # Convert to the final compressed, read-only UDZO image.
+    rm -f "${DMG_PATH}"
+    hdiutil convert "${TEMP_DMG}" \
         -format UDZO \
-        "${DMG_PATH}"
+        -imagekey zlib-level=9 \
+        -o "${DMG_PATH}" >/dev/null
+    rm -f "${TEMP_DMG}"
+    rm -rf "${MOUNT_ROOT}"
 fi
 
 [[ -f "${DMG_PATH}" ]] || fail "DMG was not produced at ${DMG_PATH}"
 
 # -----------------------------------------------------------------------------
-# 8. Notarize + staple
+# 8. Notarize + staple  (skip with SKIP_NOTARIZE=1 for fast visual iteration)
 # -----------------------------------------------------------------------------
-NOTARY_PROFILE="${NOTARY_PROFILE:-Jot}"
-log "Submitting DMG to Apple for notarization (profile: ${NOTARY_PROFILE})…"
-xcrun notarytool submit "${DMG_PATH}" \
-    --keychain-profile "${NOTARY_PROFILE}" \
-    --wait
+if [[ "${SKIP_NOTARIZE:-0}" == "1" ]]; then
+    warn "SKIP_NOTARIZE=1 set — skipping notarization + stapling."
+    warn "DO NOT ship this DMG. It is for local visual iteration only."
+else
+    NOTARY_PROFILE="${NOTARY_PROFILE:-Jot}"
+    log "Submitting DMG to Apple for notarization (profile: ${NOTARY_PROFILE})…"
+    xcrun notarytool submit "${DMG_PATH}" \
+        --keychain-profile "${NOTARY_PROFILE}" \
+        --wait
 
-log "Stapling notarization ticket to DMG"
-xcrun stapler staple "${DMG_PATH}"
+    log "Stapling notarization ticket to DMG"
+    xcrun stapler staple "${DMG_PATH}"
+fi
 
 # -----------------------------------------------------------------------------
 # 9. Verify DMG

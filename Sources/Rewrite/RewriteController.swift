@@ -170,7 +170,7 @@ final class RewriteController: ObservableObject {
             let result = try await transcriber.transcribe(recording.samples)
             instruction = result.text
         } catch TranscriberError.audioTooShort {
-            state = .error("Recording was too short.")
+            state = .error(shortRecordingMessage(for: recording))
             return
         } catch TranscriberError.busy {
             state = .error("Another transcription is already running.")

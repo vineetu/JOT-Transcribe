@@ -29,11 +29,19 @@ struct GeneralPane: View {
             }
 
             Section {
-                Toggle("Launch Jot at login", isOn: Binding(
-                    get: { launchAtLogin },
-                    set: { setLaunchAtLogin($0) }
-                ))
-                .help("Start Jot automatically when you log in to your Mac.")
+                HStack {
+                    Toggle("Launch Jot at login", isOn: Binding(
+                        get: { launchAtLogin },
+                        set: { setLaunchAtLogin($0) }
+                    ))
+                    .help("Start Jot automatically when you log in to your Mac.")
+                    Spacer()
+                    InfoPopoverButton(
+                        title: "Launch Jot at login",
+                        body: "Start Jot automatically when you log in to your Mac. When on: Jot registers as a login item and reopens in the menu bar each time you sign in.",
+                        helpAnchor: "help.general.launch-at-login"
+                    )
+                }
                 if let loginToggleError {
                     Text(loginToggleError)
                         .font(.system(size: 11))
@@ -58,6 +66,11 @@ struct GeneralPane: View {
                     Button("Run Setup Wizard…") {
                         WizardPresenter.present(reason: .manualFromSettings)
                     }
+                    InfoPopoverButton(
+                        title: "Run Setup Wizard",
+                        body: "Relaunches the first-run onboarding flow. Useful if you want to revisit permissions, model download, or hotkey setup. When on: you can walk through each step again without reinstalling Jot.",
+                        helpAnchor: "help.general.setup-wizard"
+                    )
                     Spacer()
                     Button(role: .destructive) {
                         showResetPermissionsAlert = true
