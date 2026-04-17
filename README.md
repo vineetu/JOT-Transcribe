@@ -18,6 +18,8 @@ Native macOS dictation utility. Press a hotkey, speak, and text appears at your 
 
 **Menu bar** — Start/stop recording, copy last transcript, and open the main window from the menu bar icon. Jot ships as a single window with a sidebar for Home, Library, Settings, and an in-app Help tab — no separate Settings window.
 
+**In-app discoverability** — Every Settings field carries an info popover with a "Learn more →" link that deep-jumps into the matching Help section, so you never have to leave the app to figure out what a toggle does.
+
 **Sound cues** — Subtle chimes for recording start, stop, cancel, transcription complete, and errors. Configurable in Settings.
 
 **Auto-update** — Jot checks for new releases daily via Sparkle and prompts to install signed updates.
