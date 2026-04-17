@@ -1,0 +1,28 @@
+name: Audio capture tests
+
+on:
+  pull_request:
+    paths:
+      - 'Sources/Recording/**'
+      - 'Tests/AudioCaptureTests/**'
+      - '.github/workflows/audio-capture-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Sources/Recording/**'
+      - 'Tests/AudioCaptureTests/**'
+      - '.github/workflows/audio-capture-tests.yml'
+
+jobs:
+  test:
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Run audio-capture regression suite
+        working-directory: Tests/AudioCaptureTests
+        run: swift test -v
