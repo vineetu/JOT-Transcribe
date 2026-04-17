@@ -70,61 +70,56 @@ enum ClipboardSandwich {
 
     // MARK: - Synthetic paste
 
-    /// Post a synthetic ⌘V at the HID event tap. Caller is responsible for
-    /// having written the transcript to the pasteboard first.
+    /// Post a synthetic ⌘V to the user's session event tap. Caller is
+    /// responsible for having written the transcript to the pasteboard
+    /// first.
     ///
-    /// Uses `kVK_ANSI_V` (0x09) with `.maskCommand`. `CGEventSource(nil)`
-    /// is fine — we do not need to impersonate a specific HID device.
+    /// Why `.cgSessionEventTap` + local-event suppression: when this path
+    /// is triggered by a global hotkey (e.g. Paste Last Transcription
+    /// bound to ⌥V), the user's physical modifier keys are usually still
+    /// held down at the moment we fire the synthetic ⌘V. Posting at
+    /// `.cghidEventTap` without suppression lets those physical modifiers
+    /// merge with our event — the target app sees ⌘⌥V (not a paste) and
+    /// silently ignores the keystroke. Filtering local keyboard events
+    /// for the suppression interval while we post keeps the synthetic
+    /// ⌘V intact even if keys are still physically down.
     static func postCommandV() throws {
-        guard let source = CGEventSource(stateID: .combinedSessionState) else {
-            throw PostError.couldNotCreateEventSource
-        }
-        let vKey = CGKeyCode(kVK_ANSI_V)
-        guard
-            let down = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: true),
-            let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
-        else {
-            throw PostError.couldNotBuildKeyEvent
-        }
-        down.flags = .maskCommand
-        up.flags = .maskCommand
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        try postShortcut(virtualKey: CGKeyCode(kVK_ANSI_V), flags: .maskCommand)
     }
 
-    /// Post a synthetic ⌘C at the HID event tap. Used by RewriteController
-    /// to grab the current selection before recording the instruction.
+    /// Post a synthetic ⌘C. Used by RewriteController to grab the
+    /// current selection before recording the instruction. Same
+    /// hold-down-modifier hazard applies as `postCommandV`.
     static func postCommandC() throws {
-        guard let source = CGEventSource(stateID: .combinedSessionState) else {
-            throw PostError.couldNotCreateEventSource
-        }
-        let cKey = CGKeyCode(kVK_ANSI_C)
-        guard
-            let down = CGEvent(keyboardEventSource: source, virtualKey: cKey, keyDown: true),
-            let up = CGEvent(keyboardEventSource: source, virtualKey: cKey, keyDown: false)
-        else {
-            throw PostError.couldNotBuildKeyEvent
-        }
-        down.flags = .maskCommand
-        up.flags = .maskCommand
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        try postShortcut(virtualKey: CGKeyCode(kVK_ANSI_C), flags: .maskCommand)
     }
 
-    /// Post a synthetic Return (kVK_Return = 0x24) with no modifiers.
-    /// Used when the "auto-press Enter" setting is on (chat apps).
+    /// Post a synthetic Return with no modifiers. Used when the
+    /// "auto-press Enter" setting is on (chat apps).
     static func postReturn() throws {
+        try postShortcut(virtualKey: CGKeyCode(kVK_Return), flags: [])
+    }
+
+    private static func postShortcut(virtualKey: CGKeyCode, flags: CGEventFlags) throws {
         guard let source = CGEventSource(stateID: .combinedSessionState) else {
             throw PostError.couldNotCreateEventSource
         }
-        let rKey = CGKeyCode(kVK_Return)
+        // Suppress user-originated keyboard events for the brief window
+        // in which we post the synthetic keystroke. Mouse + system
+        // events keep flowing normally.
+        source.setLocalEventsFilterDuringSuppressionState(
+            [.permitLocalMouseEvents, .permitSystemDefinedEvents],
+            state: .eventSuppressionStateSuppressionInterval
+        )
         guard
-            let down = CGEvent(keyboardEventSource: source, virtualKey: rKey, keyDown: true),
-            let up = CGEvent(keyboardEventSource: source, virtualKey: rKey, keyDown: false)
+            let down = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true),
+            let up = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: false)
         else {
             throw PostError.couldNotBuildKeyEvent
         }
-        down.post(tap: .cghidEventTap)
-        up.post(tap: .cghidEventTap)
+        down.flags = flags
+        up.flags = flags
+        down.post(tap: .cgSessionEventTap)
+        up.post(tap: .cgSessionEventTap)
     }
 }
