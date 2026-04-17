@@ -8,7 +8,6 @@ struct ShortcutsPane: View {
 
     private static let bindings: [(KeyboardShortcuts.Name, String)] = [
         (.toggleRecording, "Toggle recording"),
-        (.cancelRecording, "Cancel recording"),
         (.pushToTalk, "Push to talk (hold)"),
         (.pasteLastTranscription, "Paste last transcription"),
         (.rewriteSelection, "Rewrite selection"),
@@ -19,7 +18,7 @@ struct ShortcutsPane: View {
         return Form {
             Section {
                 HStack(alignment: .top) {
-                    Text("Global shortcuts fire from any app when Input Monitoring is granted. Cancel only fires while a recording is in progress.")
+                    Text("Global shortcuts fire from any app when Input Monitoring is granted. Press Escape to cancel an active recording — it's hardcoded and only active while Jot is mid-capture.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -70,8 +69,6 @@ struct ShortcutsPane: View {
         switch name {
         case .toggleRecording:
             return "Press to start recording; press again to stop and transcribe. The primary dictation hotkey. Fires globally from any app."
-        case .cancelRecording:
-            return "Abort an active recording without transcribing. Only fires while a recording, transform, or rewrite is in progress."
         case .pushToTalk:
             return "Hold to record; release to transcribe. Prefer this when you want precise control over the capture window."
         case .pasteLastTranscription:
@@ -98,7 +95,6 @@ struct ShortcutsPane: View {
     private func resetToDefaults() {
         KeyboardShortcuts.reset(
             .toggleRecording,
-            .cancelRecording,
             .pushToTalk,
             .pasteLastTranscription,
             .rewriteSelection
