@@ -184,7 +184,7 @@ final class RecorderController: ObservableObject {
         } catch TranscriberError.modelMissing {
             state = .error("Parakeet model is not downloaded yet.")
         } catch TranscriberError.audioTooShort {
-            state = .error("Recording was too short.")
+            state = .error(shortRecordingMessage(for: recording))
         } catch TranscriberError.busy {
             state = .error("Another transcription is already running.")
         } catch {

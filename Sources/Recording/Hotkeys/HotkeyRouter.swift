@@ -25,6 +25,7 @@ final class HotkeyRouter {
     private let log = Logger(subsystem: "com.jot.Jot", category: "HotkeyRouter")
 
     private var stateObserver: AnyCancellable?
+    private var rewriteStateObserver: AnyCancellable?
     private var activated = false
     private var cancelEnabled = false
     private var pttPendingRelease = false
@@ -54,7 +55,13 @@ final class HotkeyRouter {
         KeyboardShortcuts.onKeyDown(for: .cancelRecording) { [weak self] in
             guard let self else { return }
             self.log.info("cancelRecording fired")
-            Task { @MainActor in await self.recorder.cancel() }
+            Task { @MainActor in
+                if let rewrite = self.rewriteController, rewrite.state != .idle {
+                    await rewrite.cancel()
+                } else {
+                    await self.recorder.cancel()
+                }
+            }
         }
 
         KeyboardShortcuts.onKeyDown(for: .pushToTalk) { [weak self] in
@@ -110,17 +117,35 @@ final class HotkeyRouter {
         // The source of truth for "are we currently recording" is
         // RecorderController.state. Every transition there drives the
         // enable/disable of the cancel shortcut.
-        stateObserver = recorder.$state.sink { [weak self] newState in
-            self?.applyCancelEnablement(for: newState)
+        stateObserver = recorder.$state.sink { [weak self] _ in
+            self?.updateCancelEnablement()
+        }
+
+        if let rewriteController {
+            rewriteStateObserver = rewriteController.$state.sink { [weak self] _ in
+                self?.updateCancelEnablement()
+            }
         }
     }
 
-    private func applyCancelEnablement(for state: RecorderController.State) {
-        let shouldEnable: Bool
-        switch state {
-        case .recording, .transforming: shouldEnable = true
-        case .idle, .transcribing, .error: shouldEnable = false
+    private func updateCancelEnablement() {
+        let recorderActive: Bool
+        switch recorder.state {
+        case .recording, .transforming: recorderActive = true
+        case .idle, .transcribing, .error: recorderActive = false
         }
+
+        let rewriteActive: Bool
+        if let rewriteState = rewriteController?.state {
+            switch rewriteState {
+            case .idle, .error: rewriteActive = false
+            case .capturing, .recording, .transcribing, .rewriting: rewriteActive = true
+            }
+        } else {
+            rewriteActive = false
+        }
+
+        let shouldEnable = recorderActive || rewriteActive
         guard shouldEnable != cancelEnabled else { return }
         cancelEnabled = shouldEnable
         if shouldEnable {

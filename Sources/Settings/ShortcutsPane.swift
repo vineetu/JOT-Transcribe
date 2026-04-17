@@ -18,9 +18,17 @@ struct ShortcutsPane: View {
         let _ = refreshToken
         return Form {
             Section {
-                Text("Global shortcuts fire from any app when Input Monitoring is granted. Cancel only fires while a recording is in progress.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                HStack(alignment: .top) {
+                    Text("Global shortcuts fire from any app when Input Monitoring is granted. Cancel only fires while a recording is in progress.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    InfoPopoverButton(
+                        title: "Global shortcuts",
+                        body: "macOS requires shortcuts to include at least one modifier key (⌘, ⌥, ⌃, or ⇧). Bare single-key bindings like F5 or A alone are not supported and the recorder will reject them.",
+                        helpAnchor: "help.shortcuts.mac-limits"
+                    )
+                }
             }
 
             Section {
@@ -31,6 +39,11 @@ struct ShortcutsPane: View {
                         KeyboardShortcuts.Recorder(for: name) { _ in
                             refreshToken &+= 1
                         }
+                        InfoPopoverButton(
+                            title: label,
+                            body: popoverBody(for: name),
+                            helpAnchor: "help.shortcuts.basics"
+                        )
                     }
                 }
             }
@@ -51,6 +64,23 @@ struct ShortcutsPane: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func popoverBody(for name: KeyboardShortcuts.Name) -> String {
+        switch name {
+        case .toggleRecording:
+            return "Press to start recording; press again to stop and transcribe. The primary dictation hotkey. Fires globally from any app."
+        case .cancelRecording:
+            return "Abort an active recording without transcribing. Only fires while a recording, transform, or rewrite is in progress."
+        case .pushToTalk:
+            return "Hold to record; release to transcribe. Prefer this when you want precise control over the capture window."
+        case .pasteLastTranscription:
+            return "Paste the most recent transcript again at the cursor. Handy when you need the same text in multiple places."
+        case .rewriteSelection:
+            return "Select text in any app, press this shortcut, speak an instruction — Jot rewrites the selection with your configured LLM and pastes it back."
+        default:
+            return "A global hotkey. Requires at least one modifier key (⌘, ⌥, ⌃, or ⇧)."
+        }
     }
 
     private func conflictMessage() -> String? {

@@ -11,12 +11,34 @@ final class LLMConfiguration: ObservableObject {
     @AppStorage("jot.llm.baseURL") var baseURL: String = "" {
         didSet { llmVerified = false }
     }
-    @AppStorage("jot.llm.model") var model: String = ""
+    @AppStorage("jot.llm.model") var model: String = "" {
+        didSet { llmVerified = false }
+    }
     @AppStorage("jot.transformEnabled") var transformEnabled: Bool = false
 
-    @Published var llmVerified: Bool = false
+    // Editable system prompts. Note: intentionally no `didSet` clearing
+    // `llmVerified` — prompt edits are independent of provider/endpoint/key
+    // changes, which is what verification actually tracks. See
+    // `docs/plans/app-ui-unification.md` §"Editable-prompt storage on
+    // `LLMConfiguration` (B1)".
+    @AppStorage("jot.llm.transformPrompt") var transformPrompt: String = TransformPrompt.default
+    @AppStorage("jot.llm.rewritePrompt") var rewritePrompt: String = RewritePrompt.default
+
+    /// Persisted across launches so a user who successfully ran Test
+    /// Connection once doesn't have to re-verify every cold launch for
+    /// Transform to work. Reset to `false` whenever any of the config
+    /// knobs that affect verification (provider / baseURL / model /
+    /// apiKey) change.
+    @Published var llmVerified: Bool {
+        didSet { UserDefaults.standard.set(llmVerified, forKey: Self.llmVerifiedKey) }
+    }
 
     private static let keychainKey = "jot.llm.apiKey"
+    private static let llmVerifiedKey = "jot.llm.verified"
+
+    init() {
+        self.llmVerified = UserDefaults.standard.bool(forKey: Self.llmVerifiedKey)
+    }
 
     var apiKey: String {
         get {
