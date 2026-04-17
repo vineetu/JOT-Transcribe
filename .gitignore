@@ -33,8 +33,9 @@ dist/
 *.key
 *.cer
 
-# Release script (contains deployment config referencing env vars)
-scripts/release.sh
+# Flavor-specific build config — never committed
+.flavor-*.env
+.flavor-*.overrides
 
 # Docs not for public repo
 docs/plans/
