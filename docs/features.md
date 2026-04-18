@@ -133,7 +133,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Error chime
 
 ### Shortcuts
-- Editable bindings for Toggle Recording, Cancel Recording, Paste Last Transcription, Push to Talk. A footnote reminds the user that macOS global hotkeys must include a modifier.
+- Editable bindings for Toggle Recording, Push to Talk, Paste Last Transcription, Rewrite Selection. Cancel Recording (Esc) is shown alongside the others but hardcoded — not configurable. A footnote reminds the user that macOS global hotkeys must include a modifier.
 
 ## Help
 

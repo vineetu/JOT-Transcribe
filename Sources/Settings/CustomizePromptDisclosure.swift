@@ -18,6 +18,12 @@ import SwiftUI
 /// that is semantically identical to the default (see §"Reset-to-default
 /// comparison (I6)").
 struct CustomizePromptDisclosure: View {
+    struct Info {
+        let title: String
+        let body: String
+        let helpAnchor: String?
+    }
+
     /// Row label shown next to the chevron (e.g. "Customize prompt").
     let label: String
 
@@ -27,36 +33,61 @@ struct CustomizePromptDisclosure: View {
     /// The default prompt used by "Reset to default".
     let defaultValue: String
 
+    /// Optional info popover rendered beside the disclosure.
+    let info: Info?
+
     @State private var isExpanded: Bool = false
 
-    var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
-                TextEditor(text: $text)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(height: 140)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.primary.opacity(0.12))
-                    )
+    init(label: String, text: Binding<String>, defaultValue: String, info: Info? = nil) {
+        self.label = label
+        self._text = text
+        self.defaultValue = defaultValue
+        self.info = info
+    }
 
-                HStack {
-                    Spacer()
-                    Button("Reset to default") {
-                        text = defaultValue
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextEditor(text: $text)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(height: 140)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.primary.opacity(0.12))
+                        )
+
+                    HStack {
+                        Spacer()
+                        Button("Reset to default") {
+                            text = defaultValue
+                        }
+                        .controlSize(.small)
+                        .disabled(
+                            text.trimmingCharacters(in: .whitespacesAndNewlines)
+                                == defaultValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        )
                     }
-                    .controlSize(.small)
-                    .disabled(
-                        text.trimmingCharacters(in: .whitespacesAndNewlines)
-                            == defaultValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                    )
                 }
+                .padding(.top, 4)
+            } label: {
+                HStack {
+                    Text(label)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.top, 4)
-        } label: {
-            Text(label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            .layoutPriority(1)
+
+            if let info {
+                InfoPopoverButton(
+                    title: info.title,
+                    body: info.body,
+                    helpAnchor: info.helpAnchor
+                )
+            }
         }
     }
 }
