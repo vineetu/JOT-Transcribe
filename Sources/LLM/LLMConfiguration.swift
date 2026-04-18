@@ -30,7 +30,12 @@ final class LLMConfiguration: ObservableObject {
     /// knobs that affect verification (provider / baseURL / model /
     /// apiKey) change.
     @Published var llmVerified: Bool {
-        didSet { UserDefaults.standard.set(llmVerified, forKey: Self.llmVerifiedKey) }
+        didSet {
+            UserDefaults.standard.set(llmVerified, forKey: Self.llmVerifiedKey)
+            // TODO: if a third AI-dependent toggle lands, refactor to a capability-gate
+            // computed property instead of per-consumer cascade.
+            if !llmVerified && transformEnabled { transformEnabled = false }
+        }
     }
 
     private static let keychainKey = "jot.llm.apiKey"

@@ -106,7 +106,7 @@ struct TranscriptionPane: View {
                     )
                 }
                 if !llmConfig.llmVerified {
-                    Text("Configure and test an LLM provider in AI settings first.")
+                    Text("Set up an LLM in AI settings first.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     Button("Set up AI →") {
@@ -119,7 +119,12 @@ struct TranscriptionPane: View {
                     CustomizePromptDisclosure(
                         label: "Customize prompt",
                         text: $llmConfig.transformPrompt,
-                        defaultValue: TransformPrompt.default
+                        defaultValue: TransformPrompt.default,
+                        info: .init(
+                            title: "Customize prompt",
+                            body: "System prompt for Clean up transcript with AI. Tells the LLM how to polish the raw transcript — filler removal, grammar, list detection — while preserving your voice.",
+                            helpAnchor: "help.transform.overview"
+                        )
                     )
                 }
             }

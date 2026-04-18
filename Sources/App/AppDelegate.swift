@@ -43,6 +43,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var deliveryBridge: AnyCancellable?
 
+    /// Strong reference to the proxy delegate installed on the unified
+    /// main window so the red close button hides it instead of tearing
+    /// the SwiftUI scene down. The app is a menu-bar agent (LSUIElement),
+    /// so without this the user would have no AppKit chrome to reopen
+    /// the window after a close.
+    private var closeInterceptor: MainWindowCloseInterceptor?
+
+    /// Token for the `NSWindow.didBecomeKeyNotification` subscription
+    /// that drives install of `closeInterceptor`. Observing globally
+    /// (rather than installing at the first menu-bar "Open Jot…" click)
+    /// guarantees the hook is active from the very first window
+    /// appearance — including launch auto-open and `openWindow` API
+    /// paths that bypass the menu-bar controller.
+    private var windowObserver: NSObjectProtocol?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         log.info("Jot launched")
 
@@ -96,6 +111,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.overlay = OverlayWindowController(recorder: recorder, delivery: delivery, rewriteController: rewrite)
         self.overlay.install()
 
+        // Install the hide-on-close proxy delegate the first time the
+        // unified main window becomes key. Subscribing here (rather
+        // than inside `JotMenuBarController.openUnifiedWindow`) makes
+        // the hook active for launch auto-open, `openWindow` API, and
+        // any other path that surfaces the window — not just the
+        // menu-bar "Open Jot…" click.
+        windowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            Task { @MainActor [weak self] in
+                self?.installCloseInterceptorIfNeeded(for: note.object as? NSWindow)
+            }
+        }
+
         // Library persister: subscribes to `recorder.$lastResult` and writes
         // a Recording row + WAV filename into SwiftData on each pass.
         let persister = RecordingPersister(
@@ -132,5 +163,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
         }
         return true
+    }
+
+    @MainActor
+    private func installCloseInterceptorIfNeeded(for window: NSWindow?) {
+        guard let window else { return }
+        // Scope to the unified main window; setup wizard has its own delegate.
+        guard window.identifier?.rawValue.contains("jot-main") == true else { return }
+        // Idempotent — skip if our interceptor is already installed.
+        guard !(window.delegate is MainWindowCloseInterceptor) else { return }
+
+        let interceptor = MainWindowCloseInterceptor()
+        interceptor.wrappedDelegate = window.delegate
+        window.delegate = interceptor
+        window.isReleasedWhenClosed = false
+        closeInterceptor = interceptor
+    }
+
+    deinit {
+        if let windowObserver {
+            NotificationCenter.default.removeObserver(windowObserver)
+        }
     }
 }

@@ -18,7 +18,7 @@ struct ShortcutsPane: View {
         return Form {
             Section {
                 HStack(alignment: .top) {
-                    Text("Global shortcuts fire from any app when Input Monitoring is granted. Press Escape to cancel an active recording — it's hardcoded and only active while Jot is mid-capture.")
+                    Text("Global shortcuts fire from any app when Input Monitoring is granted.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -44,6 +44,24 @@ struct ShortcutsPane: View {
                             helpAnchor: "help.shortcuts.basics"
                         )
                     }
+                }
+                HStack {
+                    Text("Cancel recording")
+                    Spacer()
+                    Text("esc")
+                        .font(.system(.body, design: .monospaced))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                        .foregroundStyle(.secondary)
+                    InfoPopoverButton(
+                        title: "Cancel recording",
+                        body: "Press Escape to cancel an active recording, transform, or rewrite. Hardcoded and not configurable — only active while Jot is mid-capture.",
+                        helpAnchor: "help.shortcuts.basics"
+                    )
                 }
             }
 

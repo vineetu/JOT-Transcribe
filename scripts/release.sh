@@ -6,7 +6,7 @@
 #
 # Default (no env vars set) produces a public release: builds dist/Jot.dmg,
 # generates + commits the Sparkle appcast, uploads the DMG to the website,
-# tags v<version>, and pushes to the `origin` remote.
+# tags v<version>, and pushes to the `public` remote.
 #
 # To build a different flavor, source a flavor env file first. Example:
 #   source .flavor-<name>.env && ./scripts/release.sh 1.1
@@ -30,11 +30,19 @@
 #                                   -replace <key> -string <value>` before
 #                                   the archive and restored on exit.
 #   JOT_PUSH_REMOTES                Space-separated remote names to push
-#                                   (main + tag) to. Default: "origin".
+#                                   (main + tag) to. Default: "public".
 #   JOT_SKIP_APPCAST                If "1", skip Sparkle appcast generation
 #                                   and upload. Default: 0 (appcast on).
+#   JOT_APPCAST_DOWNLOAD_URL_PREFIX Prefix used for <enclosure url=...> in the
+#                                   generated appcast. Sparkle would otherwise
+#                                   derive this from SUFeedURL (raw.github...)
+#                                   which 404s since no DMG is committed.
+#                                   Default: GitHub releases/latest/download/.
 #   JOT_SKIP_WEBSITE_UPLOAD         If "1", skip scp to the website host.
 #                                   Default: 0.
+#   JOT_SKIP_GH_RELEASE             If "1", skip the automatic `gh release
+#                                   create` step and only print the command
+#                                   the user can run by hand. Default: 0.
 #   JOT_DEPLOY_HOST                 Required if the website upload runs.
 #                                   scp target in `[user@]host` form, e.g.
 #                                   "root@1.2.3.4" or "deploy@jot.example".
@@ -54,9 +62,11 @@ JOT_FLAVOR_DMG_NAME="${JOT_FLAVOR_DMG_NAME:-Jot.dmg}"
 JOT_FLAVOR_GH_HOST="${JOT_FLAVOR_GH_HOST:-}"
 JOT_FLAVOR_GH_REPO="${JOT_FLAVOR_GH_REPO:-vineetu/JOT-Transcribe}"
 JOT_FLAVOR_INFO_PLIST_OVERRIDES="${JOT_FLAVOR_INFO_PLIST_OVERRIDES:-}"
-JOT_PUSH_REMOTES="${JOT_PUSH_REMOTES:-origin}"
+JOT_PUSH_REMOTES="${JOT_PUSH_REMOTES:-public}"
 JOT_SKIP_APPCAST="${JOT_SKIP_APPCAST:-0}"
+JOT_APPCAST_DOWNLOAD_URL_PREFIX="${JOT_APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/vineetu/JOT-Transcribe/releases/latest/download/}"
 JOT_SKIP_WEBSITE_UPLOAD="${JOT_SKIP_WEBSITE_UPLOAD:-0}"
+JOT_SKIP_GH_RELEASE="${JOT_SKIP_GH_RELEASE:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -156,7 +166,7 @@ fi
 if [[ "${JOT_SKIP_APPCAST}" != "1" ]]; then
     [[ -n "${SPARKLE_BIN}" ]] || fail "generate_appcast not found. Build in Xcode first to resolve Sparkle SPM package."
     log "Generating appcast"
-    "${SPARKLE_BIN}" "${REPO_ROOT}/dist/"
+    "${SPARKLE_BIN}" --download-url-prefix "${JOT_APPCAST_DOWNLOAD_URL_PREFIX}" "${REPO_ROOT}/dist/"
     cp "${APPCAST_SRC}" "${APPCAST_DST}"
 fi
 
@@ -208,12 +218,37 @@ for remote in ${JOT_PUSH_REMOTES}; do
     git push "${remote}" "${TAG}"
 done
 
-# ---- 8. Summary --------------------------------------------------------------
+# ---- 8. Create GitHub release (opt-out) --------------------------------------
 GH_CMD_PREFIX=""
 if [[ -n "${JOT_FLAVOR_GH_HOST}" ]]; then
     GH_CMD_PREFIX="GH_HOST=${JOT_FLAVOR_GH_HOST} "
 fi
 
+# The exact command the user can re-run by hand if `gh release create` fails
+# or is skipped. Kept as a string so we can echo it in both the skip and
+# error paths.
+GH_RELEASE_CMD="${GH_CMD_PREFIX}gh release create ${TAG} ${DMG_FINAL#${REPO_ROOT}/} --repo ${JOT_FLAVOR_GH_REPO} --title \"Jot ${TAG}\""
+
+if [[ "${JOT_SKIP_GH_RELEASE}" == "1" ]]; then
+    log "JOT_SKIP_GH_RELEASE=1 — skipping \`gh release create\`."
+    log "To publish the release manually, run:"
+    log "  ${GH_RELEASE_CMD}"
+else
+    log "Creating GitHub release ${TAG} on ${JOT_FLAVOR_GH_REPO}${JOT_FLAVOR_GH_HOST:+ (host: ${JOT_FLAVOR_GH_HOST})}"
+    if [[ -n "${JOT_FLAVOR_GH_HOST}" ]]; then
+        GH_HOST="${JOT_FLAVOR_GH_HOST}" gh release create "${TAG}" "${DMG_FINAL}" \
+            --repo "${JOT_FLAVOR_GH_REPO}" \
+            --title "Jot ${TAG}" \
+            || { printf "\033[1;31m[release]\033[0m ERROR: \`gh release create\` failed. Re-run by hand:\n  %s\n" "${GH_RELEASE_CMD}" >&2; exit 1; }
+    else
+        gh release create "${TAG}" "${DMG_FINAL}" \
+            --repo "${JOT_FLAVOR_GH_REPO}" \
+            --title "Jot ${TAG}" \
+            || { printf "\033[1;31m[release]\033[0m ERROR: \`gh release create\` failed. Re-run by hand:\n  %s\n" "${GH_RELEASE_CMD}" >&2; exit 1; }
+    fi
+fi
+
+# ---- 9. Summary --------------------------------------------------------------
 cat <<EOF
 
 ---------------------------------------------------------------
@@ -222,12 +257,7 @@ cat <<EOF
   DMG     : ${DMG_FINAL#${REPO_ROOT}/}
   Tag     : ${TAG}
   Remotes : ${JOT_PUSH_REMOTES}
+  GH repo : ${JOT_FLAVOR_GH_REPO}${JOT_FLAVOR_GH_HOST:+ @ ${JOT_FLAVOR_GH_HOST}}
 ---------------------------------------------------------------
-
-  To create the GitHub release with the DMG attached, run:
-
-  ${GH_CMD_PREFIX}gh release create ${TAG} ${DMG_FINAL#${REPO_ROOT}/} \\
-      --repo ${JOT_FLAVOR_GH_REPO} \\
-      --title "Jot ${TAG}"
 
 EOF

@@ -93,7 +93,12 @@ struct RewritePane: View {
                 CustomizePromptDisclosure(
                     label: "Customize prompt",
                     text: $config.rewritePrompt,
-                    defaultValue: RewritePrompt.default
+                    defaultValue: RewritePrompt.default,
+                    info: .init(
+                        title: "Customize prompt",
+                        body: "System prompt for AI Rewrite. Tells the LLM how to interpret your voice instruction when rewriting selected text. Edit with care — malformed prompts break rewrite.",
+                        helpAnchor: nil
+                    )
                 )
             }
 
