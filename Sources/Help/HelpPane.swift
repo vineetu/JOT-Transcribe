@@ -1,93 +1,97 @@
 import SwiftUI
 
-/// Durable in-app help surface (design doc §6 / §I4 / Frontend Directives §4).
+/// Durable in-app help surface — visual-first specimen cards (design doc
+/// §6 / §I4 / Frontend Directives §4, v2 2026-04-18).
 ///
-/// Three sections:
-///   • Basics — Dictation, Auto-correct, AI Rewrite.
-///   • Advanced — LLM providers (cloud + Ollama), editable prompts,
-///     Sparkle auto-update.
-///   • Troubleshooting — macOS hotkey limits (single-key shortcuts need
-///     a modifier), permissions, Bluetooth input redirect.
+/// Three sections (Basics / Advanced / Troubleshooting), each a grid of
+/// `FeatureCard`s. Each card pairs a purpose-drawn SwiftUI diagram with a
+/// one-sentence caption — replacing the prose-heavy v1 Help page.
 ///
-/// Phase 1 of the Help redesign (`docs/plans/help-redesign.md` §8) swaps
-/// the legacy scaffolding for the "Field Notes" component library under
-/// `Sources/Help/Components/`. Content is byte-for-byte identical with
-/// the pre-redesign copy; diagrams land in Phase 2+.
+/// A `HelpSearchField` at the top filters cards by title and caption.
+/// When a filter is active, sections with zero matches are hidden
+/// entirely (rather than leaving empty section headers).
 ///
-/// Deep-link contract (plan §7): `HelpPane` observes the public
-/// `jot.help.scrollToAnchor` notification posted by `InfoPopoverButton`.
-/// On receipt it immediately re-posts the private
-/// `jot.help.expandForAnchor` notification so any `ExpandableRow`
-/// matching the anchor expands synchronously (no animation, same
-/// runloop pass) before we ask `ScrollViewReader` for a Y. The actual
-/// scroll is deferred one runloop via `DispatchQueue.main.async` so the
-/// post-expand layout has committed.
+/// Deep-link contract (plan §7) — preserved from v1: `HelpPane` observes
+/// `jot.help.scrollToAnchor` posted by `InfoPopoverButton`. On receipt
+/// the `ScrollViewReader` scrolls the card whose anchor matches.
 struct HelpPane: View {
-    /// Private contract between `HelpPane` and `ExpandableRow` (plan §7).
-    /// Not part of the public `InfoPopoverButton` API — callers still
-    /// post `scrollToAnchor` only.
-    static let expandForAnchorNotification = Notification.Name("jot.help.expandForAnchor")
+    @State private var searchText: String = ""
 
-    private static let railItems: [AnchorRail.Item] = [
-        .init(
-            number: "01",
-            title: "Basics",
-            dek: "What Jot does and how the pipeline runs.",
-            anchor: "help.basics"
-        ),
-        .init(
-            number: "02",
-            title: "Advanced",
-            dek: "Optional LLM paths, editable prompts, auto-update.",
-            anchor: "help.advanced"
-        ),
-        .init(
-            number: "03",
-            title: "Troubleshooting",
-            dek: "Common symptoms and what to do about them.",
-            anchor: "help.troubleshooting"
-        ),
-    ]
+    private let cards: [CardSpec] = HelpPane.allCards
+
+    // MARK: - Filter + grouping
+
+    private var filtered: [CardSpec] {
+        guard !searchText.isEmpty else { return cards }
+        let q = searchText.lowercased()
+        return cards.filter {
+            $0.title.lowercased().contains(q)
+                || $0.caption.lowercased().contains(q)
+                || ($0.tag ?? "").lowercased().contains(q)
+        }
+    }
+
+    private var bySection: [(Section, [CardSpec])] {
+        let filtered = filtered
+        return Section.allCases.compactMap { s in
+            let cs = filtered.filter { $0.section == s }
+            return cs.isEmpty ? nil : (s, cs)
+        }
+    }
+
+    private var railItems: [AnchorRail.Item] {
+        bySection.map { section, _ in
+            AnchorRail.Item(
+                number: section.number,
+                title: section.title,
+                dek: section.dek,
+                anchor: section.anchor
+            )
+        }
+    }
+
+    // MARK: - Body
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    AnchorRail(items: Self.railItems) { anchor in
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            proxy.scrollTo(anchor, anchor: .top)
+                VStack(alignment: .leading, spacing: 28) {
+                    HelpSearchField(
+                        text: $searchText,
+                        resultCount: filtered.count,
+                        totalCount: cards.count
+                    )
+
+                    if !railItems.isEmpty {
+                        AnchorRail(items: railItems) { anchor in
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                proxy.scrollTo(anchor, anchor: .top)
+                            }
                         }
                     }
-                    .padding(.bottom, 40)
 
-                    basicsSection
-                    SectionRule()
-                    advancedSection
-                    SectionRule()
-                    troubleshootingSection
+                    ForEach(Array(bySection.enumerated()), id: \.offset) { idx, pair in
+                        let (section, cards) = pair
+                        if idx > 0 { SectionRule() }
+                        sectionView(section, cards: cards)
+                    }
+
+                    if filtered.isEmpty {
+                        emptyState
+                    }
                 }
                 .padding(.horizontal, 32)
                 .padding(.top, 28)
                 .padding(.bottom, 48)
-                .frame(maxWidth: 680, alignment: .leading)
+                .frame(maxWidth: 900, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .onReceive(NotificationCenter.default.publisher(
                 for: InfoPopoverButton.scrollToAnchorNotification
             )) { note in
                 guard let anchor = note.userInfo?["anchor"] as? String else { return }
-
-                // Phase 1 of the §7 two-phase contract: tell any matching
-                // ExpandableRow to expand synchronously (no animation) so
-                // SwiftUI commits the new layout in this runloop pass.
-                NotificationCenter.default.post(
-                    name: HelpPane.expandForAnchorNotification,
-                    object: nil,
-                    userInfo: ["anchor": anchor]
-                )
-
-                // Phase 2: deferred one runloop — the expansion relayout
-                // has committed, so scrollTo resolves against the final Y.
+                // Clear any active filter so the target card is visible.
+                if !searchText.isEmpty { searchText = "" }
                 DispatchQueue.main.async {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         proxy.scrollTo(anchor, anchor: .top)
@@ -97,104 +101,503 @@ struct HelpPane: View {
         }
     }
 
-    // MARK: - Basics
+    // MARK: - Section rendering
 
-    private var basicsSection: some View {
-        HelpSection(
-            number: "01",
-            title: "Basics",
-            dek: "The fundamentals — what Jot does, how the pipeline runs, and the two places you'll live in it.",
-            anchor: "help.basics"
-        ) {
-            HelpSubsection("Dictation", anchor: "help.dictation.basics") {
-                BodyText("You press ⌥Space, speak, and the transcript is pasted at the cursor. Audio is transcribed locally by Parakeet on the Apple Neural Engine — no network, no telemetry. Press ⌥Space again to stop, or Esc to cancel without pasting.")
-            }
-
-            HelpSubsection("Model", anchor: "help.dictation.model") {
-                BodyText("Jot downloads Parakeet TDT 0.6B v3 once, on first run, and stores it on disk. Every subsequent recording runs offline. You can re-download or swap the model in Settings > Transcription if a file is corrupted or you want to try a newer build.")
-            }
-
-            HelpSubsection("Auto-correct", anchor: "help.transform.overview") {
-                BodyText("When enabled, each transcript is run through a language model for a light cleanup pass — filler words removed, grammar smoothed, numbers and times normalized — before it reaches the cursor. Your voice and vocabulary are preserved. Auto-correct is off by default and only runs once you've configured and verified an LLM provider in Settings > AI.")
-            }
-
-            HelpSubsection("AI Rewrite", anchor: "help.rewrite.overview") {
-                BodyText("Select text in any app, press your Rewrite hotkey, speak an instruction (“make this shorter,” “rewrite in a neutral tone”), and Jot replaces the selection with the rewritten text. The selected text is copied via a synthetic ⌘C, sent to your configured LLM along with your instruction, and pasted back. Same provider, same prompt settings, same verification flow as Auto-correct.")
+    @ViewBuilder
+    private func sectionView(_ section: Section, cards: [CardSpec]) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HelpSection(
+                number: section.number,
+                title: section.title,
+                dek: section.dek,
+                anchor: section.anchor
+            ) {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)],
+                    alignment: .leading,
+                    spacing: 14
+                ) {
+                    ForEach(cards) { spec in
+                        FeatureCard(
+                            spec.title,
+                            caption: spec.caption,
+                            anchor: spec.anchor,
+                            tag: spec.tag,
+                            visual: spec.visual
+                        )
+                    }
+                }
             }
         }
     }
 
-    // MARK: - Advanced
+    private var emptyState: some View {
+        VStack(alignment: .center, spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("No features match “\(searchText)”")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button("Clear search") { searchText = "" }
+                .buttonStyle(.link)
+                .focusable(false)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 56)
+    }
+}
 
-    private var advancedSection: some View {
-        HelpSection(
-            number: "02",
-            title: "Advanced",
-            dek: "The optional LLM paths, prompt editing, and how the app updates itself.",
-            anchor: "help.advanced"
-        ) {
-            HelpSubsection("LLM providers", anchor: "help.ai.providers") {
-                BodyText("Jot supports four providers for the optional LLM paths (Auto-correct and AI Rewrite): OpenAI, Anthropic, Gemini, and Ollama. Each is configured separately in Settings > AI. The provider you pick there is used for both Auto-correct and Rewrite — they share one `LLMConfiguration`. Nothing is sent to an LLM until you both configure a provider and pass Test Connection.")
+// MARK: - Section metadata
+
+extension HelpPane {
+    enum Section: Int, CaseIterable {
+        case basics, advanced, troubleshooting
+
+        var number: String {
+            switch self {
+            case .basics: return "01"
+            case .advanced: return "02"
+            case .troubleshooting: return "03"
             }
+        }
 
-            HelpSubsection("Endpoint and API key", anchor: "help.ai.endpoint") {
-                BodyText("For cloud providers, enter the API key you generated on the provider's dashboard. The Base URL is prefilled with the provider's default and is usually only worth changing if you route through a proxy. Keys are stored in the macOS Keychain — never written to disk in plaintext, never synced anywhere.")
+        var title: String {
+            switch self {
+            case .basics: return "Basics"
+            case .advanced: return "Advanced"
+            case .troubleshooting: return "Troubleshooting"
             }
+        }
 
-            HelpSubsection("Ollama (fully local)", anchor: "help.ai.ollama") {
-                BodyText("Run Ollama on your Mac, pull a model (`ollama pull llama3.1`, for example), and point Jot at `http://localhost:11434`. No API key is required. With Ollama selected, Auto-correct and Rewrite stay entirely on-device — no data ever leaves the machine.")
+        var dek: String {
+            switch self {
+            case .basics: return "What Jot does and the surfaces you live in every day."
+            case .advanced: return "Optional paths, preferences, and power-user knobs."
+            case .troubleshooting: return "macOS constraints and common symptoms."
             }
+        }
 
-            HelpSubsection("Test Connection", anchor: "help.ai.verify") {
-                BodyText("The Test Connection button in Settings > AI issues a small probe request to your configured endpoint. A green check means Jot can reach the provider and the credentials work; an inline error explains what failed. Verification is required before Auto-correct or Rewrite will run — it's the one moment Jot confirms the provider is real.")
-            }
-
-            HelpSubsection("Editable prompts", anchor: "help.ai.customPrompt") {
-                BodyText("The system prompts that drive Auto-correct and AI Rewrite are editable. Click Customize prompt beneath either toggle to expand a monospace editor. The default prompts describe the model's role and the exact rules (filler removal, grammar preservation, output format). Edit freely; Reset to default restores the shipped prompt. Editing the prompt does not invalidate your provider verification — it's a content change, not an endpoint change.")
-            }
-
-            HelpSubsection("Automatic updates", anchor: "help.advanced.updates") {
-                BodyText("Jot uses Sparkle to check for new releases once a day. When a signed update is available, you'll be offered a one-click install. The only network traffic the update path makes is fetching the appcast and the signed DMG — no analytics, no account check.")
+        var anchor: String {
+            switch self {
+            case .basics: return "help.basics"
+            case .advanced: return "help.advanced"
+            case .troubleshooting: return "help.troubleshooting"
             }
         }
     }
+}
 
-    // MARK: - Troubleshooting
+// MARK: - Card spec
 
-    private var troubleshootingSection: some View {
-        HelpSection(
-            number: "03",
-            title: "Troubleshooting",
-            dek: "Symptoms on the left, diagnosis inside.",
-            anchor: "help.troubleshooting"
+extension HelpPane {
+    struct CardSpec: Identifiable {
+        let id = UUID()
+        let section: Section
+        let title: String
+        let caption: String
+        let anchor: String?
+        let tag: String?
+        let visual: () -> AnyView
+
+        init(
+            section: Section,
+            title: String,
+            caption: String,
+            anchor: String? = nil,
+            tag: String? = nil,
+            @ViewBuilder visual: @escaping () -> some View
         ) {
-            ExpandableRow(
-                "Single-key shortcuts aren't allowed",
-                anchor: "help.shortcuts.mac-limits"
-            ) {
-                BodyText("macOS requires that every global shortcut include at least one modifier key (⌘, ⌥, ⌃, ⇧, or Fn). A plain letter or a bare function key can't be registered — the system reserves single-key input for ordinary typing. If the Shortcuts pane rejects a recording, add a modifier and try again.")
-            }
-
-            ExpandableRow(
-                "Permissions",
-                anchor: "help.permissions"
-            ) {
-                BodyText("Jot asks for four distinct capabilities, each with its own system prompt: Microphone (to record), Input Monitoring (for global hotkeys), Accessibility (to post the synthetic ⌘V that pastes the transcript), and optional full Accessibility trust for AI Rewrite's ⌘C capture. If any are denied you can re-grant them in System Settings > Privacy & Security. If Accessibility is denied, Jot falls back to copying the transcript to the clipboard and surfacing a toast — you can paste it manually with ⌘V.")
-            }
-
-            ExpandableRow(
-                "Bluetooth mic redirect",
-                anchor: "help.bt-redirect"
-            ) {
-                BodyText("If a Bluetooth headset or external device is connected when you start recording, macOS may route the mic through it instead of your intended input. Jot records from the system default input; choose the input you want in System Settings > Sound > Input before starting a dictation, or disconnect the device temporarily.")
-            }
-
-            ExpandableRow(
-                "Shortcut conflicts",
-                anchor: "help.shortcuts.conflicts"
-            ) {
-                BodyText("Shortcuts pane shows you every hotkey registered to Jot side-by-side so you can spot collisions. If two Jot shortcuts share a binding, the pane renders a conflict warning. Shortcuts Jot defines are checked against each other only — it can't see collisions with other apps' global hotkeys, so if one of yours stops firing, another tool is probably grabbing it first.")
-            }
+            self.section = section
+            self.title = title
+            self.caption = caption
+            self.anchor = anchor
+            self.tag = tag
+            self.visual = { AnyView(visual()) }
         }
     }
+}
+
+// MARK: - All cards
+
+extension HelpPane {
+    static let allCards: [CardSpec] = [
+
+        // ---------------- Basics ----------------
+
+        CardSpec(
+            section: .basics,
+            title: "Toggle recording",
+            caption: "Press to start, press again to stop and transcribe. The primary dictation hotkey.",
+            anchor: "help.dictation.basics",
+            tag: "⌥Space"
+        ) {
+            HStack(spacing: 10) {
+                ExampleTag()
+                KeyCombo(keys: ["⌥", "Space"])
+                FlowArrow()
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.red)
+                FlowArrow()
+                MiniTranscript()
+            }
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Push to talk",
+            caption: "Hold to record, release to transcribe. Use when you want precise control over the capture window.",
+            anchor: "help.shortcuts.basics",
+            tag: "hold"
+        ) {
+            HStack(spacing: 8) {
+                ExampleTag()
+                KeyCap(label: "fn")
+                Image(systemName: "arrow.down")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.accentColor)
+                Text("HOLD")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(Color.accentColor)
+                    .tracking(1)
+                FlowArrow()
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.red)
+            }
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Paste last transcription",
+            caption: "Pastes your most recent transcript again at the cursor.",
+            tag: "⌥."
+        ) {
+            HStack(spacing: 8) {
+                ExampleTag()
+                KeyCombo(keys: ["⌥", "."])
+                FlowArrow()
+                ClipboardGlyph(withContent: true)
+                    .scaleEffect(0.6)
+                    .frame(width: 34, height: 40)
+                FlowArrow()
+                MiniTranscript()
+            }
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Rewrite selection",
+            caption: "Select text, press the shortcut, speak an instruction. Jot understands structural changes (\u{201C}make it a list\u{201D}), translations, code edits, and tone shifts.",
+            anchor: "help.rewrite.overview",
+            tag: "voice"
+        ) {
+            RewriteFlow()
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Cancel",
+            caption: "Drops the current recording or rewrite without transcribing. Hardcoded — not configurable.",
+            tag: "esc"
+        ) {
+            HStack(spacing: 10) {
+                ZStack {
+                    KeyCap(label: "esc", width: 40)
+                    Rectangle()
+                        .fill(.red.opacity(0.8))
+                        .frame(width: 48, height: 1.4)
+                        .rotationEffect(.degrees(-14))
+                }
+                FlowArrow()
+                WaveformStrip(accent: .red)
+                    .opacity(0.5)
+            }
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "On-device transcription",
+            caption: "Parakeet runs on the Apple Neural Engine. Audio never leaves your Mac.",
+            anchor: "help.dictation.model",
+            tag: "ANE"
+        ) {
+            ParakeetPipeline()
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Auto-correct",
+            caption: "Optional AI cleanup pass — removes fillers, fixes grammar, preserves your voice.",
+            anchor: "help.transform.overview",
+            tag: "off by default"
+        ) {
+            TransformArrow()
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Status pill",
+            caption: "A small overlay under the notch tracks the pipeline: recording, transcribing, cleaning up, done.",
+            anchor: "help.pill.states",
+            tag: "overlay"
+        ) {
+            StatesRow()
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Menu bar",
+            caption: "The tray icon glyph changes per state. Click for Open Jot, Settings, Copy last, and Check for Updates.",
+            anchor: "help.menubar.overview",
+            tag: "tray"
+        ) {
+            MenuBarStatesRow()
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Recording library",
+            caption: "Every recording is stored locally with its transcript. Search by text or date, play back, rename, re-transcribe, reveal in Finder.",
+            anchor: "help.library.overview",
+            tag: "local"
+        ) {
+            LibraryRowMini()
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Copy last transcription",
+            caption: "A menu-bar command to copy your most recent transcript to the clipboard.",
+            anchor: "help.copy.last",
+            tag: "menu bar"
+        ) {
+            HStack(spacing: 8) {
+                MiniTranscript()
+                FlowArrow()
+                ClipboardGlyph(withContent: true)
+                    .scaleEffect(0.7)
+                    .frame(width: 40, height: 46)
+            }
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Auto-Enter",
+            caption: "When on, Jot presses Return after pasting — so chat apps and terminals auto-submit.",
+            anchor: "help.autoenter",
+            tag: "optional"
+        ) {
+            HStack(spacing: 10) {
+                MiniTranscript()
+                FlowArrow()
+                KeyCap(label: "⏎", width: 32)
+                FlowArrow()
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.accentColor)
+            }
+        },
+
+        CardSpec(
+            section: .basics,
+            title: "Keep clipboard",
+            caption: "When off, Jot restores whatever you had on the clipboard before the transcription.",
+            anchor: "help.clipboard.keep",
+            tag: "sandwich"
+        ) {
+            ClipboardRestore()
+        },
+
+        // ---------------- Advanced ----------------
+
+        CardSpec(
+            section: .advanced,
+            title: "LLM providers",
+            caption: "Five providers for Auto-correct and Rewrite: OpenAI, Anthropic, Gemini, Vertex Gemini, Ollama.",
+            anchor: "help.ai.providers",
+            tag: "5"
+        ) {
+            ProviderBadges()
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Ollama (fully local)",
+            caption: "Run a model locally; Jot talks to http://localhost:11434. No API key, no cloud traffic.",
+            anchor: "help.ai.ollama",
+            tag: "offline"
+        ) {
+            OllamaGlyph()
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Endpoint and API key",
+            caption: "Configure in Settings → AI. Keys live in Keychain, never on disk.",
+            anchor: "help.ai.endpoint",
+            tag: "Keychain"
+        ) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 4) {
+                    Image(systemName: "link")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Text("api.openai.com/v1")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.primary)
+                }
+                HStack(spacing: 4) {
+                    Image(systemName: "key.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Text("sk-••••••••••••••")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.primary)
+                }
+            }
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Test Connection",
+            caption: "Manual diagnostic — it tells you if the provider is reachable. It does not gate the toggle.",
+            anchor: "help.ai.verify",
+            tag: "diagnostic"
+        ) {
+            TestConnectionGlyph()
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Customize prompt",
+            caption: "Edit the cleanup prompt, or the shared invariants behind Rewrite. Reset to default restores the shipped text.",
+            anchor: "help.ai.customPrompt",
+            tag: "editable"
+        ) {
+            PromptEditorMini()
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Sparkle updates",
+            caption: "Jot checks for signed updates once a day. Only traffic: the appcast and the DMG.",
+            anchor: "help.advanced.updates",
+            tag: "daily"
+        ) {
+            AppUpdate()
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Launch at login",
+            caption: "Register Jot as a login item so it starts with your Mac.",
+            anchor: "help.general.launch-at-login",
+            tag: "login item"
+        ) {
+            LoginItemGlyph()
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Retention",
+            caption: "Auto-delete recordings after 7, 30, or 90 days. Forever keeps them until you delete manually.",
+            anchor: "help.general.retention",
+            tag: "purge"
+        ) {
+            RetentionTimeline()
+                .padding(.horizontal, 16)
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Setup Wizard",
+            caption: "Five steps: permissions, model download, microphone, shortcut, test. Re-run any time.",
+            anchor: "help.general.setup-wizard",
+            tag: "5 steps"
+        ) {
+            StepDots(count: 5)
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Sound feedback",
+            caption: "Five chimes — start, stop, cancel, done, error — all individually toggleable with one shared volume.",
+            anchor: "help.sound.chimes",
+            tag: "5 events"
+        ) {
+            ChimeRow()
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Input device",
+            caption: "Pick a specific mic in Settings → General, or let Jot follow your macOS default.",
+            anchor: "help.general.input-device",
+            tag: "mic"
+        ) {
+            MicDropdown()
+        },
+
+        CardSpec(
+            section: .advanced,
+            title: "Re-transcribe",
+            caption: "Right-click any recording in Library to run it through Parakeet again — useful after swapping models.",
+            anchor: "help.library.retranscribe",
+            tag: "rerun"
+        ) {
+            HStack(spacing: 8) {
+                LibraryRowMini()
+                    .scaleEffect(0.7, anchor: .center)
+                    .frame(width: 100, height: 50)
+                FlowArrow()
+                Image(systemName: "arrow.clockwise.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color.accentColor)
+            }
+        },
+
+        // ---------------- Troubleshooting ----------------
+
+        CardSpec(
+            section: .troubleshooting,
+            title: "Permissions",
+            caption: "Mic, Input Monitoring, Accessibility. Grant in System Settings → Privacy & Security.",
+            anchor: "help.permissions",
+            tag: "3+1"
+        ) {
+            PermissionTiles()
+        },
+
+        CardSpec(
+            section: .troubleshooting,
+            title: "Modifier required",
+            caption: "macOS rejects single-key global shortcuts. Every binding must include ⌘ ⌥ ⌃ ⇧ or Fn.",
+            anchor: "help.shortcuts.mac-limits",
+            tag: "platform"
+        ) {
+            ModifierRequired()
+        },
+
+        CardSpec(
+            section: .troubleshooting,
+            title: "Bluetooth mic redirect",
+            caption: "A connected BT headset may steal the mic route. Pick your device explicitly in Settings → General.",
+            anchor: "help.bt-redirect",
+            tag: "routing"
+        ) {
+            BTRedirect()
+        },
+
+        CardSpec(
+            section: .troubleshooting,
+            title: "Shortcut conflicts",
+            caption: "Jot warns when two of its hotkeys share a binding. It can't see collisions with other apps' global hotkeys.",
+            anchor: "help.shortcuts.conflicts",
+            tag: "internal"
+        ) {
+            ConflictRings()
+        },
+    ]
 }

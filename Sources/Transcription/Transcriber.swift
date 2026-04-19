@@ -102,6 +102,16 @@ public actor Transcriber {
     /// recorder can surface "transcribing" state without racing the actor.
     public var busy: Bool { isTranscribing }
 
+    /// True once Parakeet is loaded on the ANE and ready to infer.
+    /// Callers (RecorderController) check this before awaiting transcribe so
+    /// that a hung first-time `AsrModels.load` (see Apple Developer Forum
+    /// thread 770529 on the iOS 26.4 espresso/BNNS load-path hang) can't park
+    /// the recorder in `.transcribing` forever. Pre-warm at launch
+    /// (`AppDelegate.applicationDidFinishLaunching`) is what keeps this true
+    /// during steady-state; a hotkey pressed before pre-warm finishes falls
+    /// through to a fast user-visible "model still loading" error.
+    public var isReady: Bool { manager != nil }
+
     /// Decode a WAV file at `url` (assumed already in the canonical
     /// 16 kHz mono Float32 format Jot's `AudioCapture` writes) and run it
     /// through the same `transcribe(_:)` path as a live capture. Used by

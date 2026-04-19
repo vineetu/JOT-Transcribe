@@ -17,6 +17,18 @@ final class JotMenuBarController: NSObject {
     private let recorder: RecorderController
     private let delivery: DeliveryService
 
+    private static let menuBarIconName = NSImage.Name("JotMenuIcon")
+
+    private static func stateIconName(for state: RecorderController.State) -> NSImage.Name {
+        switch state {
+        case .idle: return NSImage.Name("JotMenuIcon-idle")
+        case .recording: return NSImage.Name("JotMenuIcon-recording")
+        case .transcribing: return NSImage.Name("JotMenuIcon-transcribing")
+        case .transforming: return NSImage.Name("JotMenuIcon-transforming")
+        case .error: return NSImage.Name("JotMenuIcon-error")
+        }
+    }
+
     // MARK: - UI
 
     private var statusItem: NSStatusItem?
@@ -47,6 +59,7 @@ final class JotMenuBarController: NSObject {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.image = Self.icon(for: recorder.state)
         item.button?.image?.isTemplate = true
+        item.button?.toolTip = Self.accessibilityDescription(for: recorder.state)
         item.menu = buildMenu()
         statusItem = item
 
@@ -132,6 +145,7 @@ final class JotMenuBarController: NSObject {
     private func applyState(_ state: RecorderController.State) {
         toggleItem?.title = Self.toggleTitle(for: state)
         toggleItem?.isEnabled = Self.toggleEnabled(for: state)
+        statusItem?.button?.toolTip = Self.accessibilityDescription(for: state)
 
         if let image = Self.icon(for: state) {
             image.isTemplate = true
@@ -157,6 +171,28 @@ final class JotMenuBarController: NSObject {
     }
 
     private static func icon(for state: RecorderController.State) -> NSImage? {
+        if let image = bundledMenuBarIcon(named: stateIconName(for: state)) {
+            return image
+        }
+        // Fall back to the state-agnostic icon if a specific state asset
+        // is missing, then to the SF Symbol set.
+        if let image = bundledMenuBarIcon(named: menuBarIconName) {
+            return image
+        }
+        return fallbackSymbol(for: state)
+    }
+
+    private static func bundledMenuBarIcon(named name: NSImage.Name) -> NSImage? {
+        guard let image = NSImage(named: name) else {
+            return nil
+        }
+
+        let copiedImage = (image.copy() as? NSImage) ?? image
+        copiedImage.isTemplate = true
+        return copiedImage
+    }
+
+    private static func fallbackSymbol(for state: RecorderController.State) -> NSImage? {
         let symbolName: String
         switch state {
         case .idle: symbolName = "mic.fill"

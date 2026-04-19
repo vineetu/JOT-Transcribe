@@ -29,24 +29,26 @@ struct HomePane: View {
     /// shortcut-rebinding listener installed at `onAppear`.
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            BasicsBanner()
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-
-            glance
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-
-            if !recentRows.isEmpty {
-                recentSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                BasicsBanner()
                     .padding(.horizontal, 20)
-            }
+                    .padding(.top, 12)
 
-            Spacer(minLength: 0)
+                glance
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+
+                if !recentRows.isEmpty {
+                    recentSection
+                        .padding(.horizontal, 20)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.bottom, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.bottom, 20)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Glance
@@ -133,6 +135,8 @@ struct HomePane: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .monospacedDigit()
+
+            CopyTranscriptButton(text: r.transcript, pointSize: 11)
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 10, weight: .semibold))

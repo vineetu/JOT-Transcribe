@@ -71,13 +71,18 @@ struct CustomizePromptDisclosure: View {
                 }
                 .padding(.top, 4)
             } label: {
-                HStack {
-                    Text(label)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                Button {
+                    withAnimation { isExpanded.toggle() }
+                } label: {
+                    HStack {
+                        Text(label)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
             }
             .layoutPriority(1)
 

@@ -162,10 +162,8 @@ struct RewritePane: View {
         defer { isTesting = false }
         let success = await LLMClient().healthCheck()
         if success {
-            config.llmVerified = true
             testStatus = .success
         } else {
-            config.llmVerified = false
             testStatus = .failure("Connection failed")
         }
     }

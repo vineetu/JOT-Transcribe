@@ -21,7 +21,7 @@ struct JotApp: App {
                 .environment(\.transcriber, appDelegate.recorder.transcriber)
                 .modelContainer(appDelegate.modelContainer)
         }
-        .windowResizability(.contentSize)
+        .windowResizability(.contentMinSize)
     }
 }
 

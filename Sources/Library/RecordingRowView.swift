@@ -26,6 +26,8 @@ struct RecordingRowView: View {
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
 
+            CopyTranscriptButton(text: recording.transcript)
+
             Menu {
                 Button("Re-transcribe", action: onRetranscribe)
                 Button("Reveal in Finder", action: onReveal)

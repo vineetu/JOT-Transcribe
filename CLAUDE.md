@@ -27,8 +27,8 @@ Single Xcode project, one executable target. Each layer is a Swift function boun
 | **Library** | SwiftData recordings list with search, date grouping, detail + playback, per-row actions |
 | **Settings** | Sidebar section (not a separate scene): General / Transcription / Sound / AI / Shortcuts. Per-field `info.circle` popovers with "Learn more →" deep-links into Help. Editable LLM prompts under `CustomizePromptDisclosure` |
 | **Help** | In-app prose walkthrough: Basics / Advanced / Troubleshooting. Accepts deep-links from Settings popovers |
-| **LLM** | Provider-neutral client for transcript cleanup (Transform) + voice-driven rewrite; OpenAI, Anthropic, Gemini, Vertex Gemini, Ollama |
-| **Rewrite** | Selection → synthetic ⌘C → record instruction → LLM rewrite → paste back |
+| **LLM** | Provider-neutral client for transcript cleanup (Transform) + voice-driven rewrite; OpenAI, Anthropic, Gemini, Vertex Gemini, Ollama. Rewrite uses a regex instruction classifier (`RewriteInstructionClassifier`) to route to one of four branch prompts — voice-preserving / structural / translation / code — composed on top of a small shared-invariants block |
+| **Rewrite** | Selection → synthetic ⌘C → record instruction → classify instruction → branch-specific LLM prompt → paste back |
 | **SetupWizard** | First-run window: Welcome → Permissions → Model → Microphone → Shortcuts → Test |
 | **Sounds** | Bundled chimes wrapped in a thin `AVAudioPlayer` helper |
 

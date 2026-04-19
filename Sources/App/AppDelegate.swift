@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
         log.info("Jot launched")
 
         if singleInstance.anotherInstanceIsRunning() {
@@ -74,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         _ = FirstRunState.shared
         PermissionsService.shared.refreshAll()
+
+        // Bug: custom input device pinning records from the wrong device.
+        // Force system default until fixed so previously-set UIDs don't
+        // affect the recording path.
+        UserDefaults.standard.set("", forKey: "jot.inputDeviceUID")
 
         // Phase 3 wire-up: recorder → delivery → hotkeys. `recorder` and
         // `delivery` are already eagerly instantiated as stored properties.
@@ -156,6 +162,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 WizardPresenter.present(reason: .firstRun)
             }
         }
+
+        // Pre-warm Parakeet out-of-band so the user's first recording doesn't
+        // pay the 4–6 s ANE specialization latency synchronously — and, more
+        // importantly, so the iOS 26.4-class MLModel load hang (Apple dev
+        // forum 770529) can't park a mid-session recorder in .transcribing.
+        // Best-effort: if the model isn't downloaded yet, or pre-warm fails,
+        // the recorder will surface a fast "model still loading" error on
+        // first press rather than silently hanging.
+        Task.detached(priority: .utility) { [recorder] in
+            try? await recorder.transcriber.ensureLoaded()
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -163,6 +180,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
         }
         return true
+    }
+
+    // Jot is a menu-bar agent. Closing the main window (red X or ⌘W) must
+    // leave the process alive so hotkeys, the menu-bar extra, and the
+    // status pill keep working — only ⌘Q quits. LSUIElement alone doesn't
+    // guarantee this; AppKit still auto-terminates an app after its last
+    // window closes unless the delegate explicitly says otherwise.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 
     @MainActor

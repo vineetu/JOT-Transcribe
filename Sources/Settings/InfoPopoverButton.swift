@@ -81,6 +81,7 @@ struct InfoPopoverButton: View {
                         .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.plain)
+                .focusable(false)
                 .padding(.top, 2)
             }
         }

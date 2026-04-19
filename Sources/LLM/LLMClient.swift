@@ -11,7 +11,7 @@ actor LLMClient {
                 apiKey: c.apiKey,
                 baseURL: c.effectiveBaseURL,
                 model: c.effectiveModel,
-                systemPrompt: c.rewritePrompt
+                sharedInvariants: c.rewritePrompt
             )
         }
 
@@ -19,15 +19,30 @@ actor LLMClient {
             guard !config.apiKey.isEmpty else { throw LLMError.noAPIKey }
         }
 
-        let systemPrompt = config.systemPrompt
+        // Route the instruction to a branch-specific tendency block.
+        // The classifier is a hint, not a gate — the user's instruction
+        // is embedded verbatim below and always wins over the tendency.
+        let branch = RewriteInstructionClassifier.classify(instruction)
+        let systemPrompt = """
+            \(config.sharedInvariants)
 
+            \(RewriteBranchPrompt.prompt(for: branch))
+            """
+
+        // XML-tag delimiters (OWASP 2025 prompt-injection hardening) and
+        // an explicit "instruction is the primary directive" framing so
+        // the LLM attends to the user's voice instruction over any
+        // residual bias from the tendency block.
         let userPrompt = """
-            Selected text:
-            ---
-            \(selectedText)
-            ---
+            <instruction>
+            \(instruction)
+            </instruction>
 
-            Instruction: \(instruction)
+            <selection>
+            \(selectedText)
+            </selection>
+
+            Follow the <instruction> above. Rewrite the <selection> and return only the rewritten text.
             """
 
         let request = try buildRequest(
@@ -36,7 +51,8 @@ actor LLMClient {
             apiKey: config.apiKey,
             model: config.model,
             systemPrompt: systemPrompt,
-            userPrompt: userPrompt
+            userPrompt: userPrompt,
+            temperature: 0.1
         )
 
         let data: Data
@@ -66,18 +82,21 @@ actor LLMClient {
         apiKey: String,
         model: String,
         systemPrompt: String,
-        userPrompt: String
+        userPrompt: String,
+        temperature: Double = 0.3
     ) throws -> URLRequest {
         switch provider {
         case .openai, .ollama:
             return try buildOpenAIRequest(
                 baseURL: baseURL, apiKey: apiKey, model: model,
-                systemPrompt: systemPrompt, userPrompt: userPrompt
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                temperature: temperature
             )
         case .anthropic:
             return try buildAnthropicRequest(
                 baseURL: baseURL, apiKey: apiKey, model: model,
-                systemPrompt: systemPrompt, userPrompt: userPrompt
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                temperature: temperature
             )
         case .gemini, .vertexGemini:
             // Vertex Gemini accepts the same contents/parts body shape and
@@ -85,14 +104,16 @@ actor LLMClient {
             // to the same builder.
             return try buildGeminiRequest(
                 baseURL: baseURL, apiKey: apiKey, model: model,
-                systemPrompt: systemPrompt, userPrompt: userPrompt
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                temperature: temperature
             )
         }
     }
 
     private func buildOpenAIRequest(
         baseURL: String, apiKey: String, model: String,
-        systemPrompt: String, userPrompt: String
+        systemPrompt: String, userPrompt: String,
+        temperature: Double
     ) throws -> URLRequest {
         guard let url = URL(string: "\(baseURL)/chat/completions") else {
             throw LLMError.invalidURL
@@ -108,7 +129,7 @@ actor LLMClient {
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userPrompt],
             ],
-            "temperature": 0.3,
+            "temperature": temperature,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
@@ -116,7 +137,8 @@ actor LLMClient {
 
     private func buildAnthropicRequest(
         baseURL: String, apiKey: String, model: String,
-        systemPrompt: String, userPrompt: String
+        systemPrompt: String, userPrompt: String,
+        temperature: Double
     ) throws -> URLRequest {
         guard let url = URL(string: "\(baseURL)/messages") else {
             throw LLMError.invalidURL
@@ -134,7 +156,7 @@ actor LLMClient {
             "messages": [
                 ["role": "user", "content": userPrompt],
             ],
-            "temperature": 0.3,
+            "temperature": temperature,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
@@ -142,7 +164,8 @@ actor LLMClient {
 
     private func buildGeminiRequest(
         baseURL: String, apiKey: String, model: String,
-        systemPrompt: String, userPrompt: String
+        systemPrompt: String, userPrompt: String,
+        temperature: Double
     ) throws -> URLRequest {
         guard let url = URL(string: "\(baseURL)/models/\(model):generateContent?key=\(apiKey)") else {
             throw LLMError.invalidURL
@@ -156,7 +179,7 @@ actor LLMClient {
             "contents": [
                 ["parts": [["text": combinedPrompt]]]
             ],
-            "generationConfig": ["temperature": 0.3],
+            "generationConfig": ["temperature": temperature],
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request

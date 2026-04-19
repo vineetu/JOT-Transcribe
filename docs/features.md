@@ -22,7 +22,7 @@ User-facing features in the shipping build. This is the product surface — not 
 
 ## Transcript Cleanup (optional)
 
-Off by default. When enabled and a verified LLM endpoint is configured, Jot runs a lightweight "cleanup" pass on every transcript before delivery.
+Off by default. When enabled and an LLM provider is configured, Jot runs a lightweight "cleanup" pass on every transcript before delivery.
 
 - **Remove filler words** (um, uh, like, you know) and false starts.
 - **Fix grammar, punctuation, and capitalization.**
@@ -38,11 +38,12 @@ Off by default. When enabled and a verified LLM endpoint is configured, Jot runs
 
 Voice-driven rewriting of selected text, triggered by a global shortcut.
 
-- **Select text anywhere → press the shortcut → speak an instruction** ("make this more formal", "fix the grammar", "translate to Spanish"). The rewritten text replaces the selection.
+- **Select text anywhere → press the shortcut → speak an instruction** ("make this more formal", "fix the grammar", "translate to Spanish", "convert to bulleted list"). The rewritten text replaces the selection.
+- **Intent-classified prompting** — a deterministic regex classifier routes each instruction into one of four branches (voice-preserving / structural / translation / code) and selects a specialized tendency for the LLM. The user's spoken instruction is always the primary signal; the branch just picks a minimal default tendency. Net effect: "make this a bulleted list" or "translate to Japanese" actually produce the requested shape, not a length-matched paraphrase.
 - **Same provider options** — OpenAI, Anthropic, Gemini, Vertex Gemini, or Ollama.
 - **Cancellable** — `Esc` cancels the capture, transcription, or rewrite phase without committing.
 - **Unbound by default** — the user assigns a shortcut in Settings → AI.
-- **Editable prompt** — like Transform, the default rewrite prompt is revealed under a "Customize prompt" chevron with a "Reset to default" escape hatch.
+- **Editable shared invariants** — the shared-invariants block (selection-is-text-to-rewrite, return-only-rewrite, don't-refuse-on-quality) is revealed under a "Customize prompt" chevron in Settings → AI with a "Reset to default" escape hatch. The per-branch tendencies are compile-time constants and not user-editable.
 
 ## Output — Paste & Clipboard
 
@@ -116,7 +117,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Auto-paste transcription
 - Auto-press Enter after paste
 - Keep transcription in clipboard
-- Clean up transcript with AI (disabled until a provider is configured and verified; offers an inline "Set up AI →" jump to the AI pane when disabled)
+- Clean up transcript with AI (hidden until an LLM provider is configured in Settings → AI; reach the AI pane via the sidebar to set one up)
 - "Customize prompt" disclosure for the transcript-cleanup prompt, with "Reset to default"
 
 ### AI
@@ -125,7 +126,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - API key (hidden for Ollama — local, no key required)
 - Rewrite Selection shortcut
 - Test Connection button — always enabled, prominent accent-tinted; shows an inline spinner during the call and a success chip afterward. Must succeed before the cleanup toggle unlocks.
-- "Customize prompt" disclosure for the AI-rewrite prompt, with "Reset to default"
+- "Customize prompt" disclosure for the AI-rewrite shared invariants, with "Reset to default" (per-branch tendencies are not editable)
 
 ### Sound
 - Recording start / stop / cancel chimes

@@ -6,9 +6,13 @@ import SwiftUI
 /// Shape:
 ///   • `NavigationSplitView(sidebar:detail:)`
 ///   • Sidebar: `AppSidebar` bound to `selection`.
-///   • Detail: the pane for the current selection, wrapped in
-///     `HeightPreservingContainer` so the window height tracks the
-///     tallest pane ever shown (design doc §I2, §E).
+///   • Detail: the pane for the current selection, rendered directly.
+///     Each pane owns its own scroll behavior — `Form.grouped` for
+///     settings panes, `List` for Library, `ScrollView` for Home and
+///     Help — so the window can be freely resized by the user and the
+///     content scrolls within when the window is smaller than its
+///     natural size (`.windowResizability(.contentMinSize)` in
+///     `JotApp.swift`).
 ///
 /// Deep children (inline "Set up AI →" links, popover "Learn more →"
 /// footers) change the selection by calling the
@@ -37,9 +41,7 @@ struct JotAppWindow: View {
         NavigationSplitView {
             AppSidebar(selection: $selection)
         } detail: {
-            HeightPreservingContainer {
-                detail
-            }
+            detail
         }
         .environment(\.setSidebarSelection) { newValue in
             selection = newValue
