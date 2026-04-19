@@ -108,11 +108,29 @@ final class RecorderController: ObservableObject {
     private func scheduleAutoRecoveryIfNeeded() {
         autoRecoveryTask?.cancel()
         autoRecoveryTask = nil
-        guard case .error = state else { return }
-        autoRecoveryTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(2.5))
-            guard let self, case .error = self.state else { return }
-            self.state = .idle
+        switch state {
+        case .error:
+            autoRecoveryTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(2.5))
+                guard let self, case .error = self.state else { return }
+                self.state = .idle
+            }
+        case .transcribing:
+            // Belt-and-suspenders watchdog for inference-time pathology that
+            // slips past pre-warm. Parakeet on M-series hits ~110× realtime
+            // (macparakeet.com benchmarks), so a 10-minute clip finishes in
+            // ~5–6 s. A 30 s ceiling is very generous and only trips on a
+            // genuine stall (ANE in a bad state, memory-pressure eviction).
+            // Without this, Apple dev forum 770529-class hangs would park
+            // the recorder forever with Esc disabled.
+            autoRecoveryTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(30))
+                guard let self, case .transcribing = self.state else { return }
+                self.log.warning("Transcribing watchdog fired after 30 s — transitioning to .error")
+                self.state = .error("Transcription is taking too long — try again.")
+            }
+        default:
+            break
         }
     }
 
@@ -143,13 +161,25 @@ final class RecorderController: ObservableObject {
             return
         }
 
+        // Fail fast if the pre-warm at launch (AppDelegate) hasn't finished
+        // loading Parakeet yet. We deliberately do NOT inline-await
+        // `ensureLoaded()` here: the iOS 26.4 espresso/BNNS hang (Apple dev
+        // forum 770529) can make that await never return, and a Swift
+        // timeout can't unstick a native C++ stall. Better UX: surface a
+        // fast error, let auto-recovery return to .idle, user retries in
+        // a second after pre-warm finishes.
+        let ready = await transcriber.isReady
+        guard ready else {
+            state = .error("Transcription model is still loading — try again in a moment.")
+            return
+        }
+
         do {
-            try await transcriber.ensureLoaded()
             let result = try await transcriber.transcribe(recording.samples)
             let rawText = result.text
 
             let llmConfig = LLMConfiguration.shared
-            if llmConfig.transformEnabled && llmConfig.llmVerified {
+            if llmConfig.transformEnabled && llmConfig.isMinimallyConfigured {
                 pendingTransform = (recording: recording, result: result, rawText: rawText)
                 state = .transforming
                 let client = LLMClient()

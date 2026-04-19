@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import CoreAudio
 import Foundation
 import os.log
 
@@ -71,6 +72,29 @@ public actor AudioCapture {
         let url = recordingsDirectory.appendingPathComponent("\(UUID().uuidString).wav")
 
         let engine = AVAudioEngine()
+
+        // Pin the input to the user's chosen device BEFORE reading the
+        // hardware format and installing the tap. On macOS, AVAudioEngine
+        // otherwise follows the system default — so a user who selected
+        // "USB mic" in Settings would silently record from the built-in
+        // mic whenever macOS rerouted. The stored UID comes from
+        // `jot.inputDeviceUID` (see Settings → General). Empty string
+        // means "system default" — skip pinning.
+        let selectedUID = UserDefaults.standard.string(forKey: "jot.inputDeviceUID") ?? ""
+        if !selectedUID.isEmpty {
+            if let deviceID = Self.audioDeviceID(forUID: selectedUID) {
+                do {
+                    try engine.inputNode.auAudioUnit.setDeviceID(AUAudioObjectID(deviceID))
+                    engine.reset()
+                    log.info("Pinned input to device UID=\(selectedUID, privacy: .public) id=\(deviceID)")
+                } catch {
+                    log.error("setDeviceID failed for UID=\(selectedUID, privacy: .public): \(error.localizedDescription). Falling back to system default.")
+                }
+            } else {
+                log.error("No CoreAudio device found for UID=\(selectedUID, privacy: .public). Falling back to system default.")
+            }
+        }
+
         let input = engine.inputNode
         let hardwareFormat = input.outputFormat(forBus: 0)
 
@@ -245,5 +269,51 @@ public actor AudioCapture {
 
     private static func makeConverter(from input: AVAudioFormat) -> AVAudioConverter? {
         AVAudioConverter(from: input, to: AudioFormat.target)
+    }
+
+    /// Resolves a CoreAudio device UID string (e.g. "AppleHDAEngineInput:…"
+    /// or "BuiltInMicrophoneDevice") to the current `AudioDeviceID`. The
+    /// ID changes across reboots and reconnects, so we must look it up
+    /// every time rather than caching. Returns nil if the device is not
+    /// currently present (e.g. BT headset disconnected) — caller falls
+    /// back to the system default.
+    private static func audioDeviceID(forUID uid: String) -> AudioDeviceID? {
+        var devicesAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        var status = AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject),
+            &devicesAddress, 0, nil, &dataSize
+        )
+        guard status == noErr, dataSize > 0 else { return nil }
+
+        let count = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: count)
+        status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &devicesAddress, 0, nil, &dataSize, &deviceIDs
+        )
+        guard status == noErr else { return nil }
+
+        var uidAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceUID,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        for deviceID in deviceIDs {
+            var uidSize = UInt32(MemoryLayout<CFString?>.size)
+            var deviceUID: CFString? = nil
+            let uidStatus = AudioObjectGetPropertyData(
+                deviceID, &uidAddress, 0, nil, &uidSize, &deviceUID
+            )
+            if uidStatus == noErr, let resolved = deviceUID as String?, resolved == uid {
+                return deviceID
+            }
+        }
+        return nil
     }
 }

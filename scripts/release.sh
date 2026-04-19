@@ -111,8 +111,17 @@ snapshot_and_replace_plist_string() {
     else
         RESTORE_CMDS+=("/usr/libexec/PlistBuddy -c 'Delete :${key}' '${PLIST}' 2>/dev/null || true")
     fi
-    # plutil -replace inserts the key if missing; -type string is explicit.
-    plutil -replace "${key}" -string "${new_value}" "${PLIST}"
+    # Use PlistBuddy so dotted keys (e.g. `JotDefaultEndpoint.openai`) are
+    # treated as literal top-level keys. `plutil -replace` on macOS 26 parses
+    # the key as a KVC keypath and fails with `Key path not found` on any
+    # dotted key — see Apple `plutil(1)` manpage on macOS 26.4. PlistBuddy
+    # uses `:key` path syntax with literal key names, matching the snapshot
+    # read above.
+    if /usr/libexec/PlistBuddy -c "Print :${key}" "${PLIST}" >/dev/null 2>&1; then
+        /usr/libexec/PlistBuddy -c "Set :${key} ${new_value}" "${PLIST}"
+    else
+        /usr/libexec/PlistBuddy -c "Add :${key} string ${new_value}" "${PLIST}"
+    fi
 }
 
 restore_plist() {

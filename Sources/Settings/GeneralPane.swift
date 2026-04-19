@@ -17,13 +17,16 @@ struct GeneralPane: View {
     var body: some View {
         Form {
             Section {
-                Picker("Input device", selection: $inputDeviceUID) {
-                    Text("System default").tag("")
-                    ForEach(deviceWatcher.devices, id: \.uniqueID) { device in
-                        Text(device.localizedName).tag(device.uniqueID)
-                    }
+                HStack(spacing: 8) {
+                    Text("Input device")
+                    Spacer()
+                    Text("System default")
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .help("Custom input device selection is temporarily disabled — known bug. Jot follows your macOS Sound settings default for now; a fix is coming.")
                 }
-                Text("Used for all recordings. System default follows macOS Sound settings.")
+                Text("Custom device selection is temporarily disabled while we fix a bug — Jot follows your macOS Sound settings default for now.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -87,7 +90,12 @@ struct GeneralPane: View {
         } message: {
             Text("This revokes Microphone, Input Monitoring, and Accessibility for Jot, then relaunches the app. You will be prompted again.")
         }
-        .onAppear { launchAtLogin = SMAppService.mainApp.status == .enabled }
+        .onAppear {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            // Bug: custom device pinning records from the wrong device.
+            // Force system default until fixed.
+            inputDeviceUID = ""
+        }
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

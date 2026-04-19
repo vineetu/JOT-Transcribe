@@ -18,20 +18,21 @@ struct MicrophoneStep: View {
                     .foregroundStyle(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Picker("Input device", selection: $inputDeviceUID) {
-                    Text("System default").tag("")
-                    ForEach(deviceList.devices, id: \.uniqueID) { device in
-                        Text(device.localizedName).tag(device.uniqueID)
-                    }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text("Input device:")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("System default")
+                        .font(.system(size: 12, weight: .medium))
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 11))
+                        .help("Custom input device selection is temporarily disabled — known bug. Jot follows your macOS Sound settings default for now; a fix is coming.")
                 }
-                .labelsHidden()
-
-                HStack {
-                    Button("Reset to System Default") { inputDeviceUID = "" }
-                        .controlSize(.small)
-                    Spacer()
-                }
+                Text("Custom device selection is temporarily disabled while we fix a bug — Jot follows your macOS Sound settings default for now.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -46,6 +47,9 @@ struct MicrophoneStep: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
+            // Bug: custom device pinning records from the wrong device.
+            // Force system default until fixed.
+            inputDeviceUID = ""
             deviceList.refresh()
             meter.start()
             coordinator.setChrome(WizardStepChrome(

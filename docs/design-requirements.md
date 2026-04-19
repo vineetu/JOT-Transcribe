@@ -32,11 +32,11 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 - **Copy last transcription.** A quick command to copy the most recent transcription — available from the main UI, the menu bar, and a dedicated shortcut.
 
 ### Optional LLM post-processing
-- **Transcript cleanup (Transform).** Off by default. When enabled and a verified LLM endpoint is configured, Jot runs a lightweight cleanup pass (remove filler words and false starts, fix grammar/punctuation) between transcription and delivery. Must preserve the speaker's meaning, tone, and vocabulary; must fall back to the raw transcript on any failure. Both raw and cleaned transcripts are persisted so the user can review what changed.
-- **Voice-driven rewrite (AI Rewrite).** Select text anywhere, trigger a dedicated shortcut, speak an instruction, and have an LLM rewrite the selection in place. Opt-in; unbound by default.
+- **Transcript cleanup (Transform).** Off by default. When enabled and an LLM provider is configured, Jot runs a lightweight cleanup pass (remove filler words and false starts, fix grammar/punctuation) between transcription and delivery. Must preserve the speaker's meaning, tone, and vocabulary; must fall back to the raw transcript on any failure. Both raw and cleaned transcripts are persisted so the user can review what changed.
+- **Voice-driven rewrite (AI Rewrite).** Select text anywhere, trigger a dedicated shortcut, speak an instruction, and have an LLM rewrite the selection in place. Opt-in; unbound by default. The spoken instruction is the primary signal: the system must classify the intent (voice-preserving / structural / translation / code) and select a specialized tendency block, but the user's instruction always takes precedence over any branch default. Structural transforms ("convert to bullets", "numbered steps") and translation must produce the requested shape, not a length-matched paraphrase.
 - **Provider neutrality.** OpenAI-compatible (GPT / Ollama / any self-hosted endpoint exposing `/chat/completions`), Anthropic, and Gemini (including Vertex-style endpoints) are all supported. Ollama is a first-class option so privacy-sensitive users can keep the LLM path local too.
-- **Verified-before-enabled.** The user must press a "Test Connection" button and succeed before the cleanup toggle unlocks. Changing the provider, base URL, or key resets verification.
-- **Editable prompts.** Both the cleanup and rewrite prompts ship with a sensible default but are user-editable for power users who want to tune behavior, with a "reset to default" escape hatch.
+- **Configured-unlocks-the-toggle.** Cleanup is gated on whether a provider is configured at all — provider == Ollama, or a non-empty API key, base URL, or model. Test Connection is a manual diagnostic the user can run to confirm reachability; it does not unlock the toggle, and runtime failures fall back to the raw transcript.
+- **Editable prompts.** The cleanup (Transform) prompt is fully user-editable. For Rewrite, the user-editable surface is the shared-invariants block only — the per-branch tendency blocks that the classifier selects from are compile-time constants and not surfaced for editing, to keep the classifier/tendency contract intact. Both paths ship with "reset to default."
 
 ### Recordings library
 - **Browse history.** A chronologically grouped list of every recording with its transcript.
@@ -59,7 +59,7 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 
 ### Settings
 - **Input device** (microphone selection).
-- **Transcription defaults** — auto-paste, auto-Enter, clipboard policy, optional transcript-cleanup toggle (gated on a verified LLM provider).
+- **Transcription defaults** — auto-paste, auto-Enter, clipboard policy, optional transcript-cleanup toggle (gated on a configured LLM provider).
 - **AI** — provider / base URL / model / API key / shortcut / test-connection / editable prompts.
 - **Sounds** — per-event audio feedback (start, stop, cancel, success, error).
 - **Shortcuts** — editable bindings for every global command, surfaced with `KeyboardShortcuts.Recorder`. Must communicate the platform constraint that global hotkeys require a modifier.
@@ -120,7 +120,7 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 
 These are not requirements and should not be reintroduced without a new intent brief:
 
-- Cloud transcription providers of any kind. (Transcription itself stays on-device; only the optional cleanup and rewrite LLM paths can reach out, and only when the user has explicitly configured and verified a provider.)
+- Cloud transcription providers of any kind. (Transcription itself stays on-device; only the optional cleanup and rewrite LLM paths can reach out, and only when the user has explicitly configured a provider.)
 - Voice-activity-detection / continuous listening modes.
 - Transcription from uploaded audio files.
 - Telemetry, usage metrics, or crash reporting.

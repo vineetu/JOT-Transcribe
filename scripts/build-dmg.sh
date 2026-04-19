@@ -40,8 +40,8 @@ DMG_WINDOW_W=640
 DMG_WINDOW_H=400
 DMG_ICON_SIZE=128
 DMG_ICON_Y=210         # vertical center of icons (matches arrow in bg)
-DMG_APP_X=160          # Jot.app icon center x
-DMG_APPLINK_X=480      # Applications symlink icon center x
+DMG_APP_X=180          # Jot.app icon center x — inner edge at 244, matches bg arrow start
+DMG_APPLINK_X=460      # Applications symlink icon center x — inner edge at 396, matches bg arrow end
 
 cd "${REPO_ROOT}"
 

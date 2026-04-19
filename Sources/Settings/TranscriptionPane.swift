@@ -93,29 +93,18 @@ struct TranscriptionPane: View {
                 }
             }
 
-            Section {
-                HStack {
-                    Toggle("Clean up transcript with AI", isOn: $llmConfig.transformEnabled)
-                        .disabled(!llmConfig.llmVerified)
-                        .help("Sends transcript text to your LLM provider to remove filler words and fix grammar. Configure a provider in AI settings.")
-                    Spacer()
-                    InfoPopoverButton(
-                        title: "Clean up transcript with AI",
-                        body: "Sends the raw transcript to your configured LLM for light cleanup — filler removal, grammar, list detection — while preserving your voice. When on: every transcript is transformed before delivery.",
-                        helpAnchor: "help.transform.overview"
-                    )
-                }
-                if !llmConfig.llmVerified {
-                    Text("Set up an LLM in AI settings first.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Button("Set up AI →") {
-                        setSidebarSelection(.settings(.ai))
+            if llmConfig.isMinimallyConfigured {
+                Section {
+                    HStack {
+                        Toggle("Clean up transcript with AI", isOn: $llmConfig.transformEnabled)
+                            .help("Sends transcript text to your LLM provider to remove filler words and fix grammar. Configure a provider in AI settings.")
+                        Spacer()
+                        InfoPopoverButton(
+                            title: "Clean up transcript with AI",
+                            body: "Sends the raw transcript to your configured LLM for light cleanup — filler removal, grammar, list detection — while preserving your voice. When on: every transcript is transformed before delivery.",
+                            helpAnchor: "help.transform.overview"
+                        )
                     }
-                    .buttonStyle(.link)
-                    .font(.system(size: 11))
-                }
-                if llmConfig.llmVerified {
                     CustomizePromptDisclosure(
                         label: "Customize prompt",
                         text: $llmConfig.transformPrompt,
