@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jot — On-Device Dictation for Mac</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --accent: #1d4ed8;
+  --text: #111;
+  --text-secondary: #555;
+  --bg: #fff;
+  --bg-card: #f9f9f9;
+  --border: #e5e5e5;
+  --serif: 'Source Serif 4', Georgia, serif;
+  --sans: 'DM Sans', -apple-system, sans-serif;
+}
+
+html { scroll-behavior: smooth; font-size: 16px; }
+
+body {
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* Nav */
+nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+
+nav .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+}
+
+nav .logo {
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+nav .nav-link {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+nav .nav-link:hover { color: var(--text); }
+
+nav .nav-links { display: flex; gap: 28px; align-items: center; }
+
+/* Hero */
+.hero {
+  padding: 160px 0 100px;
+  text-align: center;
+}
+
+.hero h1 {
+  font-family: var(--serif);
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 24px;
+}
+
+.hero p {
+  font-size: 1.125rem;
+  color: var(--text-secondary);
+  max-width: 520px;
+  margin: 0 auto 40px;
+  line-height: 1.7;
+}
+
+.hero .cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--text);
+  color: #fff;
+  padding: 14px 32px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  transition: opacity 0.2s;
+}
+
+.hero .cta:hover { opacity: 0.85; }
+
+.hero .cta-note {
+  display: block;
+  margin-top: 16px;
+  font-size: 0.8125rem;
+  color: #999;
+}
+
+/* Sections */
+section { padding: 80px 0; }
+
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.section-heading {
+  font-family: var(--serif);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin-bottom: 16px;
+}
+
+.section-sub {
+  font-size: 1.0625rem;
+  color: var(--text-secondary);
+  max-width: 560px;
+  line-height: 1.7;
+}
+
+/* Features grid */
+.features { border-top: 1px solid var(--border); }
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--border);
+  margin-top: 56px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.feature-card {
+  background: var(--bg);
+  padding: 40px 36px;
+}
+
+.feature-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
+  font-size: 1.125rem;
+}
+
+.feature-card h3 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+
+.feature-card p {
+  font-size: 0.9375rem;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+/* How it works */
+.how-it-works { border-top: 1px solid var(--border); }
+
+.steps {
+  display: flex;
+  gap: 48px;
+  margin-top: 56px;
+}
+
+.step {
+  flex: 1;
+  text-align: center;
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.step h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.step p {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* Free section */
+.free-section {
+  border-top: 1px solid var(--border);
+  text-align: center;
+}
+
+.free-section .section-sub {
+  margin: 0 auto;
+}
+
+/* Download */
+.download {
+  text-align: center;
+  padding: 80px 0 100px;
+  border-top: 1px solid var(--border);
+}
+
+.download .cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--text);
+  color: #fff;
+  padding: 16px 40px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 1rem;
+  transition: opacity 0.2s;
+  margin-top: 32px;
+}
+
+.download .cta:hover { opacity: 0.85; }
+
+.download .cta-note {
+  display: block;
+  margin-top: 14px;
+  font-size: 0.8125rem;
+  color: #999;
+}
+
+/* Footer */
+footer {
+  border-top: 1px solid var(--border);
+  padding: 32px 0;
+}
+
+footer .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+footer p {
+  font-size: 0.8125rem;
+  color: #999;
+}
+
+footer a {
+  color: #999;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+footer a:hover { color: var(--text); }
+
+footer .footer-links {
+  display: flex;
+  gap: 20px;
+  font-size: 0.8125rem;
+}
+
+/* Scroll reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Responsive */
+@media (max-width: 680px) {
+  .features-grid { grid-template-columns: 1fr; }
+  .steps { flex-direction: column; gap: 32px; }
+  .hero { padding: 130px 0 72px; }
+  section { padding: 60px 0; }
+  nav .nav-links { gap: 18px; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <a href="/" class="logo">Jot</a>
+    <div class="nav-links">
+      <a href="#features" class="nav-link">Features</a>
+      <a href="#download" class="nav-link">Download</a>
+      <a href="https://github.com/vineetu/JOT-Transcribe" class="nav-link">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container">
+    <h1>Speak, and it's written.</h1>
+    <p>Native macOS dictation. Press a hotkey, speak, and text appears at your cursor. Entirely on-device. No cloud. No accounts. No telemetry.</p>
+    <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" class="cta">Download Jot</a>
+    <span class="cta-note">Apple Silicon &middot; macOS 14+  &middot; Free &amp; open source</span>
+  </div>
+</header>
+
+<section class="how-it-works" id="how">
+  <div class="container">
+    <div class="section-label reveal">How it works</div>
+    <h2 class="section-heading reveal">Three seconds from thought to text.</h2>
+    <div class="steps">
+      <div class="step reveal">
+        <div class="step-number">1</div>
+        <h3>Press your hotkey</h3>
+        <p>A global shortcut starts recording from any app. Push-to-talk is available too.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-number">2</div>
+        <h3>Speak naturally</h3>
+        <p>No length limits. A floating indicator shows you're recording, then transcribing.</p>
+      </div>
+      <div class="step reveal">
+        <div class="step-number">3</div>
+        <h3>Text appears at your cursor</h3>
+        <p>The transcript is pasted directly into whatever app you're using. That's it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="features" id="features">
+  <div class="container">
+    <div class="section-label reveal">Capabilities</div>
+    <h2 class="section-heading reveal">Everything stays on your Mac.</h2>
+    <p class="section-sub reveal">No audio leaves the device. No cloud processing. Jot runs Parakeet on the Apple Neural Engine for fast, private transcription.</p>
+    <div class="features-grid">
+      <div class="feature-card reveal">
+        <div class="feature-icon">&nbsp;&#x1F512;</div>
+        <h3>On-device privacy</h3>
+        <p>Audio is transcribed locally using the Neural Engine. Nothing crosses the network. Run Little Snitch &mdash; you'll see silence.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&nbsp;&#x2328;</div>
+        <h3>Works everywhere</h3>
+        <p>The global hotkey works in any application. Toggle recording or hold to push-to-talk. Cancel anytime with Escape.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&nbsp;&#x270F;</div>
+        <h3>AI Rewrite</h3>
+        <p>Select text, speak an instruction, and an LLM rewrites it in place. OpenAI, Anthropic, Gemini, Vertex, or fully local via Ollama. Prompts are editable for power users.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&nbsp;&#x2728;</div>
+        <h3>Transcript cleanup</h3>
+        <p>Optional LLM pass strips "um"s and false starts, fixes grammar, and keeps your tone intact. Runs locally with Ollama if you prefer. Customize the prompt or reset to the shipped default.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&nbsp;&#x1F4DA;</div>
+        <h3>Recordings library</h3>
+        <p>Every transcription is saved with its audio. Search your history, replay recordings, rename entries, or re-transcribe with a different model.</p>
+      </div>
+      <div class="feature-card reveal">
+        <div class="feature-icon">&nbsp;&#x1F9ED;</div>
+        <h3>One window, built-in help</h3>
+        <p>Home, Library, Settings, and a prose Help tab live in a single sidebar window. Every Settings field carries an info popover with a "Learn more &rarr;" deep-link into Help.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="free-section" id="free">
+  <div class="container">
+    <div class="section-label reveal">Free forever</div>
+    <h2 class="section-heading reveal">Dictation should be free.</h2>
+    <p class="section-sub reveal">Your Mac already has the hardware to transcribe speech. Jot simply puts it to use. No subscription, no usage limits, no catch. Open source under the MIT license.</p>
+  </div>
+</section>
+
+<section class="download" id="download">
+  <div class="container">
+    <div class="section-label reveal">Get started</div>
+    <h2 class="section-heading reveal">Download Jot</h2>
+    <p class="section-sub reveal" style="margin: 0 auto;">Install in under a minute. The setup wizard walks you through permissions, model download, and a test dictation.</p>
+    <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" class="cta reveal">Download for Mac</a>
+    <span class="cta-note reveal">Requires Apple Silicon and macOS Sonoma 14.0 or later.</span>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <p>Made by <a href="https://github.com/vineetu">Vineet Sriram</a></p>
+    <div class="footer-links">
+      <span>MIT License</span>
+      <a href="https://github.com/vineetu/JOT-Transcribe">GitHub</a>
+      <a href="https://ko-fi.com/vineetsriram">Buy me a coffee ☕</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var els = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) {
+    els.forEach(function (el) { el.classList.add('visible'); });
+    return;
+  }
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15 });
+  els.forEach(function (el) { observer.observe(el); });
+});
+
+</script>
+
+</body>
+</html>
