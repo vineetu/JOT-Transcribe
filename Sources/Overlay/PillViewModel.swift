@@ -165,14 +165,12 @@ final class PillViewModel: ObservableObject {
         stopTick()
         switch event {
         case .pasted(let text):
-            transition(to: .success(preview: Self.previewText(text)))
-            scheduleDismiss(after: Self.successLinger)
+            transitionToSuccessIfNotError(text)
         case .clipboardOnly(let text, _):
             // Still a successful transcript from the user's point of view —
             // it's on their clipboard. Any "why didn't it paste" nuance
             // lives in the menu bar / toast, not in the pill.
-            transition(to: .success(preview: Self.previewText(text)))
-            scheduleDismiss(after: Self.successLinger)
+            transitionToSuccessIfNotError(text)
         case .failed(let reason):
             transition(to: .error(message: reason))
             scheduleDismiss(after: Self.errorLinger)
@@ -230,6 +228,14 @@ final class PillViewModel: ObservableObject {
         if trimmed.count <= 40 { return trimmed }
         let idx = trimmed.index(trimmed.startIndex, offsetBy: 40)
         return String(trimmed[..<idx]) + "…"
+    }
+
+    private func transitionToSuccessIfNotError(_ text: String) {
+        guard case .error = state else {
+            transition(to: .success(preview: Self.previewText(text)))
+            scheduleDismiss(after: Self.successLinger)
+            return
+        }
     }
 
     /// Format a duration as `mm:ss` — caps at `99:59`, which is fine because

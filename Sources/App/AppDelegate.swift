@@ -61,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         log.info("Jot launched")
+        ResetActions.processPendingHardReset()
 
         if singleInstance.anotherInstanceIsRunning() {
             singleInstance.activateExistingInstance()

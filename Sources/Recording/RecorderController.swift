@@ -70,6 +70,7 @@ final class RecorderController: ObservableObject {
     /// If idle, `start`. Errors surface on `state = .error(...)` rather than
     /// throwing — the caller is the UI, not a retry loop.
     func toggle() async {
+        log.info("toggle() called; current state=\(String(describing: self.state))")
         switch state {
         case .idle, .error:
             await startRecording()
@@ -221,6 +222,7 @@ final class RecorderController: ObservableObject {
                     } catch {
                         guard !Task.isCancelled else { return }
                         self.log.warning("Transform failed, falling back to raw: \(String(describing: error))")
+                        Task { await ErrorLog.shared.error(component: "Recorder", message: "Transform failed, pasted raw", context: ["error": "\((error as NSError).domain) code=\((error as NSError).code)"]) }
                         self.lastTransformedTranscript = nil
                         self.lastTranscript = rawText
                         self.lastAudioRecording = recording
@@ -243,6 +245,7 @@ final class RecorderController: ObservableObject {
             state = .error("Another transcription is already running.")
         } catch {
             log.error("Transcription failed: \(String(describing: error))")
+            Task { await ErrorLog.shared.error(component: "Recorder", message: "Transcription failed", context: ["error": "\((error as NSError).domain) code=\((error as NSError).code)"]) }
             state = .error("Transcription failed: \(error.localizedDescription)")
         }
     }

@@ -36,6 +36,11 @@ struct ArticulateIntroStep: View {
 
             hotkeysList
 
+            Text("Jot is still in development. If you hit issues, you can share diagnostic logs from the About tab — nothing is sent to us unless you copy and send them yourself.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             Text("Same AI provider as Cleanup — change in Settings → AI. Rebind either hotkey in Settings → Shortcuts.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)

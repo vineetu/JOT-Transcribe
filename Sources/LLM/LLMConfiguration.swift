@@ -59,4 +59,9 @@ final class LLMConfiguration: ObservableObject {
 
     var effectiveBaseURL: String { baseURL.isEmpty ? provider.defaultBaseURL : baseURL }
     var effectiveModel: String { model.isEmpty ? provider.defaultModel : model }
+
+    static func clearAPIKey() {
+        KeychainHelper.delete(key: Self.keychainKey)
+        shared.objectWillChange.send()
+    }
 }

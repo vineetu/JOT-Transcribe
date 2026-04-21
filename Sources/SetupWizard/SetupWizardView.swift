@@ -75,6 +75,7 @@ struct SetupWizardView: View {
         case .microphone: MicrophoneStep()
         case .shortcuts: ShortcutsStep()
         case .test: TestStep()
+        case .done: DoneStep()
         case .cleanup: CleanupStep()
         case .articulateIntro: ArticulateIntroStep()
         }

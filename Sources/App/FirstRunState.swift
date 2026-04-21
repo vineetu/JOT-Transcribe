@@ -12,4 +12,9 @@ final class FirstRunState: ObservableObject {
     func markComplete() {
         setupComplete = true
     }
+
+    func reset() {
+        UserDefaults.standard.removeObject(forKey: "jot.setupComplete")
+        objectWillChange.send()
+    }
 }

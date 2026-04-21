@@ -516,6 +516,23 @@ extension HelpPane {
 
         CardSpec(
             section: .advanced,
+            title: "Custom vocabulary",
+            caption: "A short list of words Jot should prefer — product names, company names, technical jargon. Add them in Settings → Vocabulary; Jot scans each recording for matches and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device via an extra ≈100 MB model you download once. Master toggle lets you turn boosting on and off without losing the list. Keep the list under 100 terms, and avoid common English words — they cause false replacements.",
+            anchor: "help.dictation.vocabulary",
+            tag: "on-device"
+        ) {
+            VStack(spacing: 6) {
+                Image(systemName: "text.book.closed")
+                    .font(.system(size: 24, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                Text("UJET")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        },
+
+        CardSpec(
+            section: .advanced,
             title: "Apple Intelligence",
             caption: "Jot's default cleanup and articulate run entirely on your Mac via Apple's on-device model — no API key, no network, free. For long-form dictations (several paragraphs or more), the on-device model may produce less polished results than cloud providers. Switch to Anthropic or Gemini in Settings → AI for higher quality on long content.",
             anchor: "help.advanced.apple-intelligence",
@@ -707,6 +724,39 @@ extension HelpPane {
             tag: "internal"
         ) {
             ConflictRings()
+        },
+
+        CardSpec(
+            section: .troubleshooting,
+            title: "Resetting Jot",
+            caption: "Three ways to start over, from your settings feeling off to wiping every byte Jot put on disk. Each relaunches Jot when you confirm.",
+            tag: "3 scopes"
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: "arrow.counterclockwise.circle")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                LabeledContent("Settings") { Text("Reset preferences and shortcuts") }
+                LabeledContent("Data") { Text("Clear recordings and transcripts") }
+                LabeledContent("Permissions") { Text("Re-run access setup from scratch") }
+            }
+            .font(.system(size: 11))
+        },
+
+        CardSpec(
+            section: .troubleshooting,
+            title: "Report an issue",
+            caption: "Exports errors Jot has recorded on your Mac — never uploaded unless you share the file. Find the controls in About → Troubleshooting.",
+            tag: "logs local"
+        ) {
+            VStack(spacing: 8) {
+                Image(systemName: "envelope")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                Text("local logs")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
         },
     ]
 }

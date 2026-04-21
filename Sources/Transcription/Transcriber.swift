@@ -95,7 +95,28 @@ public actor Transcriber {
             throw TranscriberError.fluidAudio(error)
         }
 
-        let cleaned = PostProcessing.apply(result.text)
+        // Vocabulary boosting pass — best-effort. Any failure (rescorer
+        // not ready, CTC bundle missing, model throws) falls through to
+        // the raw TDT transcript so a broken rescorer can never regress
+        // the user-visible result. tokenTimings is required by the
+        // rescorer's public API; if FluidAudio ever returns nil here
+        // the rescorer is skipped.
+        var transcriptText = result.text
+        if let timings = result.tokenTimings {
+            do {
+                if let rescored = try await VocabularyRescorerHolder.shared.rescore(
+                    transcript: result.text,
+                    tokenTimings: timings,
+                    audioSamples: samples
+                ) {
+                    transcriptText = rescored
+                }
+            } catch {
+                log.error("vocabulary rescore failed — falling back to raw: \(error.localizedDescription)")
+            }
+        }
+
+        let cleaned = PostProcessing.apply(transcriptText)
         return TranscriptionResult(
             text: cleaned,
             rawText: result.text,

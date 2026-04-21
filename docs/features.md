@@ -88,7 +88,10 @@ Closing the main window hides to the tray; Quit fully exits.
 
 ## Status Indicator
 
-A small floating overlay near the menu bar that reflects pipeline state without stealing focus. States: Recording (with elapsed time), Transcribing, Success (with a short preview and Copy), Error (with the message).
+A small floating overlay near the menu bar — a Dynamic Island-style pill — that reflects pipeline state without stealing focus.
+
+- **Live amplitude waveform** during recording — renders the actual audio level as a sine-wave-style animation inside the pill so the user can see Jot is hearing them. No static gif / fake animation.
+- **States:** Recording (with elapsed time + live waveform), Transcribing, Cleaning up (when transcript cleanup is on), Articulating (during Articulate), Success (with a short preview and Copy), Error (with the message).
 
 ## Recordings Library
 
@@ -120,8 +123,12 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Input device (microphone) — currently fixed to the macOS Sound settings default; per-device selection is temporarily disabled in this release (known bug, flagged inline in the pane)
 - Launch at login
 - Recording retention — Forever / Last 7 / 30 / 90 days (default: 7 days)
-- Reset permissions (clears macOS privacy entries and restarts)
 - Run setup wizard again (preloads current selections)
+- **Reset group** — a dedicated section at the bottom of General with three tiered actions:
+  - **Reset settings** — clears preferences, API keys, and shortcut bindings; keeps recordings and the downloaded model. Relaunches Jot.
+  - **Erase all data** — destructive; wipes recordings, the transcription model (≈600 MB), and all settings. macOS permissions are untouched. Relaunches Jot.
+  - **Reset permissions** — runs `tccutil reset All` for Jot so macOS re-asks for Microphone, Input Monitoring, and Accessibility. Relaunches Jot.
+  All three require a confirmation alert. Only "Erase all data" is tinted red — the other two are styled as normal interactive rows so they don't read as disabled.
 
 ### Transcription
 - Auto-paste transcription
@@ -145,17 +152,25 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Error chime
 
 ### Shortcuts
-- Editable bindings for Toggle Recording, Push to Talk, Paste Last Transcription, Articulate, Articulate (Custom). Cancel Recording (Esc) is shown alongside the others but hardcoded — not configurable. A footnote reminds the user that macOS global hotkeys must include a modifier.
+- Editable bindings for Toggle Recording, Push to Talk, Paste Last Transcription, Articulate, Articulate (Custom). Cancel Recording (Esc) is hardcoded, not configurable, and not shown in the Shortcuts list — a footnote tells the user that Esc is the cancel key and that macOS global hotkeys must include at least one modifier.
+
+### About
+- App identity (icon, tagline, version / build) and the project vision statement.
+- **Support Jot** — donation link that routes 100% of contributions to the author's every.org charity fund (opens in the user's browser; no payment flows inside Jot).
+- **Privacy pledge** — inline reminder that transcription is local-only and the only automatic network calls are the one-time model download and the daily appcast check.
+- **Troubleshooting** — a dedicated section for error reporting:
+  - **View log** — opens the local error log in a sheet with a Done button.
+  - **Copy log / Reveal in Finder / Send via email** — each goes through a privacy-scan sheet that checks the log for API keys, credential URLs, absolute paths, and your last 90 days of transcripts before handing over the file. Every flow offers an "Auto-redact and …" option when anything sensitive is found. Emails are pre-addressed to `jottranscribe@gmail.com` with app diagnostics pre-filled; the log itself is placed on the clipboard so the user can review before pasting.
 
 ## Help
 
-In-app prose walkthrough, split across three tabs:
+In-app prose walkthrough split across three tabs, each using a shared component library (HelpSection / HelpSubsection / Callout / ExpandableRow / ShortcutChip / AnchorRail) and hand-drawn flow diagrams so concepts are discoverable at a glance, not buried in wall-of-text.
 
-- **Basics** — Dictation, Auto-correct (transcript cleanup), Articulate (both variants), copying the last transcription, the status pill.
+- **Basics** — Dictation, Auto-correct (transcript cleanup), Articulate (both variants), copying the last transcription, the status pill. Includes visual diagrams of the end-to-end recording → transcription → paste flow.
 - **Advanced** — LLM provider setup (Apple Intelligence default on macOS 26+; OpenAI, Anthropic, Gemini, Vertex Gemini, Ollama available as alternates); editable prompts; Sparkle auto-update.
-- **Troubleshooting** — permissions (Microphone / Input Monitoring / Accessibility), the macOS "modifier required" hotkey constraint, Bluetooth-redirect capture failures, resetting state.
+- **Troubleshooting** — permissions (Microphone / Input Monitoring / Accessibility), the macOS "modifier required" hotkey constraint, Bluetooth-redirect capture failures, resetting state, and pointers to the About tab's log-sharing flow for reporting bugs.
 
-Info popovers across Settings deep-link into the matching Help section so the user can jump from a field to its explanation without context-switching.
+Info popovers across Settings deep-link into the matching Help section so the user can jump from a field to its explanation without context-switching. The deep-link contract is two-phase: an anchor may live inside an `ExpandableRow` that needs to auto-open before the scroll lands, so the page expands the target row first and then scrolls to it.
 
 ## Setup Wizard
 
@@ -166,7 +181,9 @@ Shown on first launch and on demand from Settings → General. Each step can be 
 3. **Model** — downloads Parakeet on first run; already-downloaded models skip straight through.
 4. **Microphone** — review the input device (currently fixed to the macOS Sound settings default; per-device selection is temporarily disabled).
 5. **Shortcuts** — preview of the default Toggle Recording shortcut.
-6. **Test** — speak to verify the full pipeline end-to-end.
+6. **Test dictation** — speak to verify the full pipeline end-to-end. The user controls the capture window (no hard 3-second cap) and can re-test as many times as they like.
+7. **Articulate intro** — brief voice-driven-rewrite walkthrough: select → speak instruction → replace. Surfaced after the user has successfully dictated so they know what "Articulate" means before they're asked to think about binding a shortcut.
+8. **Done** — confirmation the setup is complete with pointers to Settings and Help.
 
 ## System Integration
 

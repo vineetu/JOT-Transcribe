@@ -169,13 +169,19 @@ public actor AudioCapture {
         }
     }
 
-    public func stop() throws -> AudioRecording {
+    public func stop() async throws -> AudioRecording {
         guard let engine, let url = fileURL, let startedAt else {
             throw AudioCaptureError.notRunning
         }
 
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        // Drain any Tasks queued by the tap before we snapshot `samples`.
+        // Actor scheduler processes Tasks in FIFO order, so awaiting a new Task
+        // guarantees all previously-enqueued append Tasks have completed.
+        await withCheckedContinuation { cont in
+            Task { cont.resume() }
+        }
 
         let captured = samples
         let duration = TimeInterval(captured.count) / AudioFormat.sampleRate

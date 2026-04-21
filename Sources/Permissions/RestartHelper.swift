@@ -24,6 +24,10 @@ import Foundation
 // that call won't reliably start a *second* instance while the first is still
 // alive — LaunchServices prefers to activate the running app instead.
 enum RestartHelper {
+    static func relaunch() {
+        relaunchApp()
+    }
+
     static func relaunchApp() {
         let bundlePath = Bundle.main.bundlePath
         let ownPID = ProcessInfo.processInfo.processIdentifier

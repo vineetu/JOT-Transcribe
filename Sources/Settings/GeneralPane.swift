@@ -17,7 +17,12 @@ struct GeneralPane: View {
     @StateObject private var deviceWatcher = InputDeviceWatcher()
     @State private var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
     @State private var loginToggleError: String?
-    @State private var showResetPermissionsAlert = false
+    @State private var showSoftAlert = false
+    @State private var showHardAlert = false
+    @State private var showPermissionsAlert = false
+    @State private var softPopover = false
+    @State private var hardPopover = false
+    @State private var permsPopover = false
 
     var body: some View {
         Form {
@@ -83,26 +88,100 @@ struct GeneralPane: View {
                         helpAnchor: "help.general.setup-wizard"
                     )
                     Spacer()
-                    Button(role: .destructive) {
-                        showResetPermissionsAlert = true
-                    } label: {
-                        Text("Reset permissions…")
-                    }
                 }
+            }
+
+            Section("Reset") {
+                resetRow(
+                    kind: .soft,
+                    title: "Reset settings…",
+                    caption: "Clears your preferences, API keys, and shortcuts. Keeps your recordings.",
+                    popover: $softPopover,
+                    alert: $showSoftAlert
+                )
+                resetRow(
+                    kind: .hard,
+                    title: "Erase all data…",
+                    caption: "Removes recordings, the transcription model, and all settings.",
+                    popover: $hardPopover,
+                    alert: $showHardAlert
+                )
+                resetRow(
+                    kind: .permissions,
+                    title: "Reset permissions…",
+                    caption: "Re-asks macOS for microphone, input monitoring, and accessibility.",
+                    popover: $permsPopover,
+                    alert: $showPermissionsAlert
+                )
             }
         }
         .formStyle(.grouped)
-        .alert("Reset permissions?", isPresented: $showResetPermissionsAlert) {
-            Button("Reset and Relaunch", role: .destructive, action: resetPermissions)
+        .alert("Reset settings?", isPresented: $showSoftAlert) {
+            Button("Reset and Relaunch", role: .destructive) { ResetActions.softReset() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This revokes Microphone, Input Monitoring, and Accessibility for Jot, then relaunches the app. You will be prompted again.")
+            Text("Clears your preferences, API keys, and shortcuts. Your recordings and downloaded model stay. Jot will relaunch into setup.")
+        }
+        .alert("Erase all Jot data?", isPresented: $showHardAlert) {
+            Button("Erase and Relaunch", role: .destructive) { ResetActions.hardReset() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Deletes every recording, the transcription model (≈600 MB, re-downloads on next launch), and all settings. macOS permissions are untouched. Jot will relaunch into setup.")
+        }
+        .alert("Reset permissions?", isPresented: $showPermissionsAlert) {
+            Button("Reset and Relaunch", role: .destructive) { ResetActions.resetPermissions() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Revokes Jot's microphone, input monitoring, and accessibility grants so macOS re-asks on next launch. Your recordings and settings stay. Jot will relaunch.")
         }
         .onAppear {
             launchAtLogin = SMAppService.mainApp.status == .enabled
             // Bug: custom device pinning records from the wrong device.
             // Force system default until fixed.
             inputDeviceUID = ""
+        }
+    }
+
+    @ViewBuilder
+    private func resetRow(
+        kind: ResetKind,
+        title: String,
+        caption: String,
+        popover: Binding<Bool>,
+        alert: Binding<Bool>
+    ) -> some View {
+        // Color carries the signal: blue (accent) for recoverable resets,
+        // red for the only irreversible action. Matches the iOS Settings
+        // "Reset" screen pattern — color alone tells the user "this is
+        // tappable" and, separately, "this one is dangerous." No chevron:
+        // it would imply navigation, but these open a confirmation alert.
+        let isIrreversible = (kind == .hard)
+        let titleColor: Color = isIrreversible ? .red : .accentColor
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Button {
+                alert.wrappedValue = true
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(titleColor)
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button {
+                popover.wrappedValue.toggle()
+            } label: {
+                Image(systemName: "info.circle").foregroundStyle(.secondary)
+            }
+            .buttonStyle(.borderless)
+            .popover(isPresented: popover, arrowEdge: .trailing) {
+                ResetInfoPopover(kind: kind)
+            }
         }
     }
 
@@ -120,17 +199,6 @@ struct GeneralPane: View {
             launchAtLogin = SMAppService.mainApp.status == .enabled
         }
     }
-
-    private func resetPermissions() {
-        let bundleID = Bundle.main.bundleIdentifier ?? "com.jot.Jot"
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
-        task.arguments = ["reset", "All", bundleID]
-        try? task.run()
-        task.waitUntilExit()
-        RestartHelper.relaunchApp()
-    }
-
 }
 
 @MainActor

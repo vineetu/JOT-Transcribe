@@ -72,6 +72,7 @@ struct JotAppWindow: View {
             switch sub {
             case .general:       GeneralPane()
             case .transcription: TranscriptionPane()
+            case .vocabulary:    VocabularyPane()
             case .sound:         SoundPane()
             case .ai:            ArticulatePane()
             case .shortcuts:     ShortcutsPane()

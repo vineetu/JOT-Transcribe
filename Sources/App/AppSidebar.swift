@@ -37,6 +37,11 @@ struct AppSidebar: View {
                     tag: .settings(.transcription)
                 )
                 subRow(
+                    title: "Vocabulary",
+                    systemImage: "text.book.closed",
+                    tag: .settings(.vocabulary)
+                )
+                subRow(
                     title: "Sound",
                     systemImage: "speaker.wave.2",
                     tag: .settings(.sound)

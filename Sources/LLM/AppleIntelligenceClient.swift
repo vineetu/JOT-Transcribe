@@ -4,6 +4,41 @@ import Foundation
 import FoundationModels
 #endif
 
+#if canImport(FoundationModels)
+@available(macOS 26.0, *)
+private actor AppleIntelligenceWatchdogState {
+    private var lastTokenAt = ContinuousClock.now
+    private var finished = false
+    private var stalled = false
+
+    func markTokenReceived() {
+        lastTokenAt = ContinuousClock.now
+    }
+
+    func markFinished() {
+        finished = true
+    }
+
+    func markStalled() {
+        stalled = true
+    }
+
+    func hasStalled(timeout: Duration, now: ContinuousClock.Instant = .now) -> Bool {
+        guard !finished else { return false }
+        return now - lastTokenAt > timeout
+    }
+
+    func isStalled() -> Bool {
+        stalled
+    }
+}
+
+@available(macOS 26.0, *)
+private enum AppleIntelligenceStreamOutcome {
+    case completed(String)
+}
+#endif
+
 /// Thin actor around Apple's on-device `FoundationModels` (`LanguageModelSession`)
 /// so the LLM path has a shape symmetric to the HTTP `LLMClient` branches.
 ///
@@ -100,8 +135,64 @@ actor AppleIntelligenceClient {
     private func runSession(instructions: String, content: String) async throws -> String {
         do {
             let session = LanguageModelSession(instructions: instructions)
-            let response = try await session.respond(to: content)
-            let text = response.content
+            let watchdogState = AppleIntelligenceWatchdogState()
+            let text = try await withThrowingTaskGroup(of: AppleIntelligenceStreamOutcome.self) { group in
+                group.addTask {
+                    var accumulated = ""
+                    var previousSnapshot = ""
+                    do {
+                        for try await snapshot in session.streamResponse(to: content) {
+                            let currentSnapshot = snapshot.content
+                            let delta: String
+                            if currentSnapshot.hasPrefix(previousSnapshot) {
+                                delta = String(currentSnapshot.dropFirst(previousSnapshot.count))
+                            } else {
+                                delta = currentSnapshot
+                            }
+
+                            if !delta.isEmpty {
+                                accumulated += delta
+                                await watchdogState.markTokenReceived()
+                            }
+                            previousSnapshot = currentSnapshot
+                        }
+                    } catch {
+                        await watchdogState.markFinished()
+                        throw error
+                    }
+
+                    await watchdogState.markFinished()
+                    return .completed(accumulated)
+                }
+
+                group.addTask {
+                    let clock = ContinuousClock()
+                    let timeout: Duration = .seconds(3)
+                    let interval: Duration = .milliseconds(250)
+
+                    while !Task.isCancelled {
+                        try await Task.sleep(for: interval, clock: clock)
+                        if await watchdogState.hasStalled(timeout: timeout, now: clock.now) {
+                            await watchdogState.markStalled()
+                            throw LLMError.appleIntelligenceFailure("Apple Intelligence stalled (no tokens for 3s)")
+                        }
+                    }
+
+                    throw CancellationError()
+                }
+
+                guard let outcome = try await group.next() else {
+                    throw LLMError.emptyResponse
+                }
+
+                group.cancelAll()
+
+                switch outcome {
+                case .completed(let accumulated):
+                    return accumulated
+                }
+            }
+
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw LLMError.emptyResponse
             }

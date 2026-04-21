@@ -13,12 +13,13 @@ public enum AppSidebarSelection: Hashable {
     case about
 }
 
-/// The five panes inside the expanded Settings group. Order here matches
-/// the order the sidebar renders (General → Transcription → Sound → AI
-/// → Shortcuts).
+/// The panes inside the expanded Settings group. Order here matches the
+/// order the sidebar renders (General → Transcription → Vocabulary →
+/// Sound → AI → Shortcuts).
 public enum SettingsSubsection: Hashable {
     case general
     case transcription
+    case vocabulary
     case sound
     case ai
     case shortcuts
