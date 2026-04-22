@@ -43,13 +43,17 @@
 #   JOT_SKIP_GH_RELEASE             If "1", skip the automatic `gh release
 #                                   create` step and only print the command
 #                                   the user can run by hand. Default: 0.
-#   JOT_DEPLOY_HOST                 Required if the website upload runs.
-#                                   scp target in `[user@]host` form, e.g.
-#                                   "root@1.2.3.4" or "deploy@jot.example".
-#   JOT_DEPLOY_PATH                 Required if the website upload runs.
-#                                   Absolute remote path for the uploaded
-#                                   DMG, e.g. "/srv/jot/Jot.dmg".
-#   JOT_DEPLOY_PASS                 Required if the website upload runs.
+#   JOT_DEPLOY_HOST                 If all three JOT_DEPLOY_{HOST,PATH,PASS}
+#   JOT_DEPLOY_PATH                 are set, release.sh scp's the DMG to the
+#   JOT_DEPLOY_PASS                 website host as a mirror. If any is
+#                                   missing, the upload is silently skipped —
+#                                   the website download button still works
+#                                   via the GitHub releases/latest/download
+#                                   redirect. Export all three in ~/.zshrc
+#                                   to enable the mirror:
+#                                     JOT_DEPLOY_HOST=[user@]host
+#                                     JOT_DEPLOY_PATH=/remote/path/Jot.dmg
+#                                     JOT_DEPLOY_PASS=...
 
 set -euo pipefail
 
@@ -179,18 +183,28 @@ if [[ "${JOT_SKIP_APPCAST}" != "1" ]]; then
     cp "${APPCAST_SRC}" "${APPCAST_DST}"
 fi
 
-# ---- 6. Upload DMG to website (opt-out) --------------------------------------
+# ---- 6. Upload DMG to website (opt-out or auto-skip if unconfigured) ---------
+# Auto-skip (don't fail) when any of the three deploy vars is missing. The
+# website's download button reads from GitHub's releases/latest/download/
+# Jot.dmg redirect, so skipping the direct scp mirror only means the mirrored
+# copy on the web host goes stale — users still get the new DMG via the
+# GitHub redirect. To enable the scp mirror again, export all three in
+# ~/.zshrc:
+#   export JOT_DEPLOY_HOST=[user@]host
+#   export JOT_DEPLOY_PATH=/absolute/remote/path/Jot.dmg
+#   export JOT_DEPLOY_PASS=...
 if [[ "${JOT_SKIP_WEBSITE_UPLOAD}" != "1" ]]; then
-    log "Uploading DMG to website"
-    [[ -n "${JOT_DEPLOY_HOST:-}" ]] || fail "JOT_DEPLOY_HOST not set. Add 'export JOT_DEPLOY_HOST=[user@]host' to ~/.zshrc (or set JOT_SKIP_WEBSITE_UPLOAD=1 to skip)."
-    [[ -n "${JOT_DEPLOY_PATH:-}" ]] || fail "JOT_DEPLOY_PATH not set. Add 'export JOT_DEPLOY_PATH=/absolute/remote/path/Jot.dmg' to ~/.zshrc (or set JOT_SKIP_WEBSITE_UPLOAD=1 to skip)."
-    [[ -n "${JOT_DEPLOY_PASS:-}" ]] || fail "JOT_DEPLOY_PASS not set. Add 'export JOT_DEPLOY_PASS=...' to ~/.zshrc (or set JOT_SKIP_WEBSITE_UPLOAD=1 to skip)."
-    sshpass -p "${JOT_DEPLOY_PASS}" scp -P 22 \
-        -o PubkeyAuthentication=no \
-        -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null \
-        "${DMG_FINAL}" \
-        "${JOT_DEPLOY_HOST}:${JOT_DEPLOY_PATH}" 2>/dev/null
+    if [[ -z "${JOT_DEPLOY_HOST:-}" || -z "${JOT_DEPLOY_PATH:-}" || -z "${JOT_DEPLOY_PASS:-}" ]]; then
+        log "Website scp upload skipped — JOT_DEPLOY_{HOST,PATH,PASS} not all set (website download still works via GitHub releases/latest/download redirect)."
+    else
+        log "Uploading DMG to website"
+        sshpass -p "${JOT_DEPLOY_PASS}" scp -P 22 \
+            -o PubkeyAuthentication=no \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            "${DMG_FINAL}" \
+            "${JOT_DEPLOY_HOST}:${JOT_DEPLOY_PATH}" 2>/dev/null
+    fi
 fi
 
 # ---- 7. Commit and push ------------------------------------------------------
