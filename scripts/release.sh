@@ -5,8 +5,9 @@
 #   ./scripts/release.sh 1.1
 #
 # Default (no env vars set) produces a public release: builds dist/Jot.dmg,
-# generates + commits the Sparkle appcast, uploads the DMG to the website,
-# tags v<version>, and pushes to the `public` remote.
+# generates + commits the Sparkle appcast, tags v<version>, and pushes to the
+# `public` remote. The DMG is published via `gh release create` — the website
+# download button resolves to it via GitHub's releases/latest/download redirect.
 #
 # To build a different flavor, source a flavor env file first. Example:
 #   source .flavor-<name>.env && ./scripts/release.sh 1.1
@@ -38,22 +39,9 @@
 #                                   derive this from SUFeedURL (raw.github...)
 #                                   which 404s since no DMG is committed.
 #                                   Default: GitHub releases/latest/download/.
-#   JOT_SKIP_WEBSITE_UPLOAD         If "1", skip scp to the website host.
-#                                   Default: 0.
 #   JOT_SKIP_GH_RELEASE             If "1", skip the automatic `gh release
 #                                   create` step and only print the command
 #                                   the user can run by hand. Default: 0.
-#   JOT_DEPLOY_HOST                 If all three JOT_DEPLOY_{HOST,PATH,PASS}
-#   JOT_DEPLOY_PATH                 are set, release.sh scp's the DMG to the
-#   JOT_DEPLOY_PASS                 website host as a mirror. If any is
-#                                   missing, the upload is silently skipped —
-#                                   the website download button still works
-#                                   via the GitHub releases/latest/download
-#                                   redirect. Export all three in ~/.zshrc
-#                                   to enable the mirror:
-#                                     JOT_DEPLOY_HOST=[user@]host
-#                                     JOT_DEPLOY_PATH=/remote/path/Jot.dmg
-#                                     JOT_DEPLOY_PASS=...
 
 set -euo pipefail
 
@@ -69,7 +57,6 @@ JOT_FLAVOR_INFO_PLIST_OVERRIDES="${JOT_FLAVOR_INFO_PLIST_OVERRIDES:-}"
 JOT_PUSH_REMOTES="${JOT_PUSH_REMOTES:-public}"
 JOT_SKIP_APPCAST="${JOT_SKIP_APPCAST:-0}"
 JOT_APPCAST_DOWNLOAD_URL_PREFIX="${JOT_APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/vineetu/JOT-Transcribe/releases/latest/download/}"
-JOT_SKIP_WEBSITE_UPLOAD="${JOT_SKIP_WEBSITE_UPLOAD:-0}"
 JOT_SKIP_GH_RELEASE="${JOT_SKIP_GH_RELEASE:-0}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -183,31 +170,7 @@ if [[ "${JOT_SKIP_APPCAST}" != "1" ]]; then
     cp "${APPCAST_SRC}" "${APPCAST_DST}"
 fi
 
-# ---- 6. Upload DMG to website (opt-out or auto-skip if unconfigured) ---------
-# Auto-skip (don't fail) when any of the three deploy vars is missing. The
-# website's download button reads from GitHub's releases/latest/download/
-# Jot.dmg redirect, so skipping the direct scp mirror only means the mirrored
-# copy on the web host goes stale — users still get the new DMG via the
-# GitHub redirect. To enable the scp mirror again, export all three in
-# ~/.zshrc:
-#   export JOT_DEPLOY_HOST=[user@]host
-#   export JOT_DEPLOY_PATH=/absolute/remote/path/Jot.dmg
-#   export JOT_DEPLOY_PASS=...
-if [[ "${JOT_SKIP_WEBSITE_UPLOAD}" != "1" ]]; then
-    if [[ -z "${JOT_DEPLOY_HOST:-}" || -z "${JOT_DEPLOY_PATH:-}" || -z "${JOT_DEPLOY_PASS:-}" ]]; then
-        log "Website scp upload skipped — JOT_DEPLOY_{HOST,PATH,PASS} not all set (website download still works via GitHub releases/latest/download redirect)."
-    else
-        log "Uploading DMG to website"
-        sshpass -p "${JOT_DEPLOY_PASS}" scp -P 22 \
-            -o PubkeyAuthentication=no \
-            -o StrictHostKeyChecking=no \
-            -o UserKnownHostsFile=/dev/null \
-            "${DMG_FINAL}" \
-            "${JOT_DEPLOY_HOST}:${JOT_DEPLOY_PATH}" 2>/dev/null
-    fi
-fi
-
-# ---- 7. Commit and push ------------------------------------------------------
+# ---- 6. Commit and push ------------------------------------------------------
 # Stage everything that belongs in a release commit via an explicit allowlist.
 # Deliberately not using `git add -A` / `git add .` — those would sweep in any
 # stray file left in the worktree (local experiments, .env files on machines
@@ -241,7 +204,7 @@ for remote in ${JOT_PUSH_REMOTES}; do
     git push "${remote}" "${TAG}"
 done
 
-# ---- 8. Create GitHub release (opt-out) --------------------------------------
+# ---- 7. Create GitHub release (opt-out) --------------------------------------
 GH_CMD_PREFIX=""
 if [[ -n "${JOT_FLAVOR_GH_HOST}" ]]; then
     GH_CMD_PREFIX="GH_HOST=${JOT_FLAVOR_GH_HOST} "
@@ -271,7 +234,7 @@ else
     fi
 fi
 
-# ---- 9. Summary --------------------------------------------------------------
+# ---- 8. Summary --------------------------------------------------------------
 cat <<EOF
 
 ---------------------------------------------------------------

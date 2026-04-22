@@ -80,15 +80,11 @@ Keep each folder to its single layer. Cross-layer shared types (e.g. `Recording`
 
 ## Releasing a new version
 
-The canonical path is one command: `./scripts/release.sh <version>` (e.g. `./scripts/release.sh 1.1`). It bumps `CFBundleShortVersionString`, derives `CFBundleVersion` from commit count, builds + signs + notarizes the DMG, generates the Sparkle appcast, scp's the DMG to the website host, commits, tags `v<version>`, and pushes to the `origin` remote.
+The canonical path is one command: `./scripts/release.sh <version>` (e.g. `./scripts/release.sh 1.1`). It bumps `CFBundleShortVersionString`, derives `CFBundleVersion` from commit count, builds + signs + notarizes the DMG, generates the Sparkle appcast, commits, tags `v<version>`, and pushes to the `origin` remote. The DMG is published via `gh release create`; the website download button resolves to it via GitHub's `releases/latest/download/Jot.dmg` redirect.
 
 Per-machine prerequisites (one-time):
 
 - Notarization keychain profile: `xcrun notarytool store-credentials Jot --apple-id <id> --team-id 8VB2ULDN22` (interactive; password goes into the login keychain).
-- Website scp target and credentials. The script fails fast if any of these are unset (or set `JOT_SKIP_WEBSITE_UPLOAD=1` to skip the upload entirely). Add to `~/.zshrc`:
-  - `export JOT_DEPLOY_HOST="…"` — scp target in `[user@]host` form (e.g. `root@1.2.3.4`).
-  - `export JOT_DEPLOY_PATH="…"` — absolute remote path for the uploaded DMG (e.g. `/srv/jot/Jot.dmg`).
-  - `export JOT_DEPLOY_PASS="…"` — password for `sshpass`.
 
 The release commit stages an explicit allowlist (`Sources/`, `Resources/`, `docs/`, `website/`, `scripts/`, `README.md`, `CLAUDE.md`, `.gitignore`, plus root-level `appcast.xml`). Anything outside those paths — local experiments, stray files at repo root — will NOT be picked up; commit those separately before running the release.
 
