@@ -72,7 +72,7 @@ actor LLMClient {
             }
         }
 
-        if config.provider != .ollama {
+        if config.provider.requiresUserAPIKey {
             guard !config.apiKey.isEmpty else {
                 Task { await ErrorLog.shared.error(component: "LLMClient", message: "Missing API key", context: ["provider": config.provider.rawValue, "op": "articulate"]) }
                 throw LLMError.noAPIKey
@@ -302,23 +302,43 @@ actor LLMClient {
 
     private func streamResponse(provider: LLMProvider, request: URLRequest) async throws -> String {
         // First-byte watchdog: reachability fail-fast. If the server
-        // doesn't send its response headers within 3 seconds of us firing
-        // the request, we assume the host is unreachable/dead and surface
-        // a network timeout error right away — without waiting out the
-        // generous per-request `timeoutInterval` (which exists only to
-        // protect against between-byte gaps once streaming has started).
+        // doesn't send its response headers within the watchdog window
+        // of us firing the request, we assume the host is unreachable/dead
+        // and surface a network timeout error right away — without waiting
+        // out the generous per-request `timeoutInterval` (which exists only
+        // to protect against between-byte gaps once streaming has started).
         //
         // `URLSession.bytes(for:)` blocks until response headers arrive,
         // then returns a byte stream we can iterate. Racing that call
-        // against a 3s `Task.sleep` in a TaskGroup gives us the split
-        // "3s reachability / 60s streaming" behavior URLSession doesn't
-        // expose natively. Losing tasks are cancelled — for the bytes
-        // task, cancellation propagates through URLSession and aborts
-        // the underlying HTTP request cleanly.
-        let (bytes, response) = try await firstByteOrTimeout(
-            request: request,
-            timeout: .seconds(3)
-        )
+        // against a `Task.sleep` in a TaskGroup gives us the split
+        // "reachability / streaming" behavior URLSession doesn't expose
+        // natively. Losing tasks are cancelled — for the bytes task,
+        // cancellation propagates through URLSession and aborts the
+        // underlying HTTP request cleanly.
+        //
+        // Ollama is exempt from the first-byte watchdog entirely. Even
+        // though the daemon is local, `:cloud`-suffixed models proxy to
+        // Ollama's hosted infra and routinely exhibit 2–8s streaming
+        // TTFB (DeepSeek 671b measured at 7.6s; cold-start for larger
+        // models easily exceeds 15s). The watchdog's "fast unreachability
+        // detection" assumption holds for always-warm cloud endpoints
+        // but breaks for local-proxy-but-cloud-hosted models, which
+        // caused Test Connection failures in Settings → AI. A dead
+        // local Ollama daemon still fails fast — the OS rejects the
+        // TCP connection immediately, and the outer per-request
+        // `timeoutInterval` (15s for healthCheck, 60s for articulate/
+        // transform) still bounds the wait. Reachability semantics are
+        // preserved for cloud providers (OpenAI/Anthropic/Gemini),
+        // which stay at 3s.
+        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
+        if !provider.usesFirstByteWatchdog {
+            (bytes, response) = try await session.bytes(for: request)
+        } else {
+            (bytes, response) = try await firstByteOrTimeout(
+                request: request,
+                timeout: .seconds(3)
+            )
+        }
 
         var eventLines: [String] = []
         var accumulated = ""
@@ -624,7 +644,7 @@ actor LLMClient {
             }
         }
 
-        guard config.provider == .ollama || !config.apiKey.isEmpty else {
+        guard !config.provider.requiresUserAPIKey || !config.apiKey.isEmpty else {
             Task { await ErrorLog.shared.error(component: "LLMClient", message: "Missing API key", context: ["provider": config.provider.rawValue, "op": "transform"]) }
             throw LLMError.noAPIKey
         }
@@ -705,7 +725,7 @@ actor LLMClient {
             return AppleIntelligenceClient.isAvailable
         }
 
-        if config.provider != .ollama {
+        if config.provider.requiresUserAPIKey {
             guard !config.apiKey.isEmpty else { return false }
         }
 

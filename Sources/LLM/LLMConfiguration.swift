@@ -139,7 +139,7 @@ final class LLMConfiguration: ObservableObject {
     // MARK: - Aggregate state
 
     var isMinimallyConfigured: Bool {
-        if provider == .ollama || provider == .appleIntelligence {
+        if !provider.requiresUserAPIKey {
             return true
         }
         return !apiKey(for: provider).isEmpty || !baseURL(for: provider).isEmpty

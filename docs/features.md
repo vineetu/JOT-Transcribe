@@ -1,6 +1,6 @@
 # Jot — Feature Inventory
 
-User-facing features in the shipping build. This is the product surface — not implementation. Cloud transcription providers, VAD / continuous listening, file upload, and analytics are intentionally excluded. Optional LLM-based features (transcript cleanup and voice-driven rewriting) are opt-in and can be configured to run locally via Ollama.
+User-facing features in the shipping build. This is the product surface — not implementation. Cloud transcription providers, VAD / continuous listening, file upload, and analytics are intentionally excluded. Optional LLM-based features (transcript cleanup and voice-driven rewriting) are opt-in; on macOS 26+ they default to Apple Intelligence on-device, and Ollama remains available for users who want local-but-not-Apple.
 
 ---
 
@@ -80,8 +80,9 @@ A native tray dropdown with:
 
 - Toggle Recording (label updates to reflect state)
 - Copy Last Transcription
+- Recent Transcriptions submenu (last 10, click to copy)
 - Open Jot… (opens the main window)
-- Settings… (`⌘,` — opens the main window directly in Settings)
+- Check for Updates…
 - Quit Jot
 
 Closing the main window hides to the tray; Quit fully exits.
@@ -110,10 +111,11 @@ Sidebar entries:
 
 - **Home** — landing pane: current hotkey glance, a "Recent" row of the last 5 recordings, and a dismissible "New to Jot? See the Basics →" banner for first-run discovery.
 - **Library** — the recordings browser (see below).
-- **Settings** — grouped children: General, Transcription, Sound, AI, Shortcuts.
+- **Settings** — grouped children: General, Transcription, Vocabulary, Sound, AI, Shortcuts.
 - **Help** — Basics, Advanced, Troubleshooting.
+- **About** — app identity, privacy pledge, donation link, and the Troubleshooting log-sharing flow.
 
-`⌘,` from anywhere opens the window directly on the Settings section.
+The main window is the single destination for all five sections — there is no separate Settings window and no global `⌘,` binding (the default SwiftUI `appSettings` command group is intentionally removed).
 
 ## Settings
 
@@ -138,8 +140,13 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Clean up transcript with AI (hidden until an LLM provider is configured in Settings → AI; reach the AI pane via the sidebar to set one up)
 - "Customize prompt" disclosure for the transcript-cleanup prompt, with "Reset to default"
 
+### Vocabulary
+- **Custom vocabulary list** — a short list of user-supplied terms (product names, proper nouns, jargon) that Jot should prefer when transcribing, so names and domain words don't get misheard as their common-word neighbors.
+- Inline add / rename / delete of terms; the list is persisted to disk and reloaded on pane open so external edits are picked up.
+- Boost-model status row shows download state (not downloaded / downloading / ready / failed) for the small CTC encoder that powers rescoring.
+
 ### AI
-- Provider (OpenAI / Anthropic / Gemini / Ollama)
+- Provider (Apple Intelligence / OpenAI / Anthropic / Gemini / Ollama)
 - Base URL (left-aligned) and model — override per-provider defaults
 - API key (hidden for Ollama — local, no key required)
 - Articulate (Custom) shortcut — voice-driven rewrite
@@ -155,7 +162,10 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 ### Shortcuts
 - Editable bindings for Toggle Recording, Push to Talk, Paste Last Transcription, Articulate, Articulate (Custom). Cancel Recording (Esc) is hardcoded, not configurable, and not shown in the Shortcuts list — a footnote tells the user that Esc is the cancel key and that macOS global hotkeys must include at least one modifier.
 
-### About
+## About
+
+A top-level sidebar pane (not a Settings child) for identity, giving back, privacy, and diagnostics.
+
 - App identity (icon, tagline, version / build) and the project vision statement.
 - **Support Jot** — donation link that routes 100% of contributions to the author's every.org charity fund (opens in the user's browser; no payment flows inside Jot).
 - **Privacy pledge** — inline reminder that transcription is local-only and the only automatic network calls are the one-time model download and the daily appcast check.
@@ -175,7 +185,7 @@ Info popovers across Settings deep-link into the matching Help section so the us
 
 ## Setup Wizard
 
-Shown on first launch and on demand from Settings → General. Each step can be skipped; completing Done or Skip marks setup complete.
+Shown on first launch and on demand from Settings → General. Nine steps, in order; each can be skipped. Done is the "you're set up for the basics" checkpoint — most first-run users stop there, and Continue reveals the advanced steps (Cleanup, Articulate intro) for power users who want to configure them inline.
 
 1. **Welcome**
 2. **Permissions** — grant Microphone, Input Monitoring, and Accessibility. A "Restart Jot" button is offered after granting Input Monitoring or Accessibility (a running app can't detect those until it relaunches).
@@ -183,14 +193,14 @@ Shown on first launch and on demand from Settings → General. Each step can be 
 4. **Microphone** — review the input device (currently fixed to the macOS Sound settings default; per-device selection is temporarily disabled).
 5. **Shortcuts** — preview of the default Toggle Recording shortcut.
 6. **Test dictation** — speak to verify the full pipeline end-to-end. The user controls the capture window (no hard 3-second cap) and can re-test as many times as they like.
-7. **Articulate intro** — brief voice-driven-rewrite walkthrough: select → speak instruction → replace. Surfaced after the user has successfully dictated so they know what "Articulate" means before they're asked to think about binding a shortcut.
-8. **Done** — confirmation the setup is complete with pointers to Settings and Help.
+7. **Done** — terminal "you're set up for the basics" card shown right after Test succeeds. Skip here to start using Jot; Continue advances into the advanced steps below.
+8. **Cleanup** — introduces Auto-correct (LLM transcript cleanup). When the Test step produced a transcript, a "Preview cleanup" button runs the user's current provider (Apple Intelligence on macOS 26+, or whichever cloud / Ollama provider is configured) against that transcript so the user sees the before/after inline. No toggle here — actually enabling Auto-correct still happens in Settings → AI.
+9. **Articulate intro** — brief voice-driven-rewrite walkthrough: select → speak instruction → replace. Surfaced after the user has successfully dictated so they know what "Articulate" means before they're asked to think about binding a shortcut.
 
 ## System Integration
 
 - **Launch at login** — auto-start with the Mac.
 - **Hide to tray on close** — closing the window keeps Jot running.
-- **`⌘,` opens Settings** from anywhere in the app.
 - **Only one instance** — launching again focuses the running app.
 - **Permissions handled gracefully** — microphone, input monitoring, and accessibility are re-checked on mount and when returning from System Settings.
 - **Auto-update via Sparkle** — Jot checks for updates daily against the GitHub-hosted appcast and prompts to install verified releases.
