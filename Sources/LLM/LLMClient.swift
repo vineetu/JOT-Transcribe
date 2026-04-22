@@ -16,6 +16,15 @@ actor LLMClient {
         requestTimeout: TimeInterval = 3,
         resourceTimeout: TimeInterval = 120
     ) -> URLSessionConfiguration {
+        // Session default `timeoutIntervalForRequest` stays tight (3s) to
+        // give any uncared-for callers fast failure on an unreachable
+        // endpoint. The long-running paths — `articulate`, `transform`,
+        // `healthCheck` — set their own per-request `timeoutInterval`
+        // before handing off to `performLLMRequest`, which overrides the
+        // session default for that request. `streamResponse` additionally
+        // enforces a 3s first-byte watchdog of its own so reachability
+        // fast-fail is preserved even when the per-request override is
+        // generous.
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = requestTimeout
         configuration.timeoutIntervalForResource = resourceTimeout
@@ -86,7 +95,7 @@ actor LLMClient {
             Follow the <instruction> above. Rewrite the <selection> and return only the rewritten text.
             """
 
-        let request = try buildRequest(
+        var request = try buildRequest(
             provider: config.provider,
             baseURL: config.baseURL,
             apiKey: config.apiKey,
@@ -96,6 +105,12 @@ actor LLMClient {
             temperature: 0.1,
             stream: shouldStream(provider: config.provider)
         )
+        // Per-request override: once streaming starts, between-byte gaps
+        // can exceed the 3s session default (model producing tokens at
+        // varying rates, backpressure, etc.). The 3s reachability check is
+        // still enforced by the first-byte watchdog inside streamResponse
+        // — this override only affects what happens AFTER the first byte.
+        request.timeoutInterval = 60
 
         return try await performLLMRequest(provider: config.provider, request: request)
     }
@@ -133,12 +148,6 @@ actor LLMClient {
                 baseURL: baseURL, apiKey: apiKey, model: model,
                 systemPrompt: systemPrompt, userPrompt: userPrompt,
                 temperature: temperature, stream: stream
-            )
-        case .vertexGemini:
-            return try buildVertexGeminiRequest(
-                baseURL: baseURL, apiKey: apiKey, model: model,
-                systemPrompt: systemPrompt, userPrompt: userPrompt,
-                temperature: temperature
             )
         }
     }
@@ -228,29 +237,11 @@ actor LLMClient {
         return request
     }
 
-    private func buildVertexGeminiRequest(
-        baseURL: String, apiKey: String, model: String,
-        systemPrompt: String, userPrompt: String,
-        temperature: Double
-    ) throws -> URLRequest {
-        // Vertex auth/env shape differs from AI Studio. Keep this path
-        // non-streaming and on the existing request form for now.
-        try buildGeminiRequest(
-            baseURL: baseURL,
-            apiKey: apiKey,
-            model: model,
-            systemPrompt: systemPrompt,
-            userPrompt: userPrompt,
-            temperature: temperature,
-            stream: false
-        )
-    }
-
     private func shouldStream(provider: LLMProvider) -> Bool {
         switch provider {
         case .openai, .anthropic, .gemini, .ollama:
             return true
-        case .appleIntelligence, .vertexGemini:
+        case .appleIntelligence:
             return false
         }
     }
@@ -261,12 +252,7 @@ actor LLMClient {
                 return try await streamResponse(provider: provider, request: request)
             }
 
-            var configuredRequest = request
-            if provider == .vertexGemini {
-                configuredRequest.timeoutInterval = 60
-            }
-
-            let (data, response) = try await session.data(for: configuredRequest)
+            let (data, response) = try await session.data(for: request)
             try validateHTTPResponse(response, data: data)
             return try parseResponse(provider: provider, data: data)
         } catch {
@@ -315,7 +301,24 @@ actor LLMClient {
     }
 
     private func streamResponse(provider: LLMProvider, request: URLRequest) async throws -> String {
-        let (bytes, response) = try await session.bytes(for: request)
+        // First-byte watchdog: reachability fail-fast. If the server
+        // doesn't send its response headers within 3 seconds of us firing
+        // the request, we assume the host is unreachable/dead and surface
+        // a network timeout error right away — without waiting out the
+        // generous per-request `timeoutInterval` (which exists only to
+        // protect against between-byte gaps once streaming has started).
+        //
+        // `URLSession.bytes(for:)` blocks until response headers arrive,
+        // then returns a byte stream we can iterate. Racing that call
+        // against a 3s `Task.sleep` in a TaskGroup gives us the split
+        // "3s reachability / 60s streaming" behavior URLSession doesn't
+        // expose natively. Losing tasks are cancelled — for the bytes
+        // task, cancellation propagates through URLSession and aborts
+        // the underlying HTTP request cleanly.
+        let (bytes, response) = try await firstByteOrTimeout(
+            request: request,
+            timeout: .seconds(3)
+        )
 
         var eventLines: [String] = []
         var accumulated = ""
@@ -357,6 +360,47 @@ actor LLMClient {
         }
 
         return accumulated
+    }
+
+    /// Races `session.bytes(for:)` — which blocks until response headers
+    /// arrive — against a `Task.sleep` of `timeout`. On sleep-wins, the
+    /// bytes task is cancelled (propagates through URLSession, aborts the
+    /// HTTP request) and a timed-out `URLError` is thrown, shaped the
+    /// same way a real URLSession timeout would be so the existing error
+    /// mapping in `performLLMRequest` handles it uniformly.
+    private func firstByteOrTimeout(
+        request: URLRequest,
+        timeout: Duration
+    ) async throws -> (URLSession.AsyncBytes, URLResponse) {
+        enum Outcome {
+            case bytes(URLSession.AsyncBytes, URLResponse)
+            case timedOut
+        }
+
+        let session = self.session
+        let outcome: Outcome = try await withThrowingTaskGroup(of: Outcome.self) { group in
+            group.addTask {
+                let (bytes, response) = try await session.bytes(for: request)
+                return .bytes(bytes, response)
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                return .timedOut
+            }
+
+            guard let first = try await group.next() else {
+                throw LLMError.emptyResponse
+            }
+            group.cancelAll()
+            return first
+        }
+
+        switch outcome {
+        case .bytes(let bytes, let response):
+            return (bytes, response)
+        case .timedOut:
+            throw URLError(.timedOut)
+        }
     }
 
     private func shouldFlushSSEEvent(existingLines: [String], nextLine: String) -> Bool {
@@ -446,7 +490,7 @@ actor LLMClient {
             return parseAnthropicStreamChunk(root)
         case .gemini:
             return parseGeminiStreamChunk(root)
-        case .appleIntelligence, .vertexGemini:
+        case .appleIntelligence:
             return nil
         }
     }
@@ -534,7 +578,7 @@ actor LLMClient {
             text = (root["content"] as? [[String: Any]])?
                 .first?["text"] as? String
 
-        case .gemini, .vertexGemini:
+        case .gemini:
             text = (root["candidates"] as? [[String: Any]])?
                 .first?["content"]
                 .flatMap { $0 as? [String: Any] }?["parts"]
@@ -587,7 +631,7 @@ actor LLMClient {
 
         let systemPrompt = config.systemPrompt
 
-        let request = try buildRequest(
+        var request = try buildRequest(
             provider: config.provider,
             baseURL: config.baseURL,
             apiKey: config.apiKey,
@@ -596,6 +640,11 @@ actor LLMClient {
             userPrompt: transcript,
             stream: shouldStream(provider: config.provider)
         )
+        // See the matching comment in `articulate(...)`: per-request override
+        // keeps between-byte gaps from tripping the tight session default.
+        // Reachability is enforced separately via the first-byte watchdog
+        // inside `streamResponse`.
+        request.timeoutInterval = 60
 
         let result = try await performLLMRequest(provider: config.provider, request: request)
 

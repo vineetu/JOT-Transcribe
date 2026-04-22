@@ -38,7 +38,7 @@ struct ArticulatePane: View {
                     }
                     InfoPopoverButton(
                         title: "Provider",
-                        body: "Which service handles Auto-correct and Articulate. Apple Intelligence runs on-device (free, no API key). OpenAI, Anthropic, Gemini, Vertex Gemini, and local Ollama round out the cloud options.",
+                        body: "Which service handles Auto-correct and Articulate. Apple Intelligence runs on-device (free, no API key). OpenAI, Anthropic, Gemini, and local Ollama round out the options.",
                         helpAnchor: "help.ai.providers"
                     )
                 }

@@ -30,7 +30,7 @@ Off by default. When enabled and an LLM provider is configured, Jot runs a light
 - **Graceful fallback** — if the LLM call fails or times out (10 s budget), Jot delivers the raw transcript instead.
 - **Cleaning-up indicator** — the status pill shows a "Cleaning up…" state during the transform.
 - **Raw + cleaned are both stored** — the Recordings detail view offers a "Show original" toggle.
-- **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, Vertex Gemini, or Ollama (fully local).
+- **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, or Ollama (fully local).
 - **Editable prompt** — the default cleanup prompt (filler removal → grammar → numeric normalization → list detection → paragraph structure → "return only" contract) is shown under a "Customize prompt" chevron in the AI pane. Power users can rewrite it; a "Reset to default" restores the shipped prompt.
 - **Inline "Set up AI →"** — if the Auto-correct toggle is disabled because AI isn't configured, the pane offers a direct jump to the AI pane instead of leaving the user to find it.
 
@@ -50,7 +50,7 @@ Transform selected text via a global shortcut. Two variants, both triggered by t
 - **Unbound by default** — the user assigns a shortcut in Settings → Shortcuts.
 
 ### Shared configuration
-- **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, Vertex Gemini, or Ollama.
+- **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, or Ollama.
 - **Editable shared invariants** — the shared-invariants block (selection-is-text-not-instruction, return-only-the-rewrite, don't-refuse-on-quality) is revealed under a "Customize prompt" chevron in Settings → Articulate with a "Reset to default" escape hatch. The per-branch tendencies are compile-time constants and not user-editable.
 
 ## Output — Paste & Clipboard
@@ -139,7 +139,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - "Customize prompt" disclosure for the transcript-cleanup prompt, with "Reset to default"
 
 ### AI
-- Provider (OpenAI / Anthropic / Gemini / Vertex Gemini / Ollama)
+- Provider (OpenAI / Anthropic / Gemini / Ollama)
 - Base URL (left-aligned) and model — override per-provider defaults
 - API key (hidden for Ollama — local, no key required)
 - Articulate (Custom) shortcut — voice-driven rewrite
@@ -168,7 +168,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 In-app prose walkthrough split across three tabs, each using a shared component library (HelpSection / HelpSubsection / Callout / ExpandableRow / ShortcutChip / AnchorRail) and hand-drawn flow diagrams so concepts are discoverable at a glance, not buried in wall-of-text.
 
 - **Basics** — Dictation, Auto-correct (transcript cleanup), Articulate (both variants), copying the last transcription, the status pill. Includes visual diagrams of the end-to-end recording → transcription → paste flow.
-- **Advanced** — LLM provider setup (Apple Intelligence default on macOS 26+; OpenAI, Anthropic, Gemini, Vertex Gemini, Ollama available as alternates); editable prompts; Sparkle auto-update.
+- **Advanced** — LLM provider setup (Apple Intelligence default on macOS 26+; OpenAI, Anthropic, Gemini, Ollama available as alternates); editable prompts; Sparkle auto-update.
 - **Troubleshooting** — permissions (Microphone / Input Monitoring / Accessibility), the macOS "modifier required" hotkey constraint, Bluetooth-redirect capture failures, resetting state, and pointers to the About tab's log-sharing flow for reporting bugs.
 
 Info popovers across Settings deep-link into the matching Help section so the user can jump from a field to its explanation without context-switching. The deep-link contract is two-phase: an anchor may live inside an `ExpandableRow` that needs to auto-open before the scroll lands, so the page expands the target row first and then scrolls to it.

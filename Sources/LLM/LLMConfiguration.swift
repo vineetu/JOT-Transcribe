@@ -14,10 +14,8 @@ final class LLMConfiguration: ObservableObject {
     private static let providerKey = "jot.llm.provider"
 
     /// Providers that actually use the shared `{baseURL, apiKey, model}`
-    /// bucket scheme. Apple Intelligence runs entirely on-device and has no
-    /// endpoint/key/model. Vertex Gemini has its own dedicated schema
-    /// (service account / region / project) owned elsewhere — do NOT add
-    /// it to this list.
+    /// bucket scheme. Apple Intelligence runs entirely on-device and has
+    /// no endpoint/key/model, so it's excluded.
     static let bucketedProviders: [LLMProvider] = [.openai, .anthropic, .gemini, .ollama]
 
     /// Default provider for first-install users (nothing stored yet).

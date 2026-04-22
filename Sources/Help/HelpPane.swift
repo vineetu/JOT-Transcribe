@@ -507,7 +507,7 @@ extension HelpPane {
         CardSpec(
             section: .advanced,
             title: "LLM providers",
-            caption: "Six providers for Auto-correct and Articulate: Apple Intelligence (on-device), OpenAI, Anthropic, Gemini, Vertex Gemini, Ollama.",
+            caption: "Five providers for Auto-correct and Articulate: Apple Intelligence (on-device), OpenAI, Anthropic, Gemini, Ollama.",
             anchor: "help.ai.providers",
             tag: "6"
         ) {
