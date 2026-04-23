@@ -158,8 +158,8 @@ final class HotkeyRouter {
     ) {
         let recorderActive: Bool
         switch recorderState {
-        case .recording, .transforming: recorderActive = true
-        case .idle, .transcribing, .error: recorderActive = false
+        case .recording, .transcribing, .transforming: recorderActive = true
+        case .idle, .error: recorderActive = false
         }
 
         let articulateActive: Bool

@@ -18,7 +18,7 @@ struct JotApp: App {
                 .environmentObject(appDelegate.recorder)
                 .environmentObject(appDelegate.delivery)
                 .environmentObject(PermissionsService.shared)
-                .environment(\.transcriber, appDelegate.recorder.transcriber)
+                .environment(\.transcriber, appDelegate.pipeline.transcriber)
                 .modelContainer(appDelegate.modelContainer)
         }
         .windowResizability(.contentMinSize)

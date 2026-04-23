@@ -21,9 +21,9 @@ enum WizardPresenter {
 
     private static var controller: SetupWizardWindowController?
 
-    /// Present the wizard, injecting the recorder's long-lived `Transcriber`
-    /// so that `TestStep`'s end-to-end smoke test warms the very same
-    /// `AsrManager` the recorder uses on the first hotkey press.
+    /// Present the wizard, injecting the shared `VoiceInputPipeline`
+    /// transcriber so that `TestStep` warms the same `AsrManager` both voice
+    /// flows use on the first hotkey press.
     static func present(reason: PresentReason, transcriber: Transcriber) {
         if let controller {
             // Already open — just bring it forward.

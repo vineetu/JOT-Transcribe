@@ -24,12 +24,10 @@ final class SetupWizardCoordinator: ObservableObject {
     /// navigated past it without recording).
     @Published var testTranscript: String?
 
-    /// The long-lived `Transcriber` owned by `RecorderController`, injected at
+    /// The shared `Transcriber` owned by `VoiceInputPipeline`, injected at
     /// construction. Steps (notably `TestStep`) reuse this instance so that
-    /// the ANE warm-up performed during the wizard leaves the recorder ready
-    /// to transcribe the first post-wizard hotkey press — without this, the
-    /// wizard and the recorder each load their own `AsrManager`, and the
-    /// recorder's remains unloaded until relaunch.
+    /// the ANE warm-up performed during the wizard leaves both voice flows
+    /// ready to transcribe the first post-wizard hotkey press.
     let transcriber: Transcriber
 
     private let onFinish: () -> Void

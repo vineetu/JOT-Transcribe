@@ -9,15 +9,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let log = Logger(subsystem: "com.jot.Jot", category: "AppDelegate")
     private let singleInstance = SingleInstance()
 
+    let pipeline: VoiceInputPipeline
     // Exposed so SwiftUI scenes (content, settings, menu-bar, overlay) can
-    // @EnvironmentObject them. `RecorderController` and `DeliveryService` are
-    // created eagerly at delegate construction time so they are ready before
-    // the first `WindowGroup` body runs — environment-object injection can't
-    // tolerate nil. Singleton checks etc. still happen in
-    // `applicationDidFinishLaunching`; if we turn out to be a duplicate the
-    // process terminates before any side effects land.
-    let recorder: RecorderController = RecorderController()
-    let delivery: DeliveryService = DeliveryService.shared
+    // @EnvironmentObject them. `VoiceInputPipeline`, `RecorderController`,
+    // and `DeliveryService` are created eagerly at delegate construction time
+    // so they are ready before the first `WindowGroup` body runs —
+    // environment-object injection can't tolerate nil. Singleton checks etc.
+    // still happen in `applicationDidFinishLaunching`; if we turn out to be a
+    // duplicate the process terminates before any side effects land.
+    let recorder: RecorderController
+    let delivery: DeliveryService
     private(set) var articulateController: ArticulateController!
     /// SwiftData stack. Shared with the SwiftUI scene via
     /// `.modelContainer(modelContainer)` so both the UI and the
@@ -58,6 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// paths that bypass the menu-bar controller.
     private var windowObserver: NSObjectProtocol?
 
+    override init() {
+        let pipeline = VoiceInputPipeline()
+        self.pipeline = pipeline
+        self.recorder = RecorderController(pipeline: pipeline)
+        self.delivery = DeliveryService.shared
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // `.regular` — Jot shows a Dock icon, appears in ⌘Tab, and is
         // listed in Force Quit. ⌘W hides the window (via the close
@@ -93,10 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `delivery` are already eagerly instantiated as stored properties.
         delivery.bind(recorder: recorder)
 
-        let articulate = ArticulateController(
-            capture: AudioCapture(),
-            transcriber: Transcriber()
-        )
+        let articulate = ArticulateController(pipeline: pipeline)
         self.articulateController = articulate
 
         let router = HotkeyRouter(recorder: recorder, delivery: delivery, articulateController: articulate)
@@ -126,7 +132,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.menuBar.install()
 
-        self.overlay = OverlayWindowController(recorder: recorder, delivery: delivery, articulateController: articulate)
+        self.overlay = OverlayWindowController(
+            recorder: recorder,
+            delivery: delivery,
+            articulateController: articulate,
+            pipeline: pipeline
+        )
         self.overlay.install()
 
         // Install the hide-on-close proxy delegate the first time the
@@ -170,8 +181,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let missingPermissions = [Capability.microphone, .inputMonitoring, .accessibilityPostEvents]
             .contains { PermissionsService.shared.statuses[$0] != .granted }
         if !FirstRunState.shared.setupComplete || missingPermissions {
-            DispatchQueue.main.async { [recorder] in
-                WizardPresenter.present(reason: .firstRun, transcriber: recorder.transcriber)
+            let transcriber = pipeline.transcriber
+            DispatchQueue.main.async {
+                WizardPresenter.present(reason: .firstRun, transcriber: transcriber)
             }
         }
 
@@ -182,8 +194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Best-effort: if the model isn't downloaded yet, or pre-warm fails,
         // the recorder will surface a fast "model still loading" error on
         // first press rather than silently hanging.
-        Task.detached(priority: .utility) { [recorder] in
-            try? await recorder.transcriber.ensureLoaded()
+        let pipeline = self.pipeline
+        Task.detached(priority: .utility) { [pipeline] in
+            try? await pipeline.ensureTranscriberLoaded()
         }
     }
 

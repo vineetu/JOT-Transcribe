@@ -12,6 +12,8 @@ final class OverlayWindowController {
 
     private let recorder: RecorderController
     private let delivery: DeliveryService
+    private let articulateController: ArticulateController?
+    private let pipeline: VoiceInputPipeline
     private let model: PillViewModel
     private let amplitudePublisher = AmplitudePublisher()
 
@@ -29,14 +31,21 @@ final class OverlayWindowController {
     static let horizontalPadding: CGFloat = 12
     static let bottomPadding: CGFloat = 24
 
-    init(recorder: RecorderController, delivery: DeliveryService, articulateController: ArticulateController? = nil) {
+    init(
+        recorder: RecorderController,
+        delivery: DeliveryService,
+        articulateController: ArticulateController? = nil,
+        pipeline: VoiceInputPipeline
+    ) {
         self.recorder = recorder
         self.delivery = delivery
+        self.articulateController = articulateController
+        self.pipeline = pipeline
         self.model = PillViewModel(recorder: recorder, delivery: delivery, articulateController: articulateController)
     }
 
     func install() {
-        recorder.setAmplitudePublisher(amplitudePublisher)
+        pipeline.setAmplitudePublisher(amplitudePublisher)
         let rootView = PillView(model: model)
             .environmentObject(amplitudePublisher)
         let panel = OverlayPanel(rootView: rootView)

@@ -9,10 +9,9 @@ struct GeneralPane: View {
     @AppStorage("jot.inputDeviceUID") private var inputDeviceUID: String = ""
     @AppStorage("jot.retentionDays") private var retentionDays: Int = 7
 
-    // Already injected at the root scene in `JotApp.swift` — consumed here so
-    // the "Run Setup Wizard…" button can forward the recorder's long-lived
-    // Transcriber into the wizard (shared-instance refactor).
-    @EnvironmentObject private var recorder: RecorderController
+    // Injected at the root scene in `JotApp.swift` so the "Run Setup Wizard…"
+    // button can forward the shared transcriber into the wizard.
+    @Environment(\.transcriber) private var transcriber
 
     /// Donation reminder toggle — master switch for the Home donation
     /// card AND the About "months saved" badge (one switch, two
@@ -109,10 +108,8 @@ struct GeneralPane: View {
                     }
                     Spacer()
                     Button("Run…") {
-                        WizardPresenter.present(
-                            reason: .manualFromSettings,
-                            transcriber: recorder.transcriber
-                        )
+                        guard let transcriber else { return }
+                        WizardPresenter.present(reason: .manualFromSettings, transcriber: transcriber)
                     }
                     InfoPopoverButton(
                         title: "Run Setup Wizard Again",
