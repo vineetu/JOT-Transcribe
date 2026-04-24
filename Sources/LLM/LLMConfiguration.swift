@@ -144,7 +144,7 @@ final class LLMConfiguration: ObservableObject {
         // Flavor1Session — not an API key in Keychain. Configuration is
         // "minimal" when a non-expired JWT is present.
         if provider == .flavor1 {
-            return Flavor1Session.shared.hasValidJWT
+            return Flavor1Session.shared.hasValidJWT()
         }
         #endif
         if !provider.requiresUserAPIKey {
