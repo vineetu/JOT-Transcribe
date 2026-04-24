@@ -170,7 +170,22 @@ if [[ "${JOT_SKIP_APPCAST}" != "1" ]]; then
     cp "${APPCAST_SRC}" "${APPCAST_DST}"
 fi
 
-# ---- 6. Commit and push ------------------------------------------------------
+# ---- 6. Restore Info.plist flavor overrides BEFORE commit --------------------
+# The DMG built in step 3 already contains the flavor-injected Info.plist, so
+# the archive is correct. But the EXIT trap installed earlier fires AFTER
+# `git commit` below — meaning, without this explicit restore, flavor keys
+# (JotFlavor=sony, JotDefaultEndpoint.*, Sony SUFeedURL, etc.) would get baked
+# into the release commit and then propagate to whichever remote main is
+# pushed to. That's the exact bug that contaminated public/main with sony
+# content across five `-sony` release commits before the history rewrite.
+# Restore now, clear the command list so the EXIT trap becomes a no-op.
+if [[ ${#RESTORE_CMDS[@]} -gt 0 ]]; then
+    log "Restoring Info.plist flavor overrides before git commit"
+    restore_plist
+    RESTORE_CMDS=()
+fi
+
+# ---- 7. Commit and push ------------------------------------------------------
 # Stage everything that belongs in a release commit via an explicit allowlist.
 # Deliberately not using `git add -A` / `git add .` — those would sweep in any
 # stray file left in the worktree (local experiments, .env files on machines
@@ -204,7 +219,7 @@ for remote in ${JOT_PUSH_REMOTES}; do
     git push "${remote}" "${TAG}"
 done
 
-# ---- 7. Create GitHub release (opt-out) --------------------------------------
+# ---- 8. Create GitHub release (opt-out) --------------------------------------
 GH_CMD_PREFIX=""
 if [[ -n "${JOT_FLAVOR_GH_HOST}" ]]; then
     GH_CMD_PREFIX="GH_HOST=${JOT_FLAVOR_GH_HOST} "
@@ -234,7 +249,7 @@ else
     fi
 fi
 
-# ---- 8. Summary --------------------------------------------------------------
+# ---- 9. Summary --------------------------------------------------------------
 cat <<EOF
 
 ---------------------------------------------------------------
