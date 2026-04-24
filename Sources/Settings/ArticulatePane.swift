@@ -30,7 +30,26 @@ struct ArticulatePane: View {
         AppleIntelligenceClient.isAvailable
     }
 
+    @ViewBuilder
     var body: some View {
+        #if JOT_FLAVOR_1
+        // Hard-branch: for .flavor1, render the dedicated Flavor1Pane so the
+        // generic baseURL / apiKey / model fields never appear. The Keychain
+        // API-key field at ~L112 would otherwise persist any JWT a user
+        // pasted into it — that's the invariant this branch enforces.
+        if config.provider == .flavor1 {
+            Flavor1Pane()
+                .navigationTitle("AI")
+        } else {
+            genericBody
+        }
+        #else
+        genericBody
+        #endif
+    }
+
+    @ViewBuilder
+    private var genericBody: some View {
         ScrollViewReader { proxy in
             Form {
                 Section("Provider") {

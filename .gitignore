@@ -55,3 +55,7 @@ iOS/
 # Keep the base prose checked in; ignore the derived outputs.
 Resources/fragments/
 Resources/help-content.md
+
+# Private flavor sources (e.g. flavor_1 / PFB Enterprise) — only present
+# on internal machines that source a `.flavor-*.env` at release time.
+Sources/Private/

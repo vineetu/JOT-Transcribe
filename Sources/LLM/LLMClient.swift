@@ -149,6 +149,14 @@ actor LLMClient {
                 systemPrompt: systemPrompt, userPrompt: userPrompt,
                 temperature: temperature, stream: stream
             )
+        #if JOT_FLAVOR_1
+        case .flavor1:
+            return try Flavor1Client.buildRequest(
+                baseURL: baseURL, model: model,
+                systemPrompt: systemPrompt, userPrompt: userPrompt,
+                temperature: temperature, stream: stream
+            )
+        #endif
         }
     }
 
@@ -243,6 +251,10 @@ actor LLMClient {
             return true
         case .appleIntelligence:
             return false
+        #if JOT_FLAVOR_1
+        case .flavor1:
+            return true
+        #endif
         }
     }
 
@@ -512,6 +524,10 @@ actor LLMClient {
             return parseGeminiStreamChunk(root)
         case .appleIntelligence:
             return nil
+        #if JOT_FLAVOR_1
+        case .flavor1:
+            return Flavor1Client.parseStreamChunk(root)
+        #endif
         }
     }
 
@@ -604,6 +620,10 @@ actor LLMClient {
                 .flatMap { $0 as? [String: Any] }?["parts"]
                 .flatMap { $0 as? [[String: Any]] }?
                 .first?["text"] as? String
+        #if JOT_FLAVOR_1
+        case .flavor1:
+            text = Flavor1Client.parseResponse(root)
+        #endif
         }
 
         guard let result = text, !result.isEmpty else {
@@ -730,6 +750,18 @@ actor LLMClient {
         if config.provider == .appleIntelligence {
             return AppleIntelligenceClient.isAvailable
         }
+
+        #if JOT_FLAVOR_1
+        if config.provider == .flavor1 {
+            // JWT-aware reachability probe lives in Flavor1Client — it
+            // checks sign-in state + endpoint reachability without
+            // touching the generic API-key path.
+            return await Flavor1Client.healthCheck(
+                baseURL: config.baseURL,
+                model: config.model
+            )
+        }
+        #endif
 
         if config.provider.requiresUserAPIKey {
             guard !config.apiKey.isEmpty else { return false }

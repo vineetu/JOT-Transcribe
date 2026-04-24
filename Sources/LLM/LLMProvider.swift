@@ -6,6 +6,9 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     case anthropic
     case gemini
     case ollama
+    #if JOT_FLAVOR_1
+    case flavor1
+    #endif
 
     var id: String { rawValue }
 
@@ -16,6 +19,9 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic: "Anthropic"
         case .gemini: "Gemini"
         case .ollama: "Ollama (local)"
+        #if JOT_FLAVOR_1
+        case .flavor1: (Bundle.main.infoDictionary?["FLAVOR_1_DISPLAY_NAME"] as? String) ?? "PFB Enterprise"
+        #endif
         }
     }
 
@@ -34,6 +40,15 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     /// apply; returns `""`.
     var defaultBaseURL: String {
         if self == .appleIntelligence { return "" }
+        #if JOT_FLAVOR_1
+        if self == .flavor1 {
+            // Flavor-1 has no vendor-public fallback — the endpoint is
+            // injected via Info.plist at build time. Return "" if absent
+            // so the pane surfaces a configuration error instead of
+            // silently hitting the wrong host.
+            return (Bundle.main.infoDictionary?["FLAVOR_1_DEFAULT_ENDPOINT"] as? String) ?? ""
+        }
+        #endif
         let key = "JotDefaultEndpoint.\(rawValueForInfoPlist)"
         if let override = Bundle.main.infoDictionary?[key] as? String, !override.isEmpty {
             return override
@@ -44,6 +59,9 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic:    return "https://api.anthropic.com/v1"
         case .gemini:       return "https://generativelanguage.googleapis.com/v1beta"
         case .ollama:       return "http://localhost:11434/v1"
+        #if JOT_FLAVOR_1
+        case .flavor1:      return ""
+        #endif
         }
     }
 
@@ -56,6 +74,13 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     /// model identifier is managed by the OS, so returns `""`.
     var defaultModel: String {
         if self == .appleIntelligence { return "" }
+        #if JOT_FLAVOR_1
+        if self == .flavor1 {
+            // Flavor-1's default model is injected via Info.plist — no
+            // vendor-public fallback. Return "" if absent.
+            return (Bundle.main.infoDictionary?["FLAVOR_1_DEFAULT_MODEL"] as? String) ?? ""
+        }
+        #endif
         let key = "JotDefaultModel.\(rawValueForInfoPlist)"
         if let override = Bundle.main.infoDictionary?[key] as? String, !override.isEmpty {
             return override
@@ -66,6 +91,9 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic:    return "claude-haiku-4-5-20251001"
         case .gemini:       return "gemini-3.1-flash-lite-preview"
         case .ollama:       return "gemma4:31b-cloud"
+        #if JOT_FLAVOR_1
+        case .flavor1:      return ""
+        #endif
         }
     }
 
@@ -76,6 +104,11 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         switch self {
         case .openai, .anthropic, .gemini: return true
         case .ollama, .appleIntelligence:  return false
+        #if JOT_FLAVOR_1
+        // Flavor-1 authenticates via short-lived JWT (not an API key);
+        // credential handling lives entirely in Sources/Private/Flavor1/.
+        case .flavor1:                     return false
+        #endif
         }
     }
 
@@ -90,6 +123,11 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         switch self {
         case .openai, .anthropic, .gemini: return true
         case .ollama, .appleIntelligence:  return false
+        #if JOT_FLAVOR_1
+        // Flavor-1 is a cloud endpoint (always-warm); use the same 3s
+        // first-byte reachability check as other cloud providers.
+        case .flavor1:                     return true
+        #endif
         }
     }
 }

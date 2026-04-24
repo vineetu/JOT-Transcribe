@@ -81,12 +81,23 @@ mkdir -p "${BUILD_DIR}" "${DIST_DIR}"
 # -----------------------------------------------------------------------------
 # 3. Archive (Release, arm64)
 # -----------------------------------------------------------------------------
+# Flavor builds can inject extra Swift flags (e.g. `-DJOT_FLAVOR_1`) via
+# `JOT_EXTRA_SWIFT_FLAGS` sourced from `.flavor-*.env`. Public builds leave
+# the env var unset, so OTHER_SWIFT_FLAGS is not forwarded and the archive
+# is byte-identical to today.
+ARCHIVE_EXTRA_ARGS=()
+if [[ -n "${JOT_EXTRA_SWIFT_FLAGS:-}" ]]; then
+    log "Threading JOT_EXTRA_SWIFT_FLAGS into archive: ${JOT_EXTRA_SWIFT_FLAGS}"
+    ARCHIVE_EXTRA_ARGS+=("OTHER_SWIFT_FLAGS=\$(inherited) ${JOT_EXTRA_SWIFT_FLAGS}")
+fi
+
 log "Archiving ${SCHEME} (${CONFIGURATION}, arm64)"
 xcodebuild \
     -scheme "${SCHEME}" \
     -configuration "${CONFIGURATION}" \
     -destination 'platform=macOS,arch=arm64' \
     -archivePath "${ARCHIVE_PATH}" \
+    "${ARCHIVE_EXTRA_ARGS[@]}" \
     archive
 
 # -----------------------------------------------------------------------------
