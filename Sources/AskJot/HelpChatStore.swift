@@ -283,6 +283,10 @@ final class HelpChatStore {
             return GeminiChatStream()
         case .ollama:
             return OllamaChatStream()
+        #if JOT_FLAVOR_1
+        case .flavor1:
+            preconditionFailure("flavor_1 Ask Jot integration not yet implemented")
+        #endif
         }
     }
 
