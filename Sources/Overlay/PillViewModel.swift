@@ -26,7 +26,10 @@ final class PillViewModel: ObservableObject {
 
     /// Auto-dismiss windows (seconds).
     static let successLinger: TimeInterval = 2.4
-    static let errorLinger: TimeInterval = 5.0
+    /// Non-actionable errors can clear sooner because the pill has no follow-up affordance yet.
+    static let errorLinger: TimeInterval = 7.0
+    /// Actionable errors should linger longer so a future labeled button has time to be noticed and used.
+    static let actionableErrorLinger: TimeInterval = 15.0
 
     private var recordingStartedAt: Date?
     private var tickTimer: Timer?
@@ -77,19 +80,6 @@ final class PillViewModel: ObservableObject {
     deinit {
         tickTimer?.invalidate()
         dismissTask?.cancel()
-    }
-
-    /// Re-copy the transcript that the success state is previewing. Returns
-    /// true if something was copied; the view uses that to briefly flash the
-    /// glyph if we want future feedback.
-    @discardableResult
-    func copyLastTranscript() -> Bool {
-        guard let text = recorder?.lastTranscript, !text.isEmpty else {
-            return false
-        }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        return pasteboard.setString(text, forType: .string)
     }
 
     // MARK: - External transitions (Ask Jot voice input)

@@ -24,7 +24,12 @@ struct PillView: View {
     /// Pill surface geometry. Height is tight to the notch strip; corner
     /// radius equals height/2 so the bottom corners hug the notch curvature.
     static let pillHeight: CGFloat = 36
-    static let pillWidth: CGFloat = 360
+    static let compactPillWidth: CGFloat = 360
+    static let expandedPillWidth: CGFloat = 600
+    static let horizontalContentPadding: CGFloat = 14
+    static let contentSpacing: CGFloat = 10
+    static let errorTextMaxWidth: CGFloat =
+        expandedPillWidth - (horizontalContentPadding * 2) - (contentSpacing * 2) - 24
     private static var cornerRadius: CGFloat { pillHeight / 2 }
 
     var body: some View {
@@ -54,9 +59,7 @@ struct PillView: View {
                 }
             case .success(let preview):
                 pillBody {
-                    SuccessContent(preview: preview) {
-                        model.copyLastTranscript()
-                    }
+                    SuccessContent(preview: preview)
                 }
             case .error(let message):
                 pillBody {
@@ -77,16 +80,17 @@ struct PillView: View {
 
     @ViewBuilder
     private func pillBody<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Self.contentSpacing) {
             content()
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, Self.horizontalContentPadding)
         .frame(height: Self.pillHeight)
         .background(
             Capsule(style: .continuous)
                 .fill(Color.black)
                 .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 4)
         )
+        .contentShape(Capsule(style: .continuous))
         .transition(pillTransition)
     }
 
@@ -360,8 +364,6 @@ private struct TransformingContent: View {
 
 private struct SuccessContent: View {
     let preview: String
-    let onCopy: () -> Void
-    @State private var copyHover = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -374,14 +376,6 @@ private struct SuccessContent: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: onCopy) {
-                Image(systemName: "doc.on.clipboard")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(copyHover ? .white : .white.opacity(0.75))
-            }
-            .buttonStyle(.plain)
-            .onHover { copyHover = $0 }
-            .help("Copy transcript")
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
     }
@@ -397,12 +391,12 @@ private struct ErrorContent: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color(nsColor: .systemRed))
-            Text(shortened)
+            Text(displayMessage)
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: PillView.errorTextMaxWidth, alignment: .leading)
             Image(systemName: "info.circle")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.75))
@@ -411,10 +405,9 @@ private struct ErrorContent: View {
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
     }
 
-    private var shortened: String {
-        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count <= 48 { return trimmed }
-        let idx = trimmed.index(trimmed.startIndex, offsetBy: 48)
-        return String(trimmed[..<idx]) + "…"
+    private var displayMessage: String {
+        message
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

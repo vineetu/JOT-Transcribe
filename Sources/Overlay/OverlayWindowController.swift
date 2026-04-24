@@ -22,14 +22,14 @@ final class OverlayWindowController {
     private var reduceMotionObserver: NSObjectProtocol?
     private var stateCancellable: AnyCancellable?
 
-    /// Natural footprint of the pill (visual surface, not including shadow).
-    /// The hosting window is sized larger than this, with extra room on the
-    /// sides and bottom so the SwiftUI drop shadow can render without being
-    /// clipped at the window boundary. No extra room is needed on top — the
-    /// pill hugs the top of the window (and the top of the screen).
-    static let pillSize = NSSize(width: 360, height: 36)
+    /// Natural footprint of the compact pill (visual surface, not including
+    /// shadow). Error pills can grow beyond this, up to `expandedPillWidth`.
+    static let compactPillWidth: CGFloat = PillView.compactPillWidth
+    static let expandedPillWidth: CGFloat = PillView.expandedPillWidth
+    static let pillHeight: CGFloat = PillView.pillHeight
     static let horizontalPadding: CGFloat = 12
     static let bottomPadding: CGFloat = 24
+    private static let errorChromeWidth: CGFloat = expandedPillWidth - PillView.errorTextMaxWidth
 
     init(
         recorder: RecorderController,
@@ -51,7 +51,7 @@ final class OverlayWindowController {
         let panel = OverlayPanel(rootView: rootView)
         self.panel = panel
 
-        updateFrame()
+        updateFrame(for: model.state)
         // Panel stays ordered-front at all times — we toggle visibility/click
         // behaviour off of the model's published state instead of showing and
         // hiding the window, so the SwiftUI transitions can play.
@@ -91,6 +91,7 @@ final class OverlayWindowController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.applyClickThrough(for: state)
+                self?.updateFrame(for: state)
             }
     }
 
@@ -105,21 +106,22 @@ final class OverlayWindowController {
 
     // MARK: - Placement
 
-    private func updateFrame() {
+    private func updateFrame(for state: PillViewModel.PillState? = nil) {
         guard let panel else { return }
         guard let screen = OverlayPlacement.currentScreen() else {
             log.info("no screen available for overlay placement")
             return
         }
+        let pillSize = pillSize(for: state ?? model.state)
         // Size the window larger than the pill so the SwiftUI shadow has room
         // to render (primarily below the pill). No padding on top — the pill's
         // top edge should align with the window's top edge so it sits flush at
         // the top of the screen.
         let windowSize = NSSize(
-            width: Self.pillSize.width + Self.horizontalPadding * 2,
-            height: Self.pillSize.height + Self.bottomPadding
+            width: pillSize.width + Self.horizontalPadding * 2,
+            height: pillSize.height + Self.bottomPadding
         )
-        let pillRect = OverlayPlacement.frame(for: Self.pillSize, on: screen)
+        let pillRect = OverlayPlacement.frame(for: pillSize, on: screen)
         // Place the window so the pill's top edge lines up with the window's
         // top edge (= top of screen). In AppKit bottom-left coordinates:
         //   window.maxY == pill.maxY  →  window.origin.y = pillRect.maxY - windowSize.height
@@ -130,6 +132,31 @@ final class OverlayWindowController {
             height: windowSize.height
         )
         panel.setFrame(windowFrame, display: true, animate: false)
+    }
+
+    private func pillSize(for state: PillViewModel.PillState) -> NSSize {
+        NSSize(width: pillWidth(for: state), height: Self.pillHeight)
+    }
+
+    private func pillWidth(for state: PillViewModel.PillState) -> CGFloat {
+        switch state {
+        case .error(let message):
+            return errorPillWidth(for: message)
+        case .hidden, .recording, .transcribing, .condensing, .rewriting, .transforming, .success:
+            return Self.compactPillWidth
+        }
+    }
+
+    private func errorPillWidth(for message: String) -> CGFloat {
+        let displayMessage = message
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let font = NSFont.systemFont(ofSize: 12, weight: .regular)
+        let measuredTextWidth = ceil(
+            NSString(string: displayMessage).size(withAttributes: [.font: font]).width
+        ) + 2
+        let boundedTextWidth = min(measuredTextWidth, PillView.errorTextMaxWidth)
+        return min(Self.expandedPillWidth, Self.errorChromeWidth + boundedTextWidth)
     }
 
     // MARK: - Click-through
