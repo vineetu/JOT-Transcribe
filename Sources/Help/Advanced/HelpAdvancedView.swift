@@ -144,19 +144,12 @@ extension HelpAdvancedView {
     /// Invoked at app startup to assert the catalog matches the spec. Cheap;
     /// runs once. A release build strips this whole block.
     static func runDebugInvariants() {
-        // Shape: 4 sections with expected counts per spec §6. Under
-        // JOT_FLAVOR_1, the AI providers section carries one extra card
-        // (the flavor-1 entry) — reflect that in the expected counts so
-        // the assertion stays exhaustive in both builds.
+        // Shape: 4 sections with expected counts per spec §6.
         assert(
             AdvancedContent.sections.count == 4,
             "Advanced must have exactly 4 sections; got \(AdvancedContent.sections.count)"
         )
-        #if JOT_FLAVOR_1
-        let expectedCounts = [7, 4, 4, 3]
-        #else
         let expectedCounts = [6, 4, 4, 3]
-        #endif
         for (idx, section) in AdvancedContent.sections.enumerated() {
             assert(
                 section.cards.count == expectedCounts[idx],

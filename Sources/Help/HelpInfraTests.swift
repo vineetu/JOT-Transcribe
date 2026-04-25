@@ -418,8 +418,7 @@ enum HelpNavigatorTests {
 /// Popovers with `helpAnchor: nil` are NOT listed here — nil means "no
 /// deep-link, no Learn more footer", which is a valid configuration.
 enum InfoCircleAnchorRegistry {
-    static let entries: [(label: String, anchor: String)] = {
-        var base: [(label: String, anchor: String)] = [
+    static let entries: [(label: String, anchor: String)] = [
         // GeneralPane
         ("GeneralPane.launchAtLogin",          "sys-launch-at-login"),
         ("GeneralPane.restartJot",             "hotkey-stopped-working"),
@@ -463,15 +462,7 @@ enum InfoCircleAnchorRegistry {
         ("VocabularyPane.customVocabulary",   "custom-vocabulary"),
 
         // SavingsBadge.savingsEstimate has helpAnchor: nil
-        ]
-        #if JOT_FLAVOR_1
-        // Flavor-1 sign-in popover deep-links to the flavor-specific
-        // Advanced card so InfoCircleAnchorTests stays exhaustive in
-        // flavor-1 DEBUG builds.
-        base.append(("Flavor1Pane.signIn", "ai-flavor1"))
-        #endif
-        return base
-    }()
+    ]
 }
 
 enum InfoCircleAnchorTests {

@@ -38,41 +38,17 @@ struct AdvancedSectionView: View {
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
                 ForEach(section.cards) { card in
-                    cardView(for: card)
-                        .id(card.id)
+                    AdvancedCard(
+                        card: card,
+                        isExpanded: binding(for: card.id),
+                        isHighlighted: highlightedSlug == card.id
+                    )
+                    .id(card.id)
                 }
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(section.title)
-    }
-
-    /// Per-card dispatch so flavor-specific cards can substitute a private
-    /// SwiftUI view for the generic `AdvancedCard` chrome. Public/Sony
-    /// builds only ever take the default branch.
-    @ViewBuilder
-    private func cardView(for card: AdvancedCardData) -> some View {
-        #if JOT_FLAVOR_1
-        if card.id == "ai-flavor1" {
-            AIFlavor1Card(
-                card: card,
-                isExpanded: binding(for: card.id),
-                isHighlighted: highlightedSlug == card.id
-            )
-        } else {
-            AdvancedCard(
-                card: card,
-                isExpanded: binding(for: card.id),
-                isHighlighted: highlightedSlug == card.id
-            )
-        }
-        #else
-        AdvancedCard(
-            card: card,
-            isExpanded: binding(for: card.id),
-            isHighlighted: highlightedSlug == card.id
-        )
-        #endif
     }
 
     // MARK: - Layout

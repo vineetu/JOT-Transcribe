@@ -91,23 +91,6 @@ if [[ -n "${JOT_EXTRA_SWIFT_FLAGS:-}" ]]; then
     ARCHIVE_EXTRA_ARGS+=("OTHER_SWIFT_FLAGS=\$(inherited) ${JOT_EXTRA_SWIFT_FLAGS}")
 fi
 
-# When a flavor is active (detected via JOT_EXTRA_SWIFT_FLAGS containing
-# a `-DJOT_FLAVOR_*` define), propagate the optional help-content override
-# env vars into the archive environment so the build-phase concat script
-# picks up the flavor-specific base file and fragment directory. When no
-# flavor is active these exports are skipped entirely, leaving the
-# public/Sony archive byte-identical to before this wiring landed.
-if [[ "${JOT_EXTRA_SWIFT_FLAGS:-}" == *"-DJOT_FLAVOR_"* ]]; then
-    if [[ -n "${JOT_FLAVOR_BASE:-}" ]]; then
-        log "Threading JOT_FLAVOR_BASE into archive: ${JOT_FLAVOR_BASE}"
-        export JOT_FLAVOR_BASE
-    fi
-    if [[ -n "${JOT_FLAVOR_FRAGMENTS_DIR:-}" ]]; then
-        log "Threading JOT_FLAVOR_FRAGMENTS_DIR into archive: ${JOT_FLAVOR_FRAGMENTS_DIR}"
-        export JOT_FLAVOR_FRAGMENTS_DIR
-    fi
-fi
-
 log "Archiving ${SCHEME} (${CONFIGURATION}, arm64)"
 xcodebuild \
     -scheme "${SCHEME}" \

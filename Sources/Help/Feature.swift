@@ -206,15 +206,6 @@ extension Feature {
         features.append(advancedCard(id: "ai-editable-prompts", title: "Editable prompts"))
         features.append(advancedCard(id: "ai-test-connection", title: "Test Connection"))
 
-        #if JOT_FLAVOR_1
-        // Flavor-1 enterprise provider. The card title resolves at runtime
-        // from the Info.plist `FLAVOR_1_DISPLAY_NAME` override so public
-        // code carries no tenant vocabulary — the string literal here
-        // reads "Flavor 1" for a build that somehow enables the flag
-        // without injecting the override (never happens in practice).
-        features.append(advancedCard(id: "ai-flavor1", title: Self.flavor1CardTitle))
-        #endif
-
         // System (4)
         features.append(advancedCard(id: "sys-launch-at-login", title: "Launch at login"))
         features.append(advancedCard(id: "sys-retention", title: "Retention"))
@@ -325,16 +316,6 @@ extension Feature {
             commandOnCard: commandOnCard
         )
     }
-
-    #if JOT_FLAVOR_1
-    /// Runtime-resolved title for the flavor-1 Advanced card. Reads
-    /// `FLAVOR_1_DISPLAY_NAME` from the Info.plist so public code never
-    /// embeds tenant vocabulary; falls back to a neutral "Flavor 1" if
-    /// the override is absent.
-    static var flavor1CardTitle: String {
-        (Bundle.main.infoDictionary?["FLAVOR_1_DISPLAY_NAME"] as? String) ?? "Flavor 1"
-    }
-    #endif
 }
 
 // MARK: - Helpers for consumers
@@ -386,41 +367,31 @@ extension Feature {
 
     /// Every slug the redesign spec §14 enumerates. Used by the test
     /// asserting catalog completeness.
-    static let expectedSlugs: Set<String> = {
-        var slugs: Set<String> = [
-            // Heroes
-            "dictation", "cleanup", "articulate",
-            // Dictation sub-rows (7 — removed: auto-transcribe, re-transcribe)
-            "toggle-recording", "push-to-talk", "cancel-recording", "any-length",
-            "on-device-transcription", "multilingual", "custom-vocabulary",
-            // Cleanup sub-rows
-            "cleanup-providers", "cleanup-prompt", "cleanup-fallback",
-            "cleanup-raw-preserved",
-            // Articulate sub-rows (3 — removed: articulate-shared-prompt)
-            "articulate-custom", "articulate-fixed", "articulate-intent-classifier",
-            // Advanced cards
-            "ai-apple-intelligence", "ai-cloud-providers", "ai-ollama",
-            "ai-custom-base-url", "ai-editable-prompts", "ai-test-connection",
-            "sys-launch-at-login", "sys-retention", "sys-hide-to-tray",
-            "sys-reset-scopes",
-            "input-device", "input-vocabulary", "input-bluetooth",
-            "input-silent-capture",
-            "sound-recording-chimes", "sound-transcription-complete",
-            "sound-error-chime",
-            // Troubleshooting
-            "permissions", "modifier-required", "bluetooth-redirect",
-            "shortcut-conflicts", "recording-wont-start", "hotkey-stopped-working",
-            "resetting-jot", "report-issue",
-            "ai-unavailable", "ai-connection-failed", "articulate-bad-results",
-        ]
-        #if JOT_FLAVOR_1
-        // Flavor-1 Advanced-card slug — registered so
-        // test_featureAll_matchesSpec14ExactSlugs doesn't flag the flavor
-        // entry as an unexpected extra in DEBUG builds of the flavor-1
-        // target.
-        slugs.insert("ai-flavor1")
-        #endif
-        return slugs
-    }()
+    static let expectedSlugs: Set<String> = [
+        // Heroes
+        "dictation", "cleanup", "articulate",
+        // Dictation sub-rows (7 — removed: auto-transcribe, re-transcribe)
+        "toggle-recording", "push-to-talk", "cancel-recording", "any-length",
+        "on-device-transcription", "multilingual", "custom-vocabulary",
+        // Cleanup sub-rows
+        "cleanup-providers", "cleanup-prompt", "cleanup-fallback",
+        "cleanup-raw-preserved",
+        // Articulate sub-rows (3 — removed: articulate-shared-prompt)
+        "articulate-custom", "articulate-fixed", "articulate-intent-classifier",
+        // Advanced cards
+        "ai-apple-intelligence", "ai-cloud-providers", "ai-ollama",
+        "ai-custom-base-url", "ai-editable-prompts", "ai-test-connection",
+        "sys-launch-at-login", "sys-retention", "sys-hide-to-tray",
+        "sys-reset-scopes",
+        "input-device", "input-vocabulary", "input-bluetooth",
+        "input-silent-capture",
+        "sound-recording-chimes", "sound-transcription-complete",
+        "sound-error-chime",
+        // Troubleshooting
+        "permissions", "modifier-required", "bluetooth-redirect",
+        "shortcut-conflicts", "recording-wont-start", "hotkey-stopped-working",
+        "resetting-jot", "report-issue",
+        "ai-unavailable", "ai-connection-failed", "articulate-bad-results",
+    ]
 }
 #endif

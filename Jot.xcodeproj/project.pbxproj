@@ -241,8 +241,6 @@
 				"$(SRCROOT)/Resources/fragments/default-shortcuts-articulate-custom.md",
 				"$(SRCROOT)/Resources/fragments/default-shortcuts-articulate-fixed.md",
 				"$(SRCROOT)/Resources/fragments/default-shortcuts-paste-last.md",
-				"$(SRCROOT)/Sources/Private/Flavor1/help-content-base.md",
-				"$(SRCROOT)/Sources/Private/Flavor1/fragments/ai-flavor1.md",
 			);
 			name = "Concat Help Content";
 			outputFileListPaths = (

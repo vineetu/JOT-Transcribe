@@ -45,46 +45,12 @@ enum AdvancedContent {
 
     /// All Advanced sections in display order. Four total — AI providers,
     /// System, Input, Sounds. Card counts and slugs mirror spec §6 and §14.
-    static let sections: [AdvancedSection] = {
-        var all: [AdvancedSection] = [aiProviders, system, input, sounds]
-        #if JOT_FLAVOR_1
-        // Under the flavor-1 build flag, append a card for the flavor
-        // provider to the AI providers section. The card's visible
-        // strings resolve at runtime from Info.plist so public source
-        // carries no tenant vocabulary; the expanded body is rendered by
-        // AIFlavor1Card() from the private sources tree (see
-        // AdvancedSectionView's flavor-1 dispatch branch).
-        if let aiIdx = all.firstIndex(where: { $0.id == "ai-providers" }) {
-            var section = all[aiIdx]
-            section = AdvancedSection(
-                id: section.id,
-                title: section.title,
-                subtitle: section.subtitle,
-                cards: section.cards + [flavor1Card]
-            )
-            all[aiIdx] = section
-        }
-        #endif
-        return all
-    }()
-
-    #if JOT_FLAVOR_1
-    /// Data stub for the flavor-1 Advanced card. Every user-visible string
-    /// is computed from `FLAVOR_1_DISPLAY_NAME` so tenant vocabulary stays
-    /// out of public source. The expansion prose here is a fallback only
-    /// — `AdvancedSectionView` renders `AIFlavor1Card()` in its place for
-    /// the expanded-state body.
-    private static var flavor1Card: AdvancedCardData {
-        let name = (Bundle.main.infoDictionary?["FLAVOR_1_DISPLAY_NAME"] as? String) ?? "Flavor 1"
-        return AdvancedCardData(
-            id: "ai-flavor1",
-            title: name,
-            badge: "enterprise",
-            body: "Sign in to route Cleanup and Articulate through the \(name) gateway.",
-            expansionProse: "See the \(name) setup card for sign-in, model selection, and troubleshooting."
-        )
-    }
-    #endif
+    static let sections: [AdvancedSection] = [
+        aiProviders,
+        system,
+        input,
+        sounds,
+    ]
 
     /// Every Advanced card, flattened from the sections. Used by tests that
     /// want to assert slug coverage against `Feature.all(on: .advanced)`.

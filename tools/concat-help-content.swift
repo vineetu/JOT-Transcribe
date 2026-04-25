@@ -24,48 +24,13 @@ let repoRoot: URL = {
     return URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 }()
 
-// Flavor builds (e.g. flavor_1) can override the base file and extend the
-// fragment search path via two env vars. When both are set the flavor
-// base file is used instead of the shared one, and the flavor fragments
-// directory is appended to the fragment search path. When neither is set
-// — the public/Sony case — behavior is byte-identical to before this
-// change. Setting only one without the other is treated as unset so a
-// half-configured environment can't silently change the output.
-let flavorBaseOverride = ProcessInfo.processInfo.environment["JOT_FLAVOR_BASE"]
-let flavorFragmentsOverride = ProcessInfo.processInfo.environment["JOT_FLAVOR_FRAGMENTS_DIR"]
-let flavorActive =
-    (flavorBaseOverride?.isEmpty == false) && (flavorFragmentsOverride?.isEmpty == false)
-
-let baseFile: URL = {
-    if flavorActive, let raw = flavorBaseOverride {
-        let url = URL(fileURLWithPath: raw)
-        return url.path.hasPrefix("/") ? url : repoRoot.appendingPathComponent(raw)
-    }
-    return repoRoot
-        .appendingPathComponent("Resources")
-        .appendingPathComponent("help-content-base.md")
-}()
+let baseFile = repoRoot
+    .appendingPathComponent("Resources")
+    .appendingPathComponent("help-content-base.md")
 
 let fragmentsDir = repoRoot
     .appendingPathComponent("Resources")
     .appendingPathComponent("fragments")
-
-let flavorFragmentsDir: URL? = {
-    guard flavorActive, let raw = flavorFragmentsOverride else { return nil }
-    let url = URL(fileURLWithPath: raw)
-    return url.path.hasPrefix("/") ? url : repoRoot.appendingPathComponent(raw)
-}()
-
-// Fragment search path: shared dir first (so shared fragments keep
-// resolving), then flavor dir when active (so flavor-only fragments
-// resolve without needing a matching entry under Resources/).
-let fragmentSearchDirs: [URL] = {
-    var dirs: [URL] = [fragmentsDir]
-    if let extra = flavorFragmentsDir {
-        dirs.append(extra)
-    }
-    return dirs
-}()
 
 let outFile = repoRoot
     .appendingPathComponent("Resources")
@@ -91,42 +56,29 @@ for m in matches where m.numberOfRanges > 1 {
     referenced.insert(ns.substring(with: m.range(at: 1)))
 }
 
-// Resolve a fragment name to a file URL by trying each search dir in
-// order. Returns nil when no search dir has the fragment.
-func resolveFragment(_ name: String) -> URL? {
-    for dir in fragmentSearchDirs {
-        let candidate = dir.appendingPathComponent("\(name).md")
-        if FileManager.default.fileExists(atPath: candidate.path) {
-            return candidate
-        }
-    }
-    return nil
-}
-
-// Verify each referenced fragment exists in at least one search dir.
+// Verify each referenced fragment exists.
 for name in referenced.sorted() {
-    if resolveFragment(name) == nil {
-        let searched = fragmentSearchDirs.map { $0.path }.joined(separator: ", ")
+    let frag = fragmentsDir.appendingPathComponent("\(name).md")
+    guard FileManager.default.fileExists(atPath: frag.path) else {
         FileHandle.standardError.write(
-            "concat-help-content: ERROR — placeholder <!-- FRAGMENT: \(name) --> has no matching \(name).md in: \(searched)\n".data(using: .utf8)!
+            "concat-help-content: ERROR — placeholder <!-- FRAGMENT: \(name) --> has no matching Resources/fragments/\(name).md\n".data(using: .utf8)!
         )
         exit(1)
     }
 }
 
-// Warn on unused fragments across every search dir.
-var emittedOnDisk = Set<String>()
-for dir in fragmentSearchDirs {
-    if let onDisk = try? FileManager.default.contentsOfDirectory(atPath: dir.path) {
-        for name in onDisk where name.hasSuffix(".md") {
-            emittedOnDisk.insert(String(name.dropLast(3)))
-        }
-    }
-}
-for orphan in emittedOnDisk.subtracting(referenced).sorted() {
-    FileHandle.standardError.write(
-        "concat-help-content: warning — fragment '\(orphan)' has no placeholder in the base file\n".data(using: .utf8)!
+// Warn on unused fragments on disk (but don't fail the build).
+if let onDisk = try? FileManager.default.contentsOfDirectory(atPath: fragmentsDir.path) {
+    let emitted = Set(
+        onDisk
+            .filter { $0.hasSuffix(".md") }
+            .map { String($0.dropLast(3)) }
     )
+    for orphan in emitted.subtracting(referenced).sorted() {
+        FileHandle.standardError.write(
+            "concat-help-content: warning — fragment '\(orphan)' has no placeholder in help-content-base.md\n".data(using: .utf8)!
+        )
+    }
 }
 
 // Perform the substitution. Go back-to-front so earlier ranges stay valid.
@@ -134,10 +86,7 @@ var out = base
 let reversedMatches = matches.reversed()
 for m in reversedMatches where m.numberOfRanges > 1 {
     let name = ns.substring(with: m.range(at: 1))
-    guard let fragURL = resolveFragment(name) else {
-        FileHandle.standardError.write("concat-help-content: cannot resolve fragment '\(name)'\n".data(using: .utf8)!)
-        exit(1)
-    }
+    let fragURL = fragmentsDir.appendingPathComponent("\(name).md")
     guard let raw = try? String(contentsOf: fragURL, encoding: .utf8) else {
         FileHandle.standardError.write("concat-help-content: cannot read \(fragURL.path)\n".data(using: .utf8)!)
         exit(1)
