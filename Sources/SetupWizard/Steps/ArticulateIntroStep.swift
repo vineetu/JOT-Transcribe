@@ -16,7 +16,20 @@ struct ArticulateIntroStep: View {
     @State private var articulatedText: String = ""
     @State private var errorMessage: String?
 
-    private let llm = LLMClient()
+    /// Resolved lazily from `AppServices.live` so the view picks up the
+    /// shared seam URLSession (Phase 0.5). The wizard step is presented
+    /// well after `applicationDidFinishLaunching` finishes assigning
+    /// `services`, so the live AppServices is always available here.
+    private var llm: LLMClient {
+        guard let services = AppServices.live else {
+            preconditionFailure("AppServices not yet resolved — wizard step presented before applicationDidFinishLaunching")
+        }
+        return LLMClient(
+            session: services.urlSession,
+            appleClient: services.appleIntelligence,
+            llmConfiguration: services.llmConfiguration
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -125,7 +138,7 @@ struct ArticulateIntroStep: View {
         }
     }
 
-    private var buttonLabel: String {
+    private var buttonLabel: LocalizedStringKey {
         switch phase {
         case .idle: return "Preview Articulate"
         case .loading: return "Articulating…"
@@ -178,8 +191,8 @@ struct ArticulateIntroStep: View {
 
     private func hotkeyRow(
         name: KeyboardShortcuts.Name,
-        title: String,
-        description: String
+        title: LocalizedStringKey,
+        description: LocalizedStringKey
     ) -> some View {
         HStack(alignment: .center, spacing: 14) {
             shortcutBadge(for: name)

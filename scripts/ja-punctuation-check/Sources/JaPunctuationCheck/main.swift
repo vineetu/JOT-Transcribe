@@ -1,0 +1,1 @@
+../../../check-ja-punctuation.swift

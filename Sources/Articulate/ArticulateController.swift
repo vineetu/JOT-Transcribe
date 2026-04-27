@@ -65,16 +65,30 @@ final class ArticulateController: ObservableObject {
 
     private let pipeline: VoiceInputPipeline
     private let llm: LLMClient
-    private let permissions: PermissionsService
+    private let permissions: any PermissionsObserving
+    private let pasteboard: any Pasteboarding
+    private let logSink: any LogSink
 
     init(
         pipeline: VoiceInputPipeline,
-        llm: LLMClient = LLMClient(),
-        permissions: PermissionsService? = nil
+        urlSession: URLSession,
+        appleIntelligence: any AppleIntelligenceClienting,
+        pasteboard: any Pasteboarding,
+        llmConfiguration: LLMConfiguration,
+        llm: LLMClient? = nil,
+        permissions: (any PermissionsObserving)? = nil,
+        logSink: any LogSink = ErrorLog.shared
     ) {
         self.pipeline = pipeline
-        self.llm = llm
+        self.pasteboard = pasteboard
+        self.llm = llm ?? LLMClient(
+            session: urlSession,
+            appleClient: appleIntelligence,
+            logSink: logSink,
+            llmConfiguration: llmConfiguration
+        )
         self.permissions = permissions ?? PermissionsService.shared
+        self.logSink = logSink
     }
 
     // MARK: - Articulate (Custom) — voice-driven flow
@@ -153,7 +167,7 @@ final class ArticulateController: ObservableObject {
         permissions.refreshAll()
         guard permissions.statuses[.accessibilityPostEvents] == .granted else {
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "Accessibility not granted (custom)",
                     context: ["flow": "custom"]
@@ -184,7 +198,7 @@ final class ArticulateController: ObservableObject {
             guard pipeline.stillActive(token) else { return }
             guard !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 Task {
-                    await ErrorLog.shared.warn(
+                    await self.logSink.warn(
                         component: "Articulate",
                         message: "Empty instruction after transcription",
                         context: ["flow": "custom"]
@@ -210,7 +224,7 @@ final class ArticulateController: ObservableObject {
             return
         } catch let error as ArticulateError {
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "Selection capture failed (custom)",
                     context: ["reason": String(error.message.prefix(80))]
@@ -223,7 +237,7 @@ final class ArticulateController: ObservableObject {
             return
         } catch VoiceInputPipeline.PipelineError.micNotGranted {
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "Microphone not granted (custom)",
                     context: ["flow": "custom"]
@@ -233,7 +247,7 @@ final class ArticulateController: ObservableObject {
         } catch VoiceInputPipeline.PipelineError.engineStartTimeout {
             log.error("AudioCapture.start timed out — coreaudiod may be wedged")
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "Audio engine setup timed out (>5s) — coreaudiod may be stuck; see Help → Troubleshooting"
                 )
@@ -242,7 +256,7 @@ final class ArticulateController: ObservableObject {
         } catch VoiceInputPipeline.PipelineError.engineStart(let error) {
             log.error("AudioCapture.start failed: \(String(describing: error))")
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "AudioCapture.start failed (custom)",
                     context: ["error": ErrorLog.redactedAppleError(error)]
@@ -253,7 +267,7 @@ final class ArticulateController: ObservableObject {
             state = .error("Transcription model is still loading — try again in a moment.")
         } catch VoiceInputPipeline.PipelineError.audioTooShort(let recording) {
             Task {
-                await ErrorLog.shared.warn(
+                await self.logSink.warn(
                     component: "Articulate",
                     message: "Instruction audio too short",
                     context: ["flow": "custom"]
@@ -262,7 +276,7 @@ final class ArticulateController: ObservableObject {
             state = .error(shortRecordingMessage(for: recording))
         } catch VoiceInputPipeline.PipelineError.transcribeBusy {
             Task {
-                await ErrorLog.shared.warn(
+                await self.logSink.warn(
                     component: "Articulate",
                     message: "Transcriber busy",
                     context: ["flow": "custom"]
@@ -272,7 +286,7 @@ final class ArticulateController: ObservableObject {
         } catch VoiceInputPipeline.PipelineError.transcribeFailed(let error) {
             log.error("Transcription failed: \(String(describing: error))")
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "Instruction transcription failed",
                     context: ["error": ErrorLog.redactedAppleError(error)]
@@ -282,7 +296,7 @@ final class ArticulateController: ObservableObject {
         } catch {
             log.error("LLM articulate failed: \(String(describing: error))")
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "LLM articulate failed (custom)",
                     context: ["error": ErrorLog.redactedAppleError(error)]
@@ -300,7 +314,7 @@ final class ArticulateController: ObservableObject {
         permissions.refreshAll()
         guard permissions.statuses[.accessibilityPostEvents] == .granted else {
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "Accessibility not granted (fixed)",
                     context: ["flow": "fixed"]
@@ -338,7 +352,7 @@ final class ArticulateController: ObservableObject {
         } catch let error as ArticulateError {
             guard stillFixedActive(generation) else { return }
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "Selection capture failed (fixed)",
                     context: ["reason": String(error.message.prefix(80))]
@@ -349,7 +363,7 @@ final class ArticulateController: ObservableObject {
             guard stillFixedActive(generation) else { return }
             log.error("LLM articulate (fixed) failed: \(String(describing: error))")
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "LLM articulate failed (fixed)",
                     context: ["error": ErrorLog.redactedAppleError(error)]
@@ -369,18 +383,18 @@ final class ArticulateController: ObservableObject {
     /// articulate flows. Throws a human-readable `ArticulateError.message`
     /// that callers drop straight into `state = .error(...)`.
     private func captureSelection() async throws -> String {
-        let snapshot = ClipboardSandwich.snapshot()
-        let changeCountBefore = NSPasteboard.general.changeCount
+        let snapshot = pasteboard.snapshot()
+        let changeCountBefore = pasteboard.changeCount
         var restored = false
 
         defer {
             if !restored {
-                ClipboardSandwich.restore(snapshot)
+                pasteboard.restore(snapshot)
             }
         }
 
         do {
-            try ClipboardSandwich.postCommandC()
+            try pasteboard.postCommandC()
         } catch {
             throw ArticulateError(message: "Could not copy selection: \(error.localizedDescription)")
         }
@@ -388,20 +402,20 @@ final class ArticulateController: ObservableObject {
         do {
             try await Task.sleep(for: .milliseconds(200))
 
-            guard NSPasteboard.general.changeCount != changeCountBefore else {
+            guard pasteboard.changeCount != changeCountBefore else {
                 throw ArticulateError(message: "No text was copied. Make sure text is selected.")
             }
 
-            guard let selectedText = NSPasteboard.general.string(forType: .string),
+            guard let selectedText = pasteboard.readString(),
                   !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw ArticulateError(message: "No text selected.")
             }
 
-            ClipboardSandwich.restore(snapshot)
+            pasteboard.restore(snapshot)
             restored = true
             return selectedText
         } catch {
-            ClipboardSandwich.restore(snapshot)
+            pasteboard.restore(snapshot)
             restored = true
             throw error
         }
@@ -413,20 +427,20 @@ final class ArticulateController: ObservableObject {
     /// `state = .error(...)` on failure; caller returns immediately.
     @discardableResult
     private func pasteReplacement(_ rewritten: String) -> Bool {
-        let snapshot = ClipboardSandwich.snapshot()
-        guard ClipboardSandwich.writeString(rewritten) else {
-            ClipboardSandwich.restore(snapshot)
-            Task { await ErrorLog.shared.error(component: "Articulate", message: "Clipboard write failed") }
+        let snapshot = pasteboard.snapshot()
+        guard pasteboard.write(rewritten) else {
+            pasteboard.restore(snapshot)
+            Task { await self.logSink.error(component: "Articulate", message: "Clipboard write failed") }
             state = .error("Clipboard write failed.")
             return false
         }
 
         do {
-            try ClipboardSandwich.postCommandV()
+            try pasteboard.postCommandV()
         } catch {
-            ClipboardSandwich.restore(snapshot)
+            pasteboard.restore(snapshot)
             Task {
-                await ErrorLog.shared.error(
+                await self.logSink.error(
                     component: "Articulate",
                     message: "Synthetic paste failed",
                     context: ["error": ErrorLog.redactedAppleError(error)]
@@ -437,9 +451,10 @@ final class ArticulateController: ObservableObject {
         }
 
         // Restore clipboard after the target app has time to consume the paste.
-        Task { @MainActor [snapshot] in
+        let pasteboard = self.pasteboard
+        Task { @MainActor [snapshot, pasteboard] in
             try? await Task.sleep(nanoseconds: 350_000_000)
-            ClipboardSandwich.restore(snapshot)
+            pasteboard.restore(snapshot)
         }
         return true
     }

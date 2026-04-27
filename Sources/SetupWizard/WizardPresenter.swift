@@ -21,10 +21,17 @@ enum WizardPresenter {
 
     private static var controller: SetupWizardWindowController?
 
-    /// Present the wizard, injecting the shared `VoiceInputPipeline`
-    /// transcriber so that `TestStep` warms the same `AsrManager` both voice
-    /// flows use on the first hotkey press.
-    static func present(reason: PresentReason, transcriber: Transcriber) {
+    /// Present the wizard, injecting the shared `TranscriberHolder` so
+    /// that `TestStep` warms the same `AsrManager` both voice flows use
+    /// on the first hotkey press, and `ModelStep` mutates the same
+    /// active-model state Settings reads. The `audioCapture` seam is the
+    /// production capture instance (or harness stub) — `TestStep`'s
+    /// 3-second smoke test records through it.
+    static func present(
+        reason: PresentReason,
+        transcriberHolder: TranscriberHolder,
+        audioCapture: any AudioCapturing
+    ) {
         if let controller {
             // Already open — just bring it forward.
             controller.present()
@@ -33,7 +40,8 @@ enum WizardPresenter {
 
         let coordinator = SetupWizardCoordinator(
             startingAt: .welcome,
-            transcriber: transcriber,
+            transcriberHolder: transcriberHolder,
+            audioCapture: audioCapture,
             onFinish: { closeWindow() }
         )
         let wc = SetupWizardWindowController(

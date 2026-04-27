@@ -241,6 +241,21 @@ struct BasicsContent {
                     )
                 ),
                 SubRow(
+                    id: "languages",
+                    name: "Languages",
+                    shortcutChip: nil,
+                    isExpandable: true,
+                    detail: SubRowDetailContent(
+                        prose: "Two transcription models. English (Parakeet v3) auto-detects 25 European languages — installed by default. Japanese (Parakeet 0.6B JA) is a separate ~1.25 GB download. Pick one as primary at Settings → Transcription; only the primary is hot in memory.",
+                        warning: "Custom Vocabulary applies only to European-language transcription. The Japanese model uses a different tokenizer, so vocabulary boosts are not applied when Japanese is primary.",
+                        settingsLink: SettingsLink(
+                            label: "Open in Settings",
+                            pane: .transcription,
+                            anchor: "model-picker"
+                        )
+                    )
+                ),
+                SubRow(
                     id: "custom-vocabulary",
                     name: "Custom vocabulary",
                     shortcutChip: nil,
@@ -457,6 +472,7 @@ struct MultilingualGrid: View {
             Text("More languages will be added as Parakeet improves.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

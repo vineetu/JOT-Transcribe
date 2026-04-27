@@ -5,12 +5,16 @@ import SwiftUI
 
 @MainActor
 public enum LogSharing {
-    public static func emailBody(recordingsCount: Int) -> String {
+    /// Phase 3 F4: `modelIdentifier` is threaded in from the caller
+    /// (which has access to the `TranscriberHolder` via env injection),
+    /// replacing the prior `UserDefaults.standard.string(forKey:)` read
+    /// off the cross-suite-shared `jot.defaultModelID` key.
+    public static func emailBody(recordingsCount: Int, modelIdentifier: String) -> String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         let os = ProcessInfo.processInfo.operatingSystemVersionString
         let provider = UserDefaults.standard.string(forKey: "jot.llm.provider") ?? "unknown"
-        let model = UserDefaults.standard.string(forKey: "jot.defaultModelID") ?? "unknown"
+        let model = modelIdentifier
         let cleanup = UserDefaults.standard.bool(forKey: "jot.transformEnabled") ? "yes" : "no"
         return """
         [Paste the log below this line with ⌘V]
@@ -30,14 +34,20 @@ public enum LogSharing {
         """
     }
 
-    public static func openEmail(logText: String, recordingsCount: Int) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(logText, forType: .string)
+    /// Phase 4 patch round 4: `pasteboard` seam threaded so the bug-report
+    /// flow routes through `Pasteboarding` (production: `LivePasteboard`;
+    /// harness: `StubPasteboard`) instead of `NSPasteboard.general` directly.
+    static func openEmail(
+        logText: String,
+        recordingsCount: Int,
+        modelIdentifier: String,
+        pasteboard: any Pasteboarding
+    ) {
+        _ = pasteboard.write(logText)
 
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let subject = "Jot \(v) — bug report"
-        let body = emailBody(recordingsCount: recordingsCount)
+        let body = emailBody(recordingsCount: recordingsCount, modelIdentifier: modelIdentifier)
         var comps = URLComponents()
         comps.scheme = "mailto"
         comps.path = "jottranscribe@gmail.com"
@@ -50,10 +60,10 @@ public enum LogSharing {
         }
     }
 
-    public static func copyToClipboard(_ text: String) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
+    /// Phase 4 patch round 4: `pasteboard` seam threaded so the "Copy log"
+    /// affordance routes through the seam instead of `NSPasteboard.general`.
+    static func copyToClipboard(_ text: String, pasteboard: any Pasteboarding) {
+        _ = pasteboard.write(text)
     }
 
     public static func revealInFinder(_ url: URL) {

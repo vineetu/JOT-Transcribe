@@ -26,9 +26,19 @@ enum BoostModelStatus: Equatable {
 /// UI shape before we pay the model-download engineering cost.
 struct VocabularyPane: View {
     @StateObject private var store = VocabularyStore.shared
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
     @FocusState private var focusedID: VocabTerm.ID?
     @Environment(\.helpNavigator) private var navigator
     @State private var boostModelStatus: BoostModelStatus = .notDownloaded
+
+    /// True when the active primary model can't apply this list.
+    /// `docs/plans/japanese-support.md` §C: when JA is primary, the
+    /// master toggle is force-disabled and the sidebar entry is hidden
+    /// (the hide happens in `AppSidebar`; this pane can still mount via
+    /// a stale deep-link, so it must lock itself down too).
+    private var lockedForJAPrimary: Bool {
+        transcriberHolder.primaryModelID == .tdt_0_6b_ja
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -197,12 +207,18 @@ struct VocabularyPane: View {
         Section {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
+                    // When JA is primary the toggle is visually disabled
+                    // but the stored preference is preserved — flipping
+                    // primary back to a European model restores the user's
+                    // prior on/off state without their having to retoggle.
                     Toggle("Enable vocabulary boosting", isOn: $store.isEnabled)
                         .toggleStyle(.switch)
                         .font(.system(size: 13))
-                    Text(store.isEnabled
-                         ? "Jot will prefer the terms below when transcribing. Add product names, proper nouns, and jargon you want spelled a specific way."
-                         : "When on, Jot prefers these terms during transcription. Edit the list anytime; boosting applies on your next recording.")
+                        .disabled(lockedForJAPrimary)
+                        .help(lockedForJAPrimary
+                              ? "Custom vocabulary isn't supported with the Japanese model. Switch your primary model to use vocabulary."
+                              : "")
+                    Text(headerSubtext)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -216,6 +232,15 @@ struct VocabularyPane: View {
             }
             .padding(.vertical, 2)
         }
+    }
+
+    private var headerSubtext: String {
+        if lockedForJAPrimary {
+            return "Custom vocabulary isn't supported with the Japanese model. Your saved terms are preserved — switch your primary model to a European one to use them again."
+        }
+        return store.isEnabled
+            ? "Jot will prefer the terms below when transcribing. Add product names, proper nouns, and jargon you want spelled a specific way."
+            : "When on, Jot prefers these terms during transcription. Edit the list anytime; boosting applies on your next recording."
     }
 
     private var emptyStateView: some View {

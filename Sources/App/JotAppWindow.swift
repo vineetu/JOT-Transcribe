@@ -31,6 +31,7 @@ struct JotAppWindow: View {
 
     @State private var selection: AppSidebarSelection
     @State private var navHistory: NavigationHistory
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
 
     /// Shared Help navigator. Owned at this root so every pane (Help,
     /// Ask Jot, Settings popovers) sees the same instance — deep-link
@@ -48,11 +49,36 @@ struct JotAppWindow: View {
     /// live the whole time the window is up.
     @State private var voiceInput: ChatbotVoiceInput
 
+    /// Phase 3 #29: per-graph `LLMConfiguration` injected as an
+    /// `@EnvironmentObject` for SwiftUI panes (`ArticulatePane`,
+    /// `AboutPane`) and threaded into `HelpChatStore` via constructor.
+    private let llmConfiguration: LLMConfiguration
+
+    /// Phase 4 patch round 5: seams threaded into `ArticulatePane` for
+    /// the Test Connection path and `GeneralPane` for the "Run Setup
+    /// Wizard Again" button. Pre-fix both panes reached `AppServices.live`
+    /// lazily on click and could trip on a fresh-install timing race;
+    /// constructor-injection mirrors Phase 3 #29.
+    private let urlSession: URLSession
+    private let appleIntelligence: any AppleIntelligenceClienting
+    private let audioCapture: any AudioCapturing
+
     @MainActor
-    init(pipeline: VoiceInputPipeline, recorder: RecorderController) {
+    init(
+        pipeline: VoiceInputPipeline,
+        recorder: RecorderController,
+        urlSession: URLSession,
+        appleIntelligence: any AppleIntelligenceClienting,
+        audioCapture: any AudioCapturing,
+        llmConfiguration: LLMConfiguration
+    ) {
         self.init(
             pipeline: pipeline,
             recorder: recorder,
+            urlSession: urlSession,
+            appleIntelligence: appleIntelligence,
+            audioCapture: audioCapture,
+            llmConfiguration: llmConfiguration,
             navigationHistory: NavigationHistory()
         )
     }
@@ -60,19 +86,35 @@ struct JotAppWindow: View {
     init(
         pipeline: VoiceInputPipeline,
         recorder: RecorderController,
+        urlSession: URLSession,
+        appleIntelligence: any AppleIntelligenceClienting,
+        audioCapture: any AudioCapturing,
+        llmConfiguration: LLMConfiguration,
         navigationHistory: NavigationHistory
     ) {
         let initial = JotAppWindow.pendingSelection ?? .home
         JotAppWindow.pendingSelection = nil
         _selection = State(initialValue: initial)
         _navHistory = State(initialValue: navigationHistory)
+        self.llmConfiguration = llmConfiguration
+        self.urlSession = urlSession
+        self.appleIntelligence = appleIntelligence
+        self.audioCapture = audioCapture
         // Build the store tied to the same navigator instance we own
         // above so `ShowFeatureTool` → navigator → HelpPane routing
         // writes/reads the same observable.
         let nav = HelpNavigator()
         _helpNavigator = State(initialValue: nav)
-        _chatStore = State(initialValue: HelpChatStore(navigator: nav))
-        _voiceInput = State(initialValue: ChatbotVoiceInput(pipeline: pipeline, recorder: recorder))
+        _chatStore = State(initialValue: HelpChatStore(
+            navigator: nav,
+            urlSession: urlSession,
+            llmConfiguration: llmConfiguration
+        ))
+        _voiceInput = State(initialValue: ChatbotVoiceInput(
+            pipeline: pipeline,
+            recorder: recorder,
+            condenser: .appleIntelligence
+        ))
     }
 
     var body: some View {
@@ -90,6 +132,7 @@ struct JotAppWindow: View {
             selection = newValue
         }
         .environment(\.helpNavigator, helpNavigator)
+        .environmentObject(llmConfiguration)
         .onAppear {
             navHistory.bind(selection: $selection)
         }
@@ -112,6 +155,26 @@ struct JotAppWindow: View {
             selection = newValue
             helpNavigator.sidebarSelection = nil
         }
+        // `docs/plans/japanese-support.md` §C: when primary swaps to
+        // JA, drop the live CTC rescorer so no idle CoreML resources
+        // hang around for a feature that can't apply (the master
+        // toggle UI is locked + the sidebar entry is hidden, so the
+        // user has no way to re-enable it while JA is primary). When
+        // primary swaps back, re-prepare iff the user's saved master
+        // toggle was on — preserves their pre-JA preference without
+        // making them retoggle.
+        .onChange(of: transcriberHolder.primaryModelID) { _, newValue in
+            handlePrimaryModelChange(to: newValue)
+        }
+    }
+
+    private func handlePrimaryModelChange(to newID: ParakeetModelID) {
+        if newID == .tdt_0_6b_ja {
+            Task { await VocabularyRescorerHolder.shared.unload() }
+        } else if VocabularyStore.shared.isEnabled,
+                  let url = VocabularyStore.shared.fileURL {
+            Task { try? await VocabularyRescorerHolder.shared.prepare(vocabularyFileURL: url) }
+        }
     }
 
     // MARK: - Detail router
@@ -127,11 +190,14 @@ struct JotAppWindow: View {
             AskJotView(store: chatStore, voiceInput: voiceInput)
         case .settings(let sub):
             switch sub {
-            case .general:       GeneralPane()
+            case .general:       GeneralPane(audioCapture: audioCapture)
             case .transcription: TranscriptionPane()
             case .vocabulary:    VocabularyPane()
             case .sound:         SoundPane()
-            case .ai:            ArticulatePane()
+            case .ai:            ArticulatePane(
+                                    urlSession: urlSession,
+                                    appleIntelligence: appleIntelligence
+                                )
             case .shortcuts:     ShortcutsPane()
             }
         case .help:

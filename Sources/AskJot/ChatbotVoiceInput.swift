@@ -91,7 +91,19 @@ final class ChatbotVoiceInput: ObservableObject {
 
     private var activeToken: VoiceInputPipeline.Token?
     private var activeCaptureTask: Task<String, Error>?
-    private var condensationTask: Task<Void, Never>?
+    /// The outer post-recording Task launched by `stop()` so cancel
+    /// can interrupt the whole transcribe → condense pipeline at any
+    /// stage. Phase 2 I1 fix: this used to be an unstored
+    /// `Task { try? await stopAndProcess() }` — `cancel()` had no
+    /// reference to it, so cancellation was a silent no-op.
+    private var activeStopProcessTask: Task<Void, Never>?
+    /// Wraps the inline `condenseIfEligible(...)` call inside
+    /// `stopAndProcess()` so cancel can propagate into the condenser
+    /// (which races a 10s budget timer against the Apple
+    /// Intelligence call). Phase 2 I1 fix: previously declared but
+    /// never assigned — `cancel()` cancelled a perpetually-nil
+    /// reference.
+    private var condensationTask: Task<String, Never>?
 
     // MARK: - Init
 
@@ -99,7 +111,7 @@ final class ChatbotVoiceInput: ObservableObject {
         pipeline: VoiceInputPipeline,
         recorder: RecorderController,
         pill: PillViewModel? = nil,
-        condenser: ChatbotCondenser = .appleIntelligence
+        condenser: ChatbotCondenser
     ) {
         self.pipeline = pipeline
         self.recorder = recorder
@@ -157,8 +169,10 @@ final class ChatbotVoiceInput: ObservableObject {
     func stop() {
         guard case .recording = state, activeToken != nil else { return }
         // Launch the process on its own Task so the UI's stop handler
-        // can return without awaiting.
-        Task { [weak self] in
+        // can return without awaiting. **Stored** (`activeStopProcessTask`)
+        // so `cancel()` can interrupt the post-recording pipeline at
+        // any stage. Phase 2 I1 fix.
+        activeStopProcessTask = Task { @MainActor [weak self] in
             guard let self else { return }
             _ = try? await self.stopAndProcess()
         }
@@ -167,8 +181,17 @@ final class ChatbotVoiceInput: ObservableObject {
     /// User-initiated cancel (Esc in chatbot, or mic re-tapped before the
     /// pipeline completes). Silent — no error surfaced to chat UI.
     func cancel() async {
+        // Phase 2 I1 fix: cancel BOTH the inner condensation task AND
+        // the outer post-recording task. Cancelling only
+        // `condensationTask` was insufficient — the parent
+        // `stopAndProcess` Task (launched from `stop()`) kept running
+        // even after the inner task was cancelled. Both must be
+        // stopped for cancel to actually propagate end-to-end.
         condensationTask?.cancel()
         condensationTask = nil
+
+        activeStopProcessTask?.cancel()
+        activeStopProcessTask = nil
 
         let token = activeToken
         activeToken = nil
@@ -221,12 +244,29 @@ final class ChatbotVoiceInput: ObservableObject {
         }
         state = .transcribing
         do {
+            try Task.checkCancellation()
             let result = try await pipeline.stopAndTranscribe(token)
             let raw = result.text
-            // Condensation phase.
+            // Condensation phase. Phase 2 I1 fix: wrap
+            // `condenseIfEligible` in a stored Task so `cancel()` can
+            // propagate cancellation into the condenser (which races
+            // a 10s budget timer against the Apple Intelligence call).
+            // The Task<String, Never> shape means cancel doesn't make
+            // the awaiter throw — `condenseIfEligible` returns the
+            // raw `trimmed` text on cancellation as its graceful
+            // fallback. The cancel signal still reaches the
+            // condenser's `Task.sleep` / `Task.checkCancellation`,
+            // which is what the I1 regression test asserts on.
+            try Task.checkCancellation()
             state = .condensing
             pill?.showCondensing()
-            let final = await Self.condenseIfEligible(raw: raw, condenser: condenser)
+            let condensation = Task { [condenser] in
+                await Self.condenseIfEligible(raw: raw, condenser: condenser)
+            }
+            condensationTask = condensation
+            let final = await condensation.value
+            condensationTask = nil
+            try Task.checkCancellation()
             pill?.hideIfCondensing()
             activeToken = nil
             state = isGlobalRecordingActive ? .disabled(reason: .globalRecordingActive) : .idle
@@ -235,7 +275,20 @@ final class ChatbotVoiceInput: ObservableObject {
                 continuation.resume(returning: final)
             }
             return final
+        } catch is CancellationError {
+            // User-initiated cancel — `cancel()` already cleaned up
+            // (cleared `activeToken`, hid the pill, transitioned to
+            // `.idle`). Propagate the cancel to the awaiting
+            // `capture()` continuation if it's still pending; do NOT
+            // overwrite state with `.error("Voice capture failed.")`.
+            condensationTask = nil
+            if let continuation = pendingStopContinuation {
+                pendingStopContinuation = nil
+                continuation.resume(throwing: CancellationError())
+            }
+            throw CancellationError()
         } catch {
+            condensationTask = nil
             activeToken = nil
             pill?.hideIfCondensing()
             state = .error("Voice capture failed.")
@@ -371,13 +424,20 @@ protocol ChatbotCondenser: Sendable {
 }
 
 extension ChatbotCondenser where Self == AppleIntelligenceCondenser {
-    static var appleIntelligence: AppleIntelligenceCondenser { AppleIntelligenceCondenser() }
+    /// Live default: routes through `AppServices.appleIntelligence` so the
+    /// harness can inject a stub conformer. Resolved at MainActor read time
+    /// because `AppServices.live` is `@MainActor` — the read happens
+    /// synchronously inside this `@MainActor` factory.
+    @MainActor
+    static var appleIntelligence: AppleIntelligenceCondenser {
+        AppleIntelligenceCondenser(client: AppServices.live?.appleIntelligence)
+    }
 }
 
-/// Production condenser — wraps `AppleIntelligenceClient.articulate` with
-/// the spec §8 condensation prompt. We reuse the `articulate` path (not
-/// `transform`) because its instruction/selection framing happens to
-/// match how we want to describe "the spoken question is the selection,
+/// Production condenser — wraps an `AppleIntelligenceClienting` (Phase 0.6
+/// seam) with the spec §8 condensation prompt. We reuse the `articulate`
+/// path (not `transform`) because its instruction/selection framing happens
+/// to match how we want to describe "the spoken question is the selection,
 /// condense it."
 struct AppleIntelligenceCondenser: ChatbotCondenser {
     /// Spec §8 prompt verbatim. Keep the trailing `Condensed:` cue — it
@@ -388,8 +448,17 @@ struct AppleIntelligenceCondenser: ChatbotCondenser {
         exactly. Do not answer — just rewrite the question.
         """
 
+    /// Apple Intelligence seam. Captured at init time (the static factory
+    /// `ChatbotCondenser.appleIntelligence` reads `AppServices.live` on
+    /// `@MainActor` and hands the resolved instance in here) so
+    /// `condense(raw:)` doesn't need a MainActor hop.
+    private let client: any AppleIntelligenceClienting
+
+    init(client: (any AppleIntelligenceClienting)? = nil) {
+        self.client = client ?? AppleIntelligenceClient()
+    }
+
     func condense(raw: String) async throws -> String {
-        let client = AppleIntelligenceClient()
         // We call `articulate(...)` because its content framing ("take
         // this selection, follow the instruction, return only the
         // rewrite") is exactly what we need. The "instruction" slot

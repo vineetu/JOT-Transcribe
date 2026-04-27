@@ -4,7 +4,7 @@ import os.log
 /// Cross-cutting error log. Writes to ~/Library/Logs/Jot/jot.log.
 /// Rolling 2MB cap — on rotate, renames current to jot.log.1 (overwriting any existing).
 /// Nothing is ever sent off the device.
-public actor ErrorLog {
+public actor ErrorLog: LogSink {
     public static let shared = ErrorLog()
 
     public enum Level: String { case error = "ERROR", warn = "WARN", info = "INFO" }

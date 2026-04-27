@@ -10,7 +10,7 @@ import SwiftUI
 struct RecordingDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.transcriber) private var transcriber
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
     @Bindable var recording: Recording
 
     @StateObject private var player = AudioPlaybackController()
@@ -163,7 +163,7 @@ struct RecordingDetailView: View {
             } label: {
                 Label("Re-transcribe", systemImage: "arrow.clockwise")
             }
-            .disabled(isRetranscribing || transcriber == nil)
+            .disabled(isRetranscribing)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([RecordingStore.audioURL(for: recording)])
@@ -180,7 +180,8 @@ struct RecordingDetailView: View {
     }
 
     private func retranscribe() {
-        guard let transcriber, !isRetranscribing else { return }
+        guard !isRetranscribing else { return }
+        let transcriber = transcriberHolder.transcriber
         isRetranscribing = true
         let url = RecordingStore.audioURL(for: recording)
         Task {
@@ -201,9 +202,8 @@ struct RecordingDetailView: View {
     }
 
     private func copyTranscript() {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(displayedTranscript, forType: .string)
+        guard let pb = AppServices.live?.pasteboard else { return }
+        _ = pb.write(displayedTranscript)
     }
 
     private func format(_ t: TimeInterval) -> String {

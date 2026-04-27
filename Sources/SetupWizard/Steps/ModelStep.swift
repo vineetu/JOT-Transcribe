@@ -2,12 +2,14 @@ import SwiftUI
 
 /// Step 3 — pick a Parakeet model and download it if not already cached.
 ///
-/// The selection is persisted to `jot.defaultModelID` (the same AppStorage key
-/// the Transcription Settings pane uses) so the wizard and Settings stay in
-/// sync. The Settings button on step 6 / day-2 always reads the same key.
+/// The selection is persisted via `TranscriberHolder.setPrimary(_:)`,
+/// which writes the active id to `UserDefaults` under
+/// `TranscriberHolder.defaultsKey`. Settings panes observe the same
+/// holder so wizard and Settings stay in sync.
 struct ModelStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
-    @AppStorage("jot.defaultModelID") private var defaultModelID: String = ParakeetModelID.tdt_0_6b_v3.rawValue
+    @EnvironmentObject private var holder: TranscriberHolder
+    @ObservedObject private var permissions = PermissionsService.shared
 
     @State private var cacheByID: [ParakeetModelID: Bool] = [:]
     @State private var isDownloading = false
@@ -23,7 +25,7 @@ struct ModelStep: View {
     @State private var boostErrorMessage: String?
 
     private var selectedModel: ParakeetModelID {
-        ParakeetModelID(rawValue: defaultModelID) ?? .tdt_0_6b_v3
+        holder.primaryModelID
     }
 
     private var selectedIsCached: Bool {
@@ -47,7 +49,9 @@ struct ModelStep: View {
                         model: model,
                         isSelected: model == selectedModel,
                         isCached: cacheByID[model] ?? false,
-                        onSelect: { defaultModelID = model.rawValue }
+                        onSelect: {
+                            Task { await holder.setPrimary(model) }
+                        }
                     )
                 }
             }
@@ -87,6 +91,11 @@ struct ModelStep: View {
                 }
             }
 
+            Text("Need Japanese? Add it from Settings → Transcription after setup.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
             boostModelSection
 
             Spacer(minLength: 0)
@@ -96,7 +105,7 @@ struct ModelStep: View {
             refreshCache()
             updateChrome()
         }
-        .onChange(of: defaultModelID) {
+        .onChange(of: holder.primaryModelID) {
             refreshCache()
             updateChrome()
         }
@@ -181,7 +190,7 @@ struct ModelStep: View {
 
     private func sizeLabel(for id: ParakeetModelID) -> String {
         let gb = Double(id.approxBytes) / 1_000_000_000
-        return String(format: "Approx. %.2f GB on disk", gb)
+        return String(format: String(localized: "Approx. %.2f GB on disk"), gb)
     }
 
     private func refreshCache() {
@@ -194,9 +203,18 @@ struct ModelStep: View {
     }
 
     private func updateChrome() {
+        // Phase 3 #31: persistent precondition (model installed) lives
+        // on the coordinator; view-only ephemeral state (download in
+        // flight) AND-combines on top.
+        let state = WizardState(
+            permissionGrants: permissions.statuses,
+            installedModelIDs: holder.installedModelIDs,
+            primaryModelID: holder.primaryModelID
+        )
+        let persistent = coordinator.canAdvance(from: .model, given: state)
         coordinator.setChrome(WizardStepChrome(
             primaryTitle: "Continue",
-            canAdvance: selectedIsCached && !isDownloading,
+            canAdvance: persistent && !isDownloading,
             isPrimaryBusy: false,
             showsSkip: true
         ))

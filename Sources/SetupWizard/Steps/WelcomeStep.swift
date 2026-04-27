@@ -48,8 +48,8 @@ struct WelcomeStep: View {
 
 private struct BulletRow: View {
     let symbol: String
-    let title: String
-    let detail: String
+    let title: LocalizedStringKey
+    let detail: LocalizedStringKey
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {

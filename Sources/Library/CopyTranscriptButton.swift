@@ -60,9 +60,12 @@ struct CopyTranscriptButton: View {
 
     private func copy() {
         guard !isDisabled else { return }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
+        // Phase 4 patch round 4: route through the Pasteboarding seam
+        // instead of `NSPasteboard.general` so harness flows can verify
+        // the copy via `StubPasteboard`. AppServices.live is always
+        // resolved by the time a SwiftUI body renders.
+        guard let pb = AppServices.live?.pasteboard else { return }
+        _ = pb.write(text)
 
         copied = true
         resetTask?.cancel()

@@ -11,7 +11,10 @@ cancel-recording: Esc discards. Active only while recording, never steals Esc wh
 any-length: no hard limit. Quality diminishes past ~1 hr; shorter sessions best.
 on-device-transcription: Parakeet on Apple Neural Engine. Audio stays on Mac. Model downloads first use.
 multilingual: 25 European langs, auto-detected per recording.
-custom-vocabulary: short list of names, acronyms, jargon Jot prefers. Biases recognizer — best-effort, not guarantee. Too many similar entries cause unpredictable preference. Edit at Settings → Vocabulary.
+languages: Jot supports these ASR models — pick one as primary at Settings → Transcription. Only the primary is hot in memory; switching unloads + reloads.
+<!-- FRAGMENT: jot-asr-languages -->
+japanese: yes — install the Parakeet 0.6B Japanese model from Settings → Transcription, then make it primary. v3 does NOT transcribe Japanese; the JA model is required.
+custom-vocabulary: short list of names, acronyms, jargon Jot prefers. Biases recognizer — best-effort, not guarantee. Too many similar entries cause unpredictable preference. Edit at Settings → Vocabulary. Not applied to Japanese transcription (different tokenizer).
 
 ## Cleanup (optional, off default)
 LLM polishes transcript. Four passes: filler removal, grammar, number normalization, structure. Voice, word choice, register preserved — not style rewrite.

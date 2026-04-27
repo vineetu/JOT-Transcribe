@@ -5,7 +5,11 @@ import SwiftUI
 
 @MainActor
 enum ResetActions {
-    static func softReset() {
+    /// Phase 4 patch round 3: `keychain` seam threaded so per-provider
+    /// API key deletion routes through `KeychainStoring` (production:
+    /// `LiveKeychain`; harness: `StubKeychain`) instead of the static
+    /// `KeychainHelper`. Closes the Phase 3 #29 Scope-A deferral.
+    static func softReset(keychain: any KeychainStoring) {
         let defaults = UserDefaults.standard
         var keys: [String] = [
             "jot.llm.provider",
@@ -26,12 +30,7 @@ enum ResetActions {
             defaults.removeObject(forKey: key)
         }
 
-        // Legacy shared keychain entry (pre per-provider refactor).
-        KeychainHelper.delete(key: "jot.llm.apiKey")
-        // Per-provider keychain entries.
-        for provider in LLMConfiguration.bucketedProviders {
-            KeychainHelper.delete(key: "jot.llm.\(provider.rawValue).apiKey")
-        }
+        clearAPIKeys(keychain: keychain)
         FirstRunState.shared.reset()
 
         KeyboardShortcuts.reset(
@@ -45,9 +44,21 @@ enum ResetActions {
         RestartHelper.relaunch()
     }
 
-    static func hardReset() {
+    static func hardReset(keychain: any KeychainStoring) {
         UserDefaults.standard.set(true, forKey: "jot.pendingHardReset")
-        softReset()
+        softReset(keychain: keychain)
+    }
+
+    /// Delete every per-provider API key + the legacy shared entry via
+    /// the `KeychainStoring` seam. Internal so regression tests can
+    /// exercise the seam-routing without firing `RestartHelper.relaunch()`.
+    static func clearAPIKeys(keychain: any KeychainStoring) {
+        // Legacy shared keychain entry (pre per-provider refactor).
+        try? keychain.delete(account: "jot.llm.apiKey")
+        // Per-provider keychain entries.
+        for provider in LLMConfiguration.bucketedProviders {
+            try? keychain.delete(account: "jot.llm.\(provider.rawValue).apiKey")
+        }
     }
 
     static func resetPermissions() {

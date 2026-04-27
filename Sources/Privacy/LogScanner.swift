@@ -11,26 +11,28 @@ public enum LogWorstState {
 }
 
 @MainActor
-public final class LogScanner: ObservableObject {
-    @Published public private(set) var visibleResults: [PrivacyCheckResult] = []
-    @Published public private(set) var isComplete: Bool = false
-    @Published public private(set) var stats: String = ""
-    @Published public private(set) var worst: LogWorstState = .clean
+final class LogScanner: ObservableObject {
+    @Published private(set) var visibleResults: [PrivacyCheckResult] = []
+    @Published private(set) var isComplete: Bool = false
+    @Published private(set) var stats: String = ""
+    @Published private(set) var worst: LogWorstState = .clean
 
     private var allResults: [PrivacyCheckResult] = []
     private let modelContext: ModelContext?
+    private let llmConfiguration: LLMConfiguration
 
-    public init(modelContext: ModelContext? = nil) {
+    init(modelContext: ModelContext? = nil, llmConfiguration: LLMConfiguration) {
         self.modelContext = modelContext
+        self.llmConfiguration = llmConfiguration
     }
 
-    public func run() async {
+    func run() async {
         let start = Date()
         let logURL = ErrorLog.logFileURL
         let contents = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
         let byteSize = contents.utf8.count
 
-        let config = LLMConfiguration.shared
+        let config = llmConfiguration
         let keys = LLMConfiguration.bucketedProviders.map { config.apiKey(for: $0) }
         let baseURLs = LLMConfiguration.bucketedProviders.map { config.baseURL(for: $0) }
         let transcripts = fetchTranscripts()
@@ -81,11 +83,11 @@ public final class LogScanner: ObservableObject {
         return all
     }
 
-    public var currentContents: String {
+    var currentContents: String {
         (try? String(contentsOf: ErrorLog.logFileURL, encoding: .utf8)) ?? ""
     }
 
-    public func redactedContents() -> String {
+    func redactedContents() -> String {
         let (redacted, _) = LogRedactor.redact(currentContents, using: allResults)
         return redacted
     }

@@ -32,7 +32,7 @@ enum WizardStepID: Int, CaseIterable, Identifiable, Sendable {
 /// the coordinator so Back / Skip / Primary in the footer can render even
 /// though the actual view body lives elsewhere.
 struct WizardStepChrome: Equatable {
-    var primaryTitle: String
+    var primaryTitle: LocalizedStringKey
     var canAdvance: Bool
     var isPrimaryBusy: Bool
     var showsSkip: Bool
@@ -43,4 +43,22 @@ struct WizardStepChrome: Equatable {
         isPrimaryBusy: false,
         showsSkip: true
     )
+}
+
+/// Phase 3 #31: persistent state the wizard's step-gating rules consult.
+/// Constructed by view bodies (from their `@EnvironmentObject` /
+/// `@AppStorage` reads) and by the harness (from seed-driven stub state),
+/// then handed to `SetupWizardCoordinator.canAdvance(from:given:)`. The
+/// coordinator owns the rules; views and harness own the state-construction
+/// boundary they each know how to fill.
+///
+/// Scope: this struct holds only **persistent** preconditions — values
+/// that survive a view-tree teardown (granted permissions, installed
+/// models, the active model id). View-only ephemeral state (e.g.
+/// `isDownloading`, `phase == .recording`) stays in the view and is
+/// AND-combined with the coordinator's answer when computing chrome.
+struct WizardState: Sendable {
+    let permissionGrants: [Capability: PermissionStatus]
+    let installedModelIDs: Set<ParakeetModelID>
+    let primaryModelID: ParakeetModelID
 }

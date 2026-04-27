@@ -122,7 +122,7 @@ struct HelpAdvancedView: View {
             return
         }
         withAnimation(HelpSharedStyle.expandAnimation) {
-            expandedIds.insert(slug)
+            _ = expandedIds.insert(slug)
         }
         DispatchQueue.main.async {
             onConsumePendingExpansion?()

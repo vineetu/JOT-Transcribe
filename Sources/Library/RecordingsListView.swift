@@ -7,7 +7,7 @@ import SwiftUI
 /// optional content above the grouped recordings.
 struct RecordingsListView: View {
     @Environment(\.modelContext) private var context
-    @Environment(\.transcriber) private var transcriber
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
     @Query(sort: \Recording.createdAt, order: .reverse)
     private var recordings: [Recording]
 
@@ -143,10 +143,7 @@ struct RecordingsListView: View {
     }
 
     private func retranscribe(_ r: Recording) {
-        guard let transcriber else {
-            retranscribeError = "Transcriber is not available."
-            return
-        }
+        let transcriber = transcriberHolder.transcriber
         let url = RecordingStore.audioURL(for: r)
         Task {
             do {

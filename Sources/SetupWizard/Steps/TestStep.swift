@@ -9,14 +9,14 @@ import SwiftUI
 /// hits a cold `AsrManager` and sits in "still loading" until relaunch.
 struct TestStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
-    @AppStorage("jot.defaultModelID") private var defaultModelID: String = ParakeetModelID.tdt_0_6b_v3.rawValue
+    @EnvironmentObject private var holder: TranscriberHolder
 
     @State private var phase: TestPhase = .idle
     @State private var transcript: String = ""
     @State private var errorMessage: String?
 
     private var selectedModel: ParakeetModelID {
-        ParakeetModelID(rawValue: defaultModelID) ?? .tdt_0_6b_v3
+        holder.primaryModelID
     }
 
     var body: some View {
@@ -24,7 +24,7 @@ struct TestStep: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Try it out")
                     .font(.system(size: 22, weight: .semibold))
-                Text("Tap to record a short test. Jot will capture three seconds of audio and show what it heard.")
+                Text("Speak anything — Jot is just confirming your microphone and the transcription model are working.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
@@ -58,12 +58,21 @@ struct TestStep: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(!mic ? "Microphone permission is not granted." : "Model isn't downloaded yet.")
-                        .font(.system(size: 12, weight: .semibold))
-                    Button(!mic ? "Go back to Permissions" : "Go back to Model") {
-                        coordinator.goTo(!mic ? .permissions : .model)
+                    if !mic {
+                        Text("Microphone permission is not granted.")
+                            .font(.system(size: 12, weight: .semibold))
+                        Button("Go back to Permissions") {
+                            coordinator.goTo(.permissions)
+                        }
+                        .controlSize(.small)
+                    } else {
+                        Text("Model isn't downloaded yet.")
+                            .font(.system(size: 12, weight: .semibold))
+                        Button("Go back to Model") {
+                            coordinator.goTo(.model)
+                        }
+                        .controlSize(.small)
                     }
-                    .controlSize(.small)
                 }
                 Spacer()
             }
@@ -95,18 +104,32 @@ struct TestStep: View {
             }
         case .done:
             VStack(alignment: .leading, spacing: 8) {
-                Text("You said:")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text(transcript.isEmpty ? "(nothing recognized)" : transcript)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-                    )
+                if transcript.isEmpty {
+                    Text("Didn't catch anything — try again and speak a little louder.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Looks good — your mic and model are working.")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("You said:")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text(transcript)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                        )
+                }
                 HStack {
                     Button("Try again") { runTest() }
                         .controlSize(.small)
@@ -115,10 +138,16 @@ struct TestStep: View {
             }
         case .failed:
             VStack(alignment: .leading, spacing: 8) {
-                Text(errorMessage ?? "Test failed.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
+                Group {
+                    if let errorMessage {
+                        Text(verbatim: errorMessage)
+                    } else {
+                        Text("Test failed.")
+                    }
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
                 Button("Try again") { runTest() }
                     .controlSize(.small)
             }
@@ -145,8 +174,8 @@ struct TestStep: View {
         phase = .recording
 
         let transcriber = coordinator.transcriber
+        let capture = coordinator.audioCapture
         Task {
-            let capture = AudioCapture()
             do {
                 try await transcriber.ensureLoaded()
                 try await capture.start()
@@ -214,7 +243,7 @@ private struct TestButton: View {
         }
     }
 
-    private var tooltip: String {
+    private var tooltip: LocalizedStringKey {
         switch phase {
         case .idle: return "Record 3 seconds"
         case .recording: return "Recording…"

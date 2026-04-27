@@ -14,17 +14,34 @@ struct JotApp: App {
         // with forced `.settings(.general)` selection). The legacy
         // `Settings { … }` TabView scene has been retired.
         Window("Jot", id: "jot-main") {
-            JotAppWindow(
-                pipeline: appDelegate.pipeline,
-                recorder: appDelegate.recorder,
-                navigationHistory: navHistory
-            )
-                .environmentObject(firstRunState)
-                .environmentObject(appDelegate.recorder)
-                .environmentObject(appDelegate.delivery)
-                .environmentObject(PermissionsService.shared)
-                .environment(\.transcriber, appDelegate.pipeline.transcriber)
-                .modelContainer(appDelegate.modelContainer)
+            // `services` is a Phase-0.2 IUO assigned in
+            // `applicationDidFinishLaunching`. In normal user-launched
+            // runs the scene body evaluates AFTER that callback fires,
+            // so the unwrap is safe. Under `xctest`'s injected-bundle
+            // launch (Phase 1 harness flow tests with `host = Jot.app`)
+            // the SwiftUI scene tree starts evaluating BEFORE
+            // `applicationDidFinishLaunching` runs — the explicit
+            // `if let` absorbs that bootstrap race. The `else` branch
+            // is unreachable outside test-host launch.
+            if let services = appDelegate.services {
+                JotAppWindow(
+                    pipeline: services.pipeline,
+                    recorder: services.recorder,
+                    urlSession: services.urlSession,
+                    appleIntelligence: services.appleIntelligence,
+                    audioCapture: services.audioCapture,
+                    llmConfiguration: services.llmConfiguration,
+                    navigationHistory: navHistory
+                )
+                    .environmentObject(firstRunState)
+                    .environmentObject(services.recorder)
+                    .environmentObject(services.delivery)
+                    .environmentObject(PermissionsService.shared)
+                    .environmentObject(services.transcriberHolder)
+                    .modelContainer(services.modelContainer)
+            } else {
+                Color.clear
+            }
         }
         .windowResizability(.contentMinSize)
         // Trim the default SwiftUI menu bar down to the essentials. Jot's
@@ -49,7 +66,7 @@ private struct AppMenuCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Check for Updates…") {
-                appDelegate.checkForUpdates()
+                appDelegate.services.updaterController.checkForUpdates(nil)
             }
         }
         CommandGroup(replacing: .appSettings) {}

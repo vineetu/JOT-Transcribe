@@ -24,19 +24,24 @@ public enum ShareAction: String, Equatable, Identifiable {
     }
 }
 
-public struct PrivacyScanSheet: View {
+struct PrivacyScanSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var scanner = LogScanner()
+    @StateObject private var scanner: LogScanner
     let action: ShareAction
     let onProceed: (_ useRedacted: Bool, _ action: ShareAction) -> Void
 
-    public init(action: ShareAction, onProceed: @escaping (Bool, ShareAction) -> Void) {
+    init(
+        action: ShareAction,
+        llmConfiguration: LLMConfiguration,
+        onProceed: @escaping (Bool, ShareAction) -> Void
+    ) {
         self.action = action
         self.onProceed = onProceed
+        _scanner = StateObject(wrappedValue: LogScanner(llmConfiguration: llmConfiguration))
     }
 
-    public var body: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             header
             Divider()

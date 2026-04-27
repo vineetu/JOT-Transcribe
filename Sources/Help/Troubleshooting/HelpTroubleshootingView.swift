@@ -129,7 +129,7 @@ struct HelpTroubleshootingView: View {
     private func consumeExpansion(_ slug: String?) {
         guard let slug, cards.contains(where: { $0.id == slug }) else { return }
         withAnimation(HelpSharedStyle.expandAnimation) {
-            expandedIds.insert(slug)
+            _ = expandedIds.insert(slug)
         }
         DispatchQueue.main.async {
             onConsumePendingExpansion?()

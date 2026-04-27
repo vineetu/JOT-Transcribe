@@ -1,0 +1,1238 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    ", optional" : {
+      "comment" : "Suffix appended to optional Help hero accessibility labels (e.g. 'Cleanup, optional. ...')",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : ", optional" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "(empty)" : {
+      "comment" : "Menu bar Recent Transcriptions placeholder when a recording has no transcript text",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "(empty)" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "≈100 MB" : {
+      "comment" : "Approximate file size label for the optional CTC vocabulary boost model",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "≈100 MB" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "%lld%% downloaded" : {
+      "comment" : "Setup wizard model-download progress; %lld is the integer percentage 0-100",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%lld%% downloaded" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'." : {
+      "comment" : "Help Basics — Custom vocabulary sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Accessibility" : {
+      "comment" : "Setup wizard permission row title for the Accessibility / synthetic-paste permission",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Accessibility" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Active: %@" : {
+      "comment" : "Menu bar Switch Model submenu — disabled label showing the currently active Parakeet model display name",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Active: %@" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Advanced, for later" : {
+      "comment" : "Setup wizard Done step hint card title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Advanced, for later" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Already downloaded." : {
+      "comment" : "Setup wizard model picker — model is already present on disk",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Already downloaded." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Apple Intelligence is still maturing" : {
+      "comment" : "Setup wizard Cleanup step disclaimer card title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Apple Intelligence is still maturing" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Approx. %.2f GB on disk" : {
+      "comment" : "Setup wizard model-size label; %.2f is gigabytes",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Approx. %.2f GB on disk" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Articulate" : {
+      "comment" : "Help Basics — Articulate hero title; also Setup wizard hotkey row label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Articulate" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Articulate (Custom)" : {
+      "comment" : "Help Basics + Setup wizard — Articulate Custom (voice-driven) hotkey label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Articulate (Custom)" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Articulate (Fixed)" : {
+      "comment" : "Help Basics — Articulate Fixed (no-voice) sub-row label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Articulate (Fixed)" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Articulate any selected text" : {
+      "comment" : "Setup wizard Articulate intro step title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Articulate any selected text" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Articulating…" : {
+      "comment" : "Setup wizard Articulate intro — preview button label while LLM call is in flight",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Articulating…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Ask Jot about this" : {
+      "comment" : "Help Basics hero context-menu item — opens Ask Jot prefilled for this hero",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Ask Jot about this" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Auto-correct is off by default." : {
+      "comment" : "Setup wizard Cleanup step settings pointer headline",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Auto-correct is off by default." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Back" : {
+      "comment" : "Setup wizard footer Back button",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Back" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Cancel" : {
+      "comment" : "Setup wizard reset-permissions alert cancel button",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Cancel recording" : {
+      "comment" : "Help Basics — Dictation sub-row label for the Esc-to-cancel binding",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel recording" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Check for Updates…" : {
+      "comment" : "Menu bar Check for Updates item",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check for Updates…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Choose a provider" : {
+      "comment" : "Help Basics — Cleanup sub-row label for AI provider choice",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose a provider" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Clean up your dictations" : {
+      "comment" : "Setup wizard Cleanup step title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Clean up your dictations" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Cleaning up…" : {
+      "comment" : "Menu bar toggle label + Setup wizard preview button — Cleanup pass in flight",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cleaning up…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Cleanup" : {
+      "comment" : "Help Basics — Cleanup hero title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cleanup" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "collapsed" : {
+      "comment" : "Help Basics sub-row accessibility value when collapsed",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "collapsed" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Continue" : {
+      "comment" : "Setup wizard primary footer button (most steps) and Done step Continue-to-advanced button",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Continue" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Copy Last Transcription" : {
+      "comment" : "Menu bar item — copies the last transcript to the clipboard",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy Last Transcription" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Custom device selection is temporarily disabled while we fix a bug — Jot follows your macOS Sound settings default for now." : {
+      "comment" : "Setup wizard microphone step note",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom device selection is temporarily disabled while we fix a bug — Jot follows your macOS Sound settings default for now." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Custom input device selection is temporarily disabled — known bug. Jot follows your macOS Sound settings default for now; a fix is coming." : {
+      "comment" : "Setup wizard microphone step warning tooltip",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom input device selection is temporarily disabled — known bug. Jot follows your macOS Sound settings default for now; a fix is coming." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Custom vocabulary" : {
+      "comment" : "Help Basics — Dictation sub-row label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom vocabulary" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Default is ⌥Space. Change it here if it clashes with another app." : {
+      "comment" : "Setup wizard shortcuts step description",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Default is ⌥Space. Change it here if it clashes with another app." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Denied" : {
+      "comment" : "Setup wizard permission status pill — permission denied",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Denied" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Dictation" : {
+      "comment" : "Help Basics — Dictation hero title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Dictation" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Didn't catch anything — try again and speak a little louder." : {
+      "comment" : "Setup wizard test step — empty transcript hint",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Didn't catch anything — try again and speak a little louder." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Done" : {
+      "comment" : "Setup wizard Articulate intro — primary button label (final step)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Done" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Download" : {
+      "comment" : "Setup wizard model picker / boost picker — download action button",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Download" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Downloaded" : {
+      "comment" : "Setup wizard model picker — model is downloaded badge",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Downloaded" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Downloading ≈100 MB…" : {
+      "comment" : "Setup wizard vocabulary boost — download in flight",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Downloading ≈100 MB…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Editable prompt" : {
+      "comment" : "Help Basics — Cleanup sub-row label for editable prompt",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Editable prompt" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "expanded" : {
+      "comment" : "Help Basics sub-row accessibility value when expanded",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "expanded" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Extra on-device model that lets Jot prefer your own terms — product names, jargon, proper nouns. Needed only if you plan to use Settings → Vocabulary. You can download it later from that pane." : {
+      "comment" : "Setup wizard vocabulary boost description",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Extra on-device model that lets Jot prefer your own terms — product names, jargon, proper nouns. Needed only if you plan to use Settings → Vocabulary. You can download it later from that pane." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Go back to Model" : {
+      "comment" : "Setup wizard Test step remediation button — return to model step",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Go back to Model" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Go back to Permissions" : {
+      "comment" : "Setup wizard Test step remediation button — return to permissions step",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Go back to Permissions" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Graceful fallback on failure" : {
+      "comment" : "Help Basics — Cleanup sub-row plain label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Graceful fallback on failure" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Grant" : {
+      "comment" : "Setup wizard permission row primary button (microphone)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Grant" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Grant permissions" : {
+      "comment" : "Setup wizard permissions step title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Grant permissions" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Granted" : {
+      "comment" : "Setup wizard permission status pill — granted",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Granted" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Help section" : {
+      "comment" : "Accessibility label for the Help tab picker",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Help section" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Input device:" : {
+      "comment" : "Setup wizard microphone step input device label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Input device:" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Input level" : {
+      "comment" : "Setup wizard microphone step input level meter label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Input level" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Input Monitoring" : {
+      "comment" : "Setup wizard permission row title for the Input Monitoring permission",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Input Monitoring" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Intent classifier" : {
+      "comment" : "Help Basics — Articulate sub-row label for intent classifier",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Intent classifier" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot can polish each transcript after dictation — remove “um”s, fix grammar, and preserve your structure." : {
+      "comment" : "Setup wizard Cleanup step subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot can polish each transcript after dictation — remove “um”s, fix grammar, and preserve your structure." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot is still in development. If you hit issues, you can share diagnostic logs from the About tab — nothing is sent to us unless you copy and send them yourself." : {
+      "comment" : "Setup wizard Articulate intro footer note",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot is still in development. If you hit issues, you can share diagnostic logs from the About tab — nothing is sent to us unless you copy and send them yourself." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot needs three macOS permissions to record your voice and paste text in other apps." : {
+      "comment" : "Setup wizard permissions step subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot needs three macOS permissions to record your voice and paste text in other apps." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot needs to relaunch before it can see the new permission." : {
+      "comment" : "Setup wizard permissions step relaunch banner",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot needs to relaunch before it can see the new permission." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot records from this device whenever you use the hotkey. Speak to see the level meter respond." : {
+      "comment" : "Setup wizard microphone step subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot records from this device whenever you use the hotkey. Speak to see the level meter respond." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot uses Apple Intelligence on-device by default — free, private, no API key. Apple's model handles short dictations well, but results can feel uneven on longer transcripts today. Quality will improve as Apple ships updates." : {
+      "comment" : "Setup wizard Cleanup step disclaimer body",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot uses Apple Intelligence on-device by default — free, private, no API key. Apple's model handles short dictations well, but results can feel uneven on longer transcripts today. Quality will improve as Apple ships updates." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot: cleaning up" : {
+      "comment" : "Menu bar accessibility description (transforming state)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot: cleaning up" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot: error" : {
+      "comment" : "Menu bar accessibility description (error state)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot: error" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot: idle" : {
+      "comment" : "Menu bar accessibility description (idle state)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot: idle" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot: recording" : {
+      "comment" : "Menu bar accessibility description (recording state)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot: recording" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Jot: transcribing" : {
+      "comment" : "Menu bar accessibility description (transcribing state)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Jot: transcribing" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Languages" : {
+      "comment" : "Help Basics — Dictation sub-row label for the Languages section (added in v1.7 Japanese support)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Languages" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Lets Jot hear what you say." : {
+      "comment" : "Setup wizard microphone permission row subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lets Jot hear what you say." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Lets Jot paste text for you via synthetic ⌘V." : {
+      "comment" : "Setup wizard accessibility permission row subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lets Jot paste text for you via synthetic ⌘V." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Lets the ⌥Space global hotkey fire from any app." : {
+      "comment" : "Setup wizard input-monitoring permission row subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Lets the ⌥Space global hotkey fire from any app." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Listening…" : {
+      "comment" : "Setup wizard test step state — recording",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Listening…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "LLM cleanup, voice-driven rewrite (Articulate), and custom vocabulary are ready whenever you're curious — in Settings, or by re-running this wizard from Settings → General." : {
+      "comment" : "Setup wizard Done step advanced hint card body",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "LLM cleanup, voice-driven rewrite (Articulate), and custom vocabulary are ready whenever you're curious — in Settings, or by re-running this wizard from Settings → General." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Looks good — your mic and model are working." : {
+      "comment" : "Setup wizard test step success badge",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Looks good — your mic and model are working." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Microphone" : {
+      "comment" : "Setup wizard permission row title for the Microphone permission",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Microphone" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Microphone permission is not granted." : {
+      "comment" : "Setup wizard test step remediation banner",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Microphone permission is not granted." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Model isn't downloaded yet." : {
+      "comment" : "Setup wizard test step remediation banner",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Model isn't downloaded yet." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "More languages will be added as Parakeet improves." : {
+      "comment" : "Help Basics — Multilingual grid trailing line",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "More languages will be added as Parakeet improves." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Multilingual (25 langs)" : {
+      "comment" : "Help Basics — Dictation sub-row label for multilingual support",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Multilingual (25 langs)" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Need Japanese? Add it from Settings → Transcription after setup." : {
+      "comment" : "Setup wizard model step Japanese-discovery hint",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Need Japanese? Add it from Settings → Transcription after setup." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Needs restart" : {
+      "comment" : "Setup wizard permission status pill — relaunch required",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Needs restart" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "No matches for '%@'. Try a different term, or ask Ask Jot." : {
+      "comment" : "Help Basics — empty search-results state",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No matches for '%@'. Try a different term, or ask Ask Jot." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "No recordings yet" : {
+      "comment" : "Menu bar Recent Transcriptions empty state",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No recordings yet" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Not set" : {
+      "comment" : "Setup wizard permission status pill — not yet determined",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not set" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "On-device transcription" : {
+      "comment" : "Help Basics — Dictation sub-row label for on-device transcription",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "On-device transcription" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Open in Settings" : {
+      "comment" : "Help Basics — generic 'open in Settings' link inside an expanded sub-row detail",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open in Settings" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Open Jot…" : {
+      "comment" : "Menu bar item — opens the Jot main window",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Jot…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Open System Settings" : {
+      "comment" : "Setup wizard permission row primary button (Input Monitoring / Accessibility)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open System Settings" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Opens Jot Settings" : {
+      "comment" : "Help Basics — accessibility hint on Open in Settings buttons",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens Jot Settings" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "optional" : {
+      "comment" : "Help Basics — small 'optional' label next to a hero title indicating the feature is opt-in",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "optional" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Optional. Select text, press a shortcut, speak an instruction or take a fixed pass — Jot rewrites in place." : {
+      "comment" : "Help Basics — Articulate hero subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Optional. Select text, press a shortcut, speak an instruction or take a fixed pass — Jot rewrites in place." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Optional AI pass that removes fillers, fixes grammar, and preserves your voice. Runs after transcription." : {
+      "comment" : "Help Basics — Cleanup hero subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Optional AI pass that removes fillers, fixes grammar, and preserves your voice. Runs after transcription." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Parakeet runs entirely on the Apple Neural Engine. Downloaded once, then used offline." : {
+      "comment" : "Setup wizard model step subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Parakeet runs entirely on the Apple Neural Engine. Downloaded once, then used offline." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Pick a transcription model" : {
+      "comment" : "Setup wizard model step title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick a transcription model" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Pick your microphone" : {
+      "comment" : "Setup wizard microphone step title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick your microphone" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Press a hotkey, speak, text appears." : {
+      "comment" : "Setup wizard welcome step subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Press a hotkey, speak, text appears." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Press once to start, press again to stop and transcribe. Works in any app, in any field with focus." : {
+      "comment" : "Help Basics — Toggle recording sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Press once to start, press again to stop and transcribe. Works in any app, in any field with focus." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Press this from any app to start and stop a recording." : {
+      "comment" : "Setup wizard shortcuts step subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Press this from any app to start and stop a recording." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Press ⌥Space anywhere to dictate. Speech becomes text at your cursor. That's the whole feature." : {
+      "comment" : "Setup wizard Done step main message",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Press ⌥Space anywhere to dictate. Speech becomes text at your cursor. That's the whole feature." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Preview Articulate" : {
+      "comment" : "Setup wizard Articulate intro — preview button label (idle state)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preview Articulate" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Preview cleanup" : {
+      "comment" : "Setup wizard Cleanup step — preview button label (idle state)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Preview cleanup" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Push to talk" : {
+      "comment" : "Help Basics — Dictation sub-row label for push-to-talk",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Push to talk" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Quit Jot" : {
+      "comment" : "Menu bar Quit Jot item",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Quit Jot" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Raw + cleaned both saved" : {
+      "comment" : "Help Basics — Cleanup sub-row plain label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Raw + cleaned both saved" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Recent Transcriptions" : {
+      "comment" : "Menu bar submenu — recent recordings",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recent Transcriptions" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Record 3 seconds" : {
+      "comment" : "Setup wizard test step — record-button tooltip (idle)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Record 3 seconds" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Recording…" : {
+      "comment" : "Setup wizard test step — record-button tooltip (recording)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Recording…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Required. Lets Jot hear what you say." : {
+      "comment" : "Setup wizard microphone permission row subtitle (full)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Required. Lets Jot hear what you say." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Reset and Relaunch" : {
+      "comment" : "Setup wizard reset-permissions alert primary destructive button",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset and Relaunch" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Reset permissions?" : {
+      "comment" : "Setup wizard reset-permissions alert title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset permissions?" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Reset permissions…" : {
+      "comment" : "Setup wizard permissions step destructive reset action",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset permissions…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Restart Jot" : {
+      "comment" : "Setup wizard permissions step relaunch banner action",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Restart Jot" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Retry" : {
+      "comment" : "Menu bar toggle label when recorder is in error state",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Retry" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Run again" : {
+      "comment" : "Setup wizard preview button label after a successful run",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Run again" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Same AI provider as Cleanup — change in Settings → AI. Rebind either hotkey in Settings → Shortcuts." : {
+      "comment" : "Setup wizard Articulate intro footer",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Same AI provider as Cleanup — change in Settings → AI. Rebind either hotkey in Settings → Shortcuts." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Search features, shortcuts, providers…" : {
+      "comment" : "Help search field placeholder",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search features, shortcuts, providers…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Select any text, press the shortcut, speak an instruction like 'make this formal' or 'translate to Japanese' — the articulated text replaces your selection." : {
+      "comment" : "Help Basics — Articulate Custom sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select any text, press the shortcut, speak an instruction like 'make this formal' or 'translate to Japanese' — the articulated text replaces your selection." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Select text in any app, press your hotkey, and Jot articulates it with AI — rewrite a paragraph, convert a note into a list, translate a sentence, clean up a message." : {
+      "comment" : "Setup wizard Articulate intro step subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select text in any app, press your hotkey, and Jot articulates it with AI — rewrite a paragraph, convert a note into a list, translate a sentence, clean up a message." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Select text, press the shortcut, and Jot rewrites it with a fixed 'Articulate this' instruction. No voice step — useful when you just want a quick cleanup pass." : {
+      "comment" : "Help Basics — Articulate Fixed sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select text, press the shortcut, and Jot rewrites it with a fixed 'Articulate this' instruction. No voice step — useful when you just want a quick cleanup pass." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Show All Recordings…" : {
+      "comment" : "Menu bar Recent Transcriptions submenu — show all recordings link",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show All Recordings…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Skip" : {
+      "comment" : "Setup wizard footer Skip button (and Done step Skip button)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Skip" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Speak anything — Jot is just confirming your microphone and the transcription model are working." : {
+      "comment" : "Setup wizard test step subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Speak anything — Jot is just confirming your microphone and the transcription model are working." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Start Recording" : {
+      "comment" : "Menu bar toggle label when recorder is idle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Start Recording" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Step %lld of %lld" : {
+      "comment" : "Setup wizard header — current step number out of total",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Step %lld of %lld" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Stop Recording" : {
+      "comment" : "Menu bar toggle label when recorder is recording",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Stop Recording" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Switch model" : {
+      "comment" : "Menu bar Switch model parent submenu title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Switch model" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Switch to %@" : {
+      "comment" : "Menu bar Switch model submenu — entry per non-primary installed model; %@ is the model display name",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Switch to %@" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "System default" : {
+      "comment" : "Setup wizard microphone step — input device label when no specific device pinned",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "System default" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Test failed." : {
+      "comment" : "Setup wizard test step — generic failure fallback",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Test failed." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "This revokes all permissions for Jot and relaunches the app. You will be prompted again." : {
+      "comment" : "Setup wizard reset-permissions alert message",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This revokes all permissions for Jot and relaunches the app. You will be prompted again." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Toggle recording" : {
+      "comment" : "Setup wizard shortcuts step shortcut row label; also Help Basics Dictation sub-row label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Toggle recording" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Transcribing…" : {
+      "comment" : "Menu bar toggle label + Setup wizard test step state — transcription in flight",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcribing…" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Try again" : {
+      "comment" : "Setup wizard test step — retry button after empty/failure",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try again" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Try it out" : {
+      "comment" : "Setup wizard test step title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try it out" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Vocabulary boost (optional)" : {
+      "comment" : "Setup wizard model step optional vocabulary boost section title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Vocabulary boost (optional)" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Watch out: " : {
+      "comment" : "Help Basics — bold prefix on warning lines inside expanded sub-row details (trailing space intentional)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Watch out: " } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Welcome to Jot" : {
+      "comment" : "Setup wizard welcome step title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Welcome to Jot" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "When you want to turn it on — or switch to a cloud provider (OpenAI, Anthropic, Gemini) — open Settings → AI." : {
+      "comment" : "Setup wizard Cleanup step settings pointer body",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "When you want to turn it on — or switch to a cloud provider (OpenAI, Anthropic, Gemini) — open Settings → AI." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "You can change this and add Push-to-talk, Cancel, or Paste-last shortcuts any time in Settings → Shortcuts." : {
+      "comment" : "Setup wizard shortcuts step extra hint",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "You can change this and add Push-to-talk, Cancel, or Paste-last shortcuts any time in Settings → Shortcuts." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "You said:" : {
+      "comment" : "Setup wizard test step transcript label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "You said:" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "You're set up for the basics" : {
+      "comment" : "Setup wizard Done step main title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "You're set up for the basics" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Your dictation shortcut" : {
+      "comment" : "Setup wizard shortcuts step title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Your dictation shortcut" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Home" : {
+      "comment" : "App sidebar — Home item",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Home" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Settings" : {
+      "comment" : "App sidebar — Settings group label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "General" : {
+      "comment" : "Settings sidebar sub-item — General",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "General" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Transcription" : {
+      "comment" : "Settings sidebar sub-item — Transcription",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Transcription" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Vocabulary" : {
+      "comment" : "Settings sidebar sub-item — Vocabulary",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Vocabulary" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Sound" : {
+      "comment" : "Settings sidebar sub-item — Sound",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Sound" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "AI" : {
+      "comment" : "Settings sidebar sub-item — AI",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "AI" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Shortcuts" : {
+      "comment" : "Settings sidebar sub-item — Shortcuts",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Shortcuts" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Help" : {
+      "comment" : "App sidebar — Help item",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Help" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "About" : {
+      "comment" : "App sidebar — About item",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "About" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Ask Jot" : {
+      "comment" : "App sidebar — Ask Jot item (the in-app help chatbot)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Ask Jot" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Opens Settings at General." : {
+      "comment" : "Sidebar accessibility hint for the Settings group header button",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Opens Settings at General." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Press the hotkey, then speak an instruction like “translate to Japanese” or “shorten to two sentences.”" : {
+      "comment" : "Setup wizard Articulate intro hotkey description (Custom)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Press the hotkey, then speak an instruction like “translate to Japanese” or “shorten to two sentences.”" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Fixed prompt: “Articulate this.” No speaking — press the hotkey and Jot rewrites your selection." : {
+      "comment" : "Setup wizard Articulate intro hotkey description (Fixed)",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Fixed prompt: “Articulate this.” No speaking — press the hotkey and Jot rewrites your selection." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "On-device dictation" : {
+      "comment" : "Setup wizard welcome step bullet 1 title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "On-device dictation" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Parakeet runs on the Apple Neural Engine. Audio never leaves your Mac." : {
+      "comment" : "Setup wizard welcome step bullet 1 description",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Parakeet runs on the Apple Neural Engine. Audio never leaves your Mac." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Works in any app" : {
+      "comment" : "Setup wizard welcome step bullet 2 title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Works in any app" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "The default shortcut is ⌥Space — press it anywhere to start a recording." : {
+      "comment" : "Setup wizard welcome step bullet 2 description",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The default shortcut is ⌥Space — press it anywhere to start a recording." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "No accounts, no telemetry" : {
+      "comment" : "Setup wizard welcome step bullet 3 title",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No accounts, no telemetry" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "This wizard walks through a few permissions Jot needs to paste text for you." : {
+      "comment" : "Setup wizard welcome step bullet 3 description",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This wizard walks through a few permissions Jot needs to paste text for you." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Press the hotkey, speak, and text appears where your cursor is. Works in any app, fully on-device." : {
+      "comment" : "Help Basics — Dictation hero subtitle",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Press the hotkey, speak, and text appears where your cursor is. Works in any app, fully on-device." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Default shortcut — rebind in Settings → Shortcuts" : {
+      "comment" : "Help Basics — inline tip description for the toggle-recording shortcut",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Default shortcut — rebind in Settings → Shortcuts" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Hold the shortcut to record, release to transcribe. Useful when you want precise control over when Jot is listening." : {
+      "comment" : "Help Basics — Push-to-talk sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Hold the shortcut to record, release to transcribe. Useful when you want precise control over when Jot is listening." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Press Esc to discard without transcribing. Active only while recording so it doesn't steal Esc from other apps when you're not dictating." : {
+      "comment" : "Help Basics — Cancel-recording sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Press Esc to discard without transcribing. Active only while recording so it doesn't steal Esc from other apps when you're not dictating." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Esc is hardcoded, not configurable. macOS global hotkeys must include a modifier — Esc is an exception reserved for canceling in-flight transformations." : {
+      "comment" : "Help Basics — Cancel-recording warning",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Esc is hardcoded, not configurable. macOS global hotkeys must include a modifier — Esc is an exception reserved for canceling in-flight transformations." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Any-length recordings" : {
+      "comment" : "Help Basics — sub-row label",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Any-length recordings" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "No hard time limit — dictate for as long as you need. Quality gradually diminishes for recordings longer than about an hour, so shorter sessions work best." : {
+      "comment" : "Help Basics — Any-length recordings sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No hard time limit — dictate for as long as you need. Quality gradually diminishes for recordings longer than about an hour, so shorter sessions work best." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Parakeet TDT 0.6B v3 runs on the Apple Neural Engine via FluidAudio. Audio never leaves the Mac. The model downloads on first use, about 600 MB." : {
+      "comment" : "Help Basics — On-device transcription sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Parakeet TDT 0.6B v3 runs on the Apple Neural Engine via FluidAudio. Audio never leaves the Mac. The model downloads on first use, about 600 MB." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Parakeet auto-detects the language on each recording. Supported today:" : {
+      "comment" : "Help Basics — Multilingual sub-row prose preceding the language grid",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Parakeet auto-detects the language on each recording. Supported today:" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Two transcription models. English (Parakeet v3) auto-detects 25 European languages — installed by default. Japanese (Parakeet 0.6B JA) is a separate ~1.25 GB download. Pick one as primary at Settings → Transcription; only the primary is hot in memory." : {
+      "comment" : "Help Basics — Languages sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Two transcription models. English (Parakeet v3) auto-detects 25 European languages — installed by default. Japanese (Parakeet 0.6B JA) is a separate ~1.25 GB download. Pick one as primary at Settings → Transcription; only the primary is hot in memory." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Custom Vocabulary applies only to European-language transcription. The Japanese model uses a different tokenizer, so vocabulary boosts are not applied when Japanese is primary." : {
+      "comment" : "Help Basics — Languages sub-row warning",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Custom Vocabulary applies only to European-language transcription. The Japanese model uses a different tokenizer, so vocabulary boosts are not applied when Japanese is primary." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Vocabulary entries override similar-sounding words. Adding many entries that sound alike causes unpredictable preference among them. Keep the list focused." : {
+      "comment" : "Help Basics — Custom vocabulary warning",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Vocabulary entries override similar-sounding words. Adding many entries that sound alike causes unpredictable preference among them. Keep the list focused." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Pick who does the AI work. Apple Intelligence is the default on macOS 26+ — on-device, private, free, but quality for Cleanup trails cloud today. Cloud providers (OpenAI, Anthropic, Gemini) deliver strong results with your own API key. Ollama runs locally." : {
+      "comment" : "Help Basics — Cleanup providers sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Pick who does the AI work. Apple Intelligence is the default on macOS 26+ — on-device, private, free, but quality for Cleanup trails cloud today. Cloud providers (OpenAI, Anthropic, Gemini) deliver strong results with your own API key. Ollama runs locally." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "The default cleanup prompt removes fillers, fixes grammar and punctuation, and preserves your voice. Power users can rewrite it; a reset-to-default restores the shipped version." : {
+      "comment" : "Help Basics — Cleanup editable prompt sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The default cleanup prompt removes fillers, fixes grammar and punctuation, and preserves your voice. Power users can rewrite it; a reset-to-default restores the shipped version." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "Voice-driven rewrite — unbound by default" : {
+      "comment" : "Help Basics — Articulate Custom inline tip description",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Voice-driven rewrite — unbound by default" } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    },
+    "A deterministic classifier routes each spoken instruction into one of four branches (voice-preserving, structural, translation, code) and picks a minimal tendency for the model. Your instruction stays the primary signal — the classifier just nudges the default." : {
+      "comment" : "Help Basics — Intent classifier sub-row prose",
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "A deterministic classifier routes each spoken instruction into one of four branches (voice-preserving, structural, translation, code) and picks a minimal tendency for the model. Your instruction stays the primary signal — the classifier just nudges the default." } },
+        "ja" : { "stringUnit" : { "state" : "new", "value" : "" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

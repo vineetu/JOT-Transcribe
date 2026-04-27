@@ -40,9 +40,26 @@ final class RecorderController: ObservableObject {
     private var pipelineToken: VoiceInputPipeline.Token?
 
     private let pipeline: VoiceInputPipeline
+    private let urlSession: URLSession
+    private let appleIntelligence: any AppleIntelligenceClienting
+    private let logSink: any LogSink
+    /// Phase 3 #29: per-graph LLMConfiguration replaces
+    /// `LLMConfiguration.shared` reads. Used to gate the cleanup
+    /// (Transform) tail on the user's configured provider.
+    private let llmConfiguration: LLMConfiguration
 
-    init(pipeline: VoiceInputPipeline) {
+    init(
+        pipeline: VoiceInputPipeline,
+        urlSession: URLSession,
+        appleIntelligence: any AppleIntelligenceClienting,
+        logSink: any LogSink = ErrorLog.shared,
+        llmConfiguration: LLMConfiguration
+    ) {
         self.pipeline = pipeline
+        self.urlSession = urlSession
+        self.appleIntelligence = appleIntelligence
+        self.logSink = logSink
+        self.llmConfiguration = llmConfiguration
     }
 
     /// Toggle between idle and recording. If recording, signal the parked flow
@@ -165,7 +182,7 @@ final class RecorderController: ObservableObject {
 
             guard pipeline.stillActive(token) else { return }
 
-            let llmConfig = LLMConfiguration.shared
+            let llmConfig = llmConfiguration
             let result = TranscriptionResult(
                 text: rawText,
                 rawText: rawText,
@@ -178,7 +195,12 @@ final class RecorderController: ObservableObject {
                 pendingTransform = (recording: recording, result: result, rawText: rawText)
                 guard pipeline.stillActive(token) else { return }
                 state = .transforming
-                let client = LLMClient()
+                let client = LLMClient(
+                    session: urlSession,
+                    appleClient: appleIntelligence,
+                    logSink: logSink,
+                    llmConfiguration: llmConfiguration
+                )
                 transformTask = Task { @MainActor [weak self] in
                     guard let self else { return }
                     defer {
@@ -197,8 +219,9 @@ final class RecorderController: ObservableObject {
                     } catch {
                         guard !Task.isCancelled else { return }
                         self.log.warning("Transform failed, falling back to raw: \(String(describing: error))")
+                        let logSink = self.logSink
                         Task {
-                            await ErrorLog.shared.error(
+                            await logSink.error(
                                 component: "Recorder",
                                 message: "Transform failed, pasted raw",
                                 context: ["error": "\((error as NSError).domain) code=\((error as NSError).code)"]
@@ -243,8 +266,9 @@ final class RecorderController: ObservableObject {
             state = .error("Another transcription is already running.")
         } catch VoiceInputPipeline.PipelineError.transcribeFailed(let error) {
             log.error("Transcription failed: \(String(describing: error))")
+            let logSink = self.logSink
             Task {
-                await ErrorLog.shared.error(
+                await logSink.error(
                     component: "Recorder",
                     message: "Transcription failed",
                     context: ["error": "\((error as NSError).domain) code=\((error as NSError).code)"]
@@ -253,8 +277,9 @@ final class RecorderController: ObservableObject {
             state = .error(transcriptionFailureMessage(for: error))
         } catch {
             log.error("Transcription failed: \(String(describing: error))")
+            let logSink = self.logSink
             Task {
-                await ErrorLog.shared.error(
+                await logSink.error(
                     component: "Recorder",
                     message: "Transcription failed",
                     context: ["error": "\((error as NSError).domain) code=\((error as NSError).code)"]

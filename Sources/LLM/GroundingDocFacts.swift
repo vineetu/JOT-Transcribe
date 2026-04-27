@@ -35,8 +35,29 @@ enum ArticulateInvariant: String, CaseIterable, Sendable {
 
 /// 25 European languages Parakeet TDT 0.6B v3 auto-detects per recording.
 /// Raw value is the ISO 639-1 code.
-enum SupportedLanguage: String, CaseIterable, Sendable {
+///
+/// This enum represents only what the v3 multilingual bundle picks up
+/// automatically — it is **not** the catalog of languages a Jot user can
+/// transcribe in. For that, see `JotASRLanguage` (which counts JA as
+/// first-class because it ships as a separately downloadable model).
+enum Parakeetv3DetectedLanguage: String, CaseIterable, Sendable {
     case en, fr, de, es, it, pt, nl, pl, ru, uk, sv, da, fi, el, cs, hu, ro, bg, hr, sk, sl, et, lv, lt, mt
+}
+
+/// Languages Jot ships dedicated ASR support for — i.e. languages a user
+/// can pick as the primary transcription model. Today: English (via the
+/// v3 multilingual bundle, which itself auto-detects 25 European
+/// languages — see `Parakeetv3DetectedLanguage`) and Japanese (via the
+/// separately downloadable Parakeet 0.6B JA model).
+///
+/// Keep this enum small and concept-focused. Adding a case here means
+/// "Jot has a model installable from Settings → Transcription that
+/// produces transcripts in this language." The grounding-doc generator
+/// renders prose off `.allCases`, so Ask Jot can correctly answer
+/// "does Jot support <language>?".
+enum JotASRLanguage: String, CaseIterable, Sendable {
+    case english
+    case japanese
 }
 
 /// Approximate monthly cost estimate per cloud provider for Cleanup,

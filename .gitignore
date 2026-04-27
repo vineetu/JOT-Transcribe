@@ -63,3 +63,7 @@ Sources/Private/
 # Flavor-1 internal features doc — mirrors docs/features.md layout but
 # covers tenant-specific surfaces that must not ship on public `main`.
 docs/features-flavor1.md
+
+# scripts/agent-verify.sh per-stage build/test logs — large outputs
+# kept around for one run for debugging; never want them committed.
+.agent-verify-logs/

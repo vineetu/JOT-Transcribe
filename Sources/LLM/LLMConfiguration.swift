@@ -3,10 +3,52 @@ import SwiftUI
 
 @MainActor
 final class LLMConfiguration: ObservableObject {
-    static let shared = LLMConfiguration()
 
-    private init() {
-        LLMConfigMigration.runIfNeeded()
+    /// KeychainStoring seam (Phase 0.8). Phase 3 #29 routes
+    /// `apiKey(for:)` / `setAPIKey(_:for:)` / `clearAPIKey(...)`
+    /// through the seam instead of the static `KeychainHelper`,
+    /// so harness tests can swap in `StubKeychain` and exercise the
+    /// `.openai` / `.anthropic` / `.gemini` provider paths without
+    /// touching the developer's real macOS keychain.
+    private let keychain: any KeychainStoring
+
+    /// `UserDefaults` seam threaded through `@AppStorage`'s `store:`
+    /// parameter so harness tests writing `provider = .ollama` land in
+    /// the suite-scoped `SystemServices.userDefaults`, not the developer's
+    /// `~/Library/Preferences/com.jot.Jot.plist`. Pre-fix, `@AppStorage`
+    /// defaulted to `UserDefaults.standard` and harness writes leaked
+    /// `.ollama` into the production app — next launch read the leaked
+    /// value instead of the `.appleIntelligence` first-install default.
+    private let defaults: UserDefaults
+
+    init(keychain: any KeychainStoring, defaults: UserDefaults = .standard) {
+        self.keychain = keychain
+        self.defaults = defaults
+        // Initialize `@AppStorage` wrappers with the injected store so
+        // reads/writes route to the suite-scoped UserDefaults instead of
+        // `.standard`. `wrappedValue:` is the first-install default that
+        // applies when no value is stored under the key.
+        self._provider = AppStorage(
+            wrappedValue: Self.firstInstallDefaultProvider,
+            Self.providerKey,
+            store: defaults
+        )
+        self._transformEnabled = AppStorage(
+            wrappedValue: false,
+            "jot.transformEnabled",
+            store: defaults
+        )
+        self._transformPrompt = AppStorage(
+            wrappedValue: TransformPrompt.default,
+            "jot.llm.transformPrompt",
+            store: defaults
+        )
+        self._articulatePrompt = AppStorage(
+            wrappedValue: ArticulatePrompt.default,
+            "jot.llm.rewritePrompt",
+            store: defaults
+        )
+        LLMConfigMigration.runIfNeeded(keychain: keychain, defaults: defaults)
     }
 
     /// The canonical `@AppStorage` key for the selected provider.
@@ -26,7 +68,7 @@ final class LLMConfiguration: ObservableObject {
     /// Existing users whose `@AppStorage` already holds a provider value
     /// see no change — `@AppStorage` reads the stored value before this
     /// default ever applies.
-    private static var firstInstallDefaultProvider: LLMProvider {
+    static var firstInstallDefaultProvider: LLMProvider {
         AppleIntelligenceClient.isAvailable ? .appleIntelligence : .openai
     }
 
@@ -56,47 +98,51 @@ final class LLMConfiguration: ObservableObject {
     // MARK: - Per-provider accessors
 
     func baseURL(for provider: LLMProvider) -> String {
-        UserDefaults.standard.string(forKey: Self.baseURLKey(for: provider)) ?? ""
+        defaults.string(forKey: Self.baseURLKey(for: provider)) ?? ""
     }
 
     func setBaseURL(_ value: String, for provider: LLMProvider) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = Self.baseURLKey(for: provider)
         if trimmed.isEmpty {
-            UserDefaults.standard.removeObject(forKey: key)
+            defaults.removeObject(forKey: key)
         } else {
-            UserDefaults.standard.set(trimmed, forKey: key)
+            defaults.set(trimmed, forKey: key)
         }
         objectWillChange.send()
     }
 
     func model(for provider: LLMProvider) -> String {
-        UserDefaults.standard.string(forKey: Self.modelKey(for: provider)) ?? ""
+        defaults.string(forKey: Self.modelKey(for: provider)) ?? ""
     }
 
     func setModel(_ value: String, for provider: LLMProvider) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = Self.modelKey(for: provider)
         if trimmed.isEmpty {
-            UserDefaults.standard.removeObject(forKey: key)
+            defaults.removeObject(forKey: key)
         } else {
-            UserDefaults.standard.set(trimmed, forKey: key)
+            defaults.set(trimmed, forKey: key)
         }
         objectWillChange.send()
     }
 
     func apiKey(for provider: LLMProvider) -> String {
-        guard let data = KeychainHelper.load(key: Self.apiKeyKey(for: provider)) else { return "" }
-        return String(data: data, encoding: .utf8) ?? ""
+        // `KeychainStoring.load(account:)` throws `KeychainError`
+        // for genuine load failures (decoding, OSStatus). Today's
+        // call sites treat "no key configured" the same as "load
+        // failed" — both surface as "" so the user sees the missing-
+        // key UX. Preserve that contract.
+        (try? keychain.load(account: Self.apiKeyKey(for: provider))) ?? ""
     }
 
     func setAPIKey(_ value: String, for provider: LLMProvider) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = Self.apiKeyKey(for: provider)
         if trimmed.isEmpty {
-            KeychainHelper.delete(key: key)
+            try? keychain.delete(account: key)
         } else {
-            KeychainHelper.save(key: key, data: Data(trimmed.utf8))
+            try? keychain.save(trimmed, account: key)
         }
         objectWillChange.send()
     }
@@ -153,12 +199,13 @@ final class LLMConfiguration: ObservableObject {
         return !apiKey(for: provider).isEmpty || !baseURL(for: provider).isEmpty
     }
 
-    /// Clears the API key for the currently-selected provider. Kept as a
-    /// static convenience because existing call-sites (ResetActions) don't
-    /// hold an instance reference.
-    static func clearAPIKey() {
-        let current = shared.provider
-        KeychainHelper.delete(key: apiKeyKey(for: current))
-        shared.objectWillChange.send()
+    /// Clears the API key for the currently-selected provider. Phase 3 #29
+    /// converted this from a static convenience (which read
+    /// `LLMConfiguration.shared`) to an instance method routed through
+    /// the `KeychainStoring` seam. Call sites that don't already hold
+    /// an instance reach via `AppServices.live?.llmConfiguration`.
+    func clearAPIKey() {
+        try? keychain.delete(account: Self.apiKeyKey(for: provider))
+        objectWillChange.send()
     }
 }

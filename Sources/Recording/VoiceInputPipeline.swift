@@ -38,21 +38,26 @@ final class VoiceInputPipeline {
     }
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "VoiceInputPipeline")
-    private let capture: AudioCapture
-    let transcriber: Transcriber
-    private let permissions: PermissionsService
+    private let capture: any AudioCapturing
+    /// Phase 3 F4: holder is the single source of truth for the active
+    /// `Transcribing` instance. Reading `transcriber` always returns
+    /// the live one, so a model swap mid-session propagates without
+    /// re-wiring the pipeline.
+    private let holder: TranscriberHolder
+    var transcriber: any Transcribing { holder.transcriber }
+    private let permissions: any PermissionsObserving
 
     private var phase: Phase = .idle
     private var generationCounter: UInt64 = 0
     private var transcribeWatchdog: Task<Void, Never>?
 
     init(
-        capture: AudioCapture = AudioCapture(),
-        transcriber: Transcriber = Transcriber(),
-        permissions: PermissionsService? = nil
+        capture: any AudioCapturing = AudioCapture(),
+        transcriberHolder: TranscriberHolder,
+        permissions: (any PermissionsObserving)? = nil
     ) {
         self.capture = capture
-        self.transcriber = transcriber
+        self.holder = transcriberHolder
         self.permissions = permissions ?? PermissionsService.shared
     }
 

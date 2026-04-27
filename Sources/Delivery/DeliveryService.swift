@@ -16,7 +16,6 @@ import os.log
 ///   - jot.preserveClipboard (Bool, default true)
 @MainActor
 final class DeliveryService: ObservableObject {
-    static let shared = DeliveryService()
 
     @AppStorage("jot.autoPaste") var autoPaste: Bool = true
     @AppStorage("jot.autoPressEnter") var autoPressEnter: Bool = false
@@ -25,8 +24,22 @@ final class DeliveryService: ObservableObject {
     @Published private(set) var lastDelivery: DeliveryEvent?
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "Delivery")
-    private let permissions: PermissionsService
+    private let permissions: any PermissionsObserving
     private weak var recorder: RecorderController?
+
+    /// Pasteboarding seam, injected at init. Phase 3 #30: prior to
+    /// this refactor `DeliveryService` was a process-wide singleton
+    /// with `bind(pasteboard:)` / `bind(logSink:)` late-injection
+    /// setters. Two parallel test harnesses racing on those setters
+    /// caused the cross-suite flake captured in Task #32. Now each
+    /// `JotComposition.build` constructs its own `DeliveryService`
+    /// with seams threaded in at init — production and test graphs
+    /// can't collide on shared mutable state.
+    private let pasteboard: any Pasteboarding
+
+    /// LogSink seam, injected at init. See `pasteboard` doc for the
+    /// rationale.
+    private let logSink: any LogSink
 
     // How long to wait before restoring the pre-paste pasteboard. The target
     // app needs enough time to consume ⌘V on its own main thread; empirically
@@ -35,12 +48,21 @@ final class DeliveryService: ObservableObject {
     // Interval between posting ⌘V and posting Return when auto-Enter is on.
     private static let enterGapMs: UInt64 = 30
 
-    init(permissions: PermissionsService? = nil) {
+    init(
+        pasteboard: any Pasteboarding,
+        logSink: any LogSink,
+        permissions: (any PermissionsObserving)? = nil
+    ) {
+        self.pasteboard = pasteboard
+        self.logSink = logSink
         self.permissions = permissions ?? PermissionsService.shared
     }
 
     /// Must be called once after `RecorderController` is constructed so
-    /// `pasteLast()` has something to replay.
+    /// `pasteLast()` has something to replay. Recorder is constructed
+    /// after `DeliveryService` in `JotComposition.build` (so it can
+    /// take the delivery as a constructor arg), so this remains a
+    /// post-init binder.
     func bind(recorder: RecorderController) {
         self.recorder = recorder
     }
@@ -83,27 +105,26 @@ final class DeliveryService: ObservableObject {
     // MARK: - Internals
 
     private func performSandwich(text: String) async {
-        let pasteboard = NSPasteboard.general
-        let snapshot = ClipboardSandwich.snapshot(pasteboard: pasteboard)
+        let snapshot = pasteboard.snapshot()
 
-        guard ClipboardSandwich.writeString(text, pasteboard: pasteboard) else {
+        guard pasteboard.write(text) else {
             log.error("pasteboard.setString failed")
-            Task { await ErrorLog.shared.error(component: "Delivery", message: "Clipboard write failed") }
-            ClipboardSandwich.restore(snapshot, pasteboard: pasteboard)
+            Task { await self.logSink.error(component: "Delivery", message: "Clipboard write failed") }
+            pasteboard.restore(snapshot)
             publish(.failed(error: "clipboard write failed"))
             return
         }
 
         do {
-            try ClipboardSandwich.postCommandV()
+            try pasteboard.postCommandV()
             if autoPressEnter {
                 try? await Task.sleep(nanoseconds: Self.enterGapMs * 1_000_000)
-                try? ClipboardSandwich.postReturn()
+                try? pasteboard.postReturn()
             }
         } catch {
             log.error("CGEventPost failed: \(String(describing: error))")
-            Task { await ErrorLog.shared.error(component: "Delivery", message: "Synthetic paste (⌘V) failed", context: ["error": ErrorLog.redactedAppleError(error)]) }
-            ClipboardSandwich.restore(snapshot, pasteboard: pasteboard)
+            Task { await self.logSink.error(component: "Delivery", message: "Synthetic paste (⌘V) failed", context: ["error": ErrorLog.redactedAppleError(error)]) }
+            pasteboard.restore(snapshot)
             publish(.failed(error: "could not post ⌘V: \(error)"))
             return
         }
@@ -114,25 +135,25 @@ final class DeliveryService: ObservableObject {
         // been fired into the target app. Schedule the restore so the target
         // has time to read the pasteboard, then (optionally) roll back.
         if preserveClipboard {
-            Task { @MainActor [snapshot] in
+            let pasteboard = self.pasteboard
+            Task { @MainActor [snapshot, pasteboard] in
                 try? await Task.sleep(nanoseconds: Self.restoreDelayMs * 1_000_000)
-                ClipboardSandwich.restore(snapshot, pasteboard: pasteboard)
+                pasteboard.restore(snapshot)
             }
         }
     }
 
     private func writeClipboardOnly(_ text: String, reason: String) {
-        let pasteboard = NSPasteboard.general
         // No snapshot/restore here: in clipboard-only mode the user expects
         // the transcript to remain on the clipboard so they can ⌘V it
         // themselves. Overwriting the prior clipboard content is the
         // documented behavior of this mode.
-        if ClipboardSandwich.writeString(text, pasteboard: pasteboard) {
+        if pasteboard.write(text) {
             log.info("clipboard-only delivery: \(reason, privacy: .public)")
             publish(.clipboardOnly(text: text, reason: reason))
         } else {
             log.error("pasteboard.setString failed in clipboard-only path")
-            Task { await ErrorLog.shared.error(component: "Delivery", message: "Clipboard-only write failed", context: ["reason": String(reason.prefix(80))]) }
+            Task { await self.logSink.error(component: "Delivery", message: "Clipboard-only write failed", context: ["reason": String(reason.prefix(80))]) }
             publish(.failed(error: "clipboard write failed"))
         }
     }

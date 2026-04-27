@@ -22,6 +22,7 @@ struct AppSidebar: View {
     /// as a subordinate/disabled affordance — matches spec §2 table:
     /// "Sidebar item visible but muted."
     let askJotAvailable: Bool
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
     @State private var settingsExpanded: Bool = true
 
     var body: some View {
@@ -40,11 +41,19 @@ struct AppSidebar: View {
                     systemImage: "waveform.badge.mic",
                     tag: .settings(.transcription)
                 )
-                subRow(
-                    title: "Vocabulary",
-                    systemImage: "text.book.closed",
-                    tag: .settings(.vocabulary)
-                )
+                // Vocabulary boost is incompatible with the JA-tokenized
+                // primary model (`docs/plans/japanese-support.md` §C):
+                // hide the entry while JA is primary so users don't add
+                // terms that can't apply. The user's saved list and the
+                // master toggle preference persist — the row reappears
+                // when primary swaps back to a European model.
+                if transcriberHolder.primaryModelID != .tdt_0_6b_ja {
+                    subRow(
+                        title: "Vocabulary",
+                        systemImage: "text.book.closed",
+                        tag: .settings(.vocabulary)
+                    )
+                }
                 subRow(
                     title: "Sound",
                     systemImage: "speaker.wave.2",
@@ -127,7 +136,7 @@ struct AppSidebar: View {
     /// secondary-color icon, primary-color label.
     @ViewBuilder
     private func subRow(
-        title: String,
+        title: LocalizedStringKey,
         systemImage: String,
         tag: AppSidebarSelection
     ) -> some View {

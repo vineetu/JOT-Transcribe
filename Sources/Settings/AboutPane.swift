@@ -12,6 +12,8 @@ struct AboutPane: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.helpNavigator) private var helpNavigator
     @Environment(\.setSidebarSelection) private var setSidebarSelection
+    @EnvironmentObject private var llmConfiguration: LLMConfiguration
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
     @State private var pendingShareAction: ShareAction?
     @State private var viewerText = ""
     @State private var isShowingLogViewer = false
@@ -60,7 +62,11 @@ struct AboutPane: View {
         // (which would leave the sheet with no Cancel button and nothing
         // for Esc to latch onto).
         .sheet(item: $pendingShareAction) { action in
-            PrivacyScanSheet(action: action, onProceed: handleShare)
+            PrivacyScanSheet(
+                action: action,
+                llmConfiguration: llmConfiguration,
+                onProceed: handleShare
+            )
         }
         .sheet(isPresented: $isShowingLogViewer) {
             VStack(alignment: .leading, spacing: 0) {
@@ -128,7 +134,7 @@ struct AboutPane: View {
     private var updatesSection: some View {
         Section {
             Button {
-                (NSApp.delegate as? AppDelegate)?.checkForUpdates()
+                (NSApp.delegate as? AppDelegate)?.services.updaterController.checkForUpdates(nil)
             } label: {
                 HStack(alignment: .center, spacing: 14) {
                     Image(systemName: "arrow.triangle.2.circlepath")
@@ -301,7 +307,10 @@ struct AboutPane: View {
                 .textSelection(.enabled)
             HStack(spacing: 10) {
                 Button("View log") { isShowingLogViewer = true }
-                Button("Copy log") { LogSharing.copyToClipboard(logText(useRedacted: false)) }
+                Button("Copy log") {
+                    guard let pb = AppServices.live?.pasteboard else { return }
+                    LogSharing.copyToClipboard(logText(useRedacted: false), pasteboard: pb)
+                }
                 Button("Reveal in Finder") { LogSharing.revealInFinder(ErrorLog.logFileURL) }
                 Button("Send via email") { pendingShareAction = .email }
                     .buttonStyle(.borderedProminent)
@@ -332,11 +341,18 @@ struct AboutPane: View {
         let text = logText(useRedacted: useRedacted)
         switch action {
         case .copy:
-            LogSharing.copyToClipboard(text)
+            guard let pb = AppServices.live?.pasteboard else { return }
+            LogSharing.copyToClipboard(text, pasteboard: pb)
         case .reveal:
             LogSharing.revealInFinder(useRedacted ? (LogSharing.writeTemp(text) ?? ErrorLog.logFileURL) : ErrorLog.logFileURL)
         case .email:
-            LogSharing.openEmail(logText: text, recordingsCount: 0)
+            guard let pb = AppServices.live?.pasteboard else { return }
+            LogSharing.openEmail(
+                logText: text,
+                recordingsCount: 0,
+                modelIdentifier: transcriberHolder.primaryModelID.rawValue,
+                pasteboard: pb
+            )
         case .view:
             viewerText = text
             isShowingLogViewer = true
@@ -346,7 +362,7 @@ struct AboutPane: View {
     private func logText(useRedacted: Bool) -> String {
         let raw = (try? String(contentsOf: ErrorLog.logFileURL, encoding: .utf8)) ?? ""
         guard useRedacted else { return raw }
-        let config = LLMConfiguration.shared
+        let config = llmConfiguration
         let keys = LLMConfiguration.bucketedProviders.map { config.apiKey(for: $0) }
         let baseURLs = LLMConfiguration.bucketedProviders.map { config.baseURL(for: $0) }
         let results = PrivacyScanner.scan(

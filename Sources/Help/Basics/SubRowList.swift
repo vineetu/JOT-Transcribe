@@ -162,7 +162,7 @@ struct SubRowView: View {
     @ViewBuilder
     private var headerRow: some View {
         HStack(spacing: 8) {
-            Text(row.name)
+            Text(LocalizedStringKey(row.name))
                 .font(.body)
                 .foregroundStyle(row.isExpandable ? .primary : .secondary)
             Spacer()
@@ -207,9 +207,9 @@ struct SubRowView: View {
             cornerRadius: 6
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(row.name)
+        .accessibilityLabel(Text(LocalizedStringKey(row.name)))
         .accessibilityAddTraits(row.isExpandable ? .isButton : [])
-        .accessibilityValue(row.isExpandable ? (isExpanded ? "expanded" : "collapsed") : "")
+        .accessibilityValue(row.isExpandable ? (isExpanded ? String(localized: "expanded") : String(localized: "collapsed")) : "")
     }
 }
 
@@ -256,7 +256,7 @@ struct SubRowDetail: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(detail.prose)
+            Text(LocalizedStringKey(detail.prose))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -268,7 +268,7 @@ struct SubRowDetail: View {
 
             if let warning = detail.warning {
                 (Text("Watch out: ").fontWeight(.medium)
-                    + Text(warning))
+                    + Text(LocalizedStringKey(warning)))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -280,14 +280,14 @@ struct SubRowDetail: View {
                     setSidebarSelection(.settings(settingsLink.pane))
                 } label: {
                     HStack(spacing: 4) {
-                        Text(settingsLink.label)
+                        Text(LocalizedStringKey(settingsLink.label))
                         Image(systemName: "arrow.right")
                     }
                     .font(.footnote)
                     .foregroundStyle(.tint)
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("Opens Jot Settings")
+                .accessibilityHint(Text("Opens Jot Settings"))
             }
 
             if let custom = detail.customContent {
@@ -314,7 +314,7 @@ struct InlineTipView: View {
     var body: some View {
         HStack(spacing: 10) {
             ShortcutChip(tip.chip)
-            Text(tip.description)
+            Text(LocalizedStringKey(tip.description))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

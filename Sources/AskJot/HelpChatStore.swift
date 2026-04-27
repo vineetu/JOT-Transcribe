@@ -76,6 +76,17 @@ final class HelpChatStore {
     /// post-processing pass. Injected on init.
     private let navigator: HelpNavigator
 
+    /// Network seam (Phase 0.5) — used to construct the cloud chat
+    /// streams when the user's chosen provider isn't Apple
+    /// Intelligence. Threaded through from
+    /// `AppServices.urlSession` via `JotAppWindow`.
+    private let urlSession: URLSession
+
+    /// Phase 3 #29: per-graph `LLMConfiguration` replaces
+    /// `LLMConfiguration.shared` reads. Threaded through from
+    /// `AppServices.llmConfiguration` via `JotAppWindow`.
+    private let llmConfiguration: LLMConfiguration
+
     /// Config-snapshot factory the store calls when building a new
     /// session. Injected so tests can override without touching
     /// UserDefaults / KeyboardShortcuts / VocabularyStore. Default
@@ -85,11 +96,15 @@ final class HelpChatStore {
 
     init(
         navigator: HelpNavigator,
+        urlSession: URLSession,
+        llmConfiguration: LLMConfiguration,
         snapshotBuilder: (@MainActor () -> UserConfigSnapshot)? = nil
     ) {
         self.navigator = navigator
+        self.urlSession = urlSession
+        self.llmConfiguration = llmConfiguration
         self.snapshotBuilder = snapshotBuilder ?? HelpChatStore.liveSnapshot
-        self.state = Self.initialAvailabilityState()
+        self.state = Self.initialAvailabilityState(llmConfiguration: llmConfiguration)
     }
 
     // MARK: - Availability
@@ -98,8 +113,8 @@ final class HelpChatStore {
     /// Intelligence availability. Called from `init` and re-evaluated
     /// by `refreshAvailability()` when something (e.g. a System
     /// Settings toggle) changes it at runtime.
-    private static func initialAvailabilityState() -> ChatState {
-        if isCloudAskJotEnabled() {
+    private static func initialAvailabilityState(llmConfiguration: LLMConfiguration) -> ChatState {
+        if isCloudAskJotEnabled(llmConfiguration: llmConfiguration) {
             return .idle
         }
         #if canImport(FoundationModels)
@@ -126,7 +141,7 @@ final class HelpChatStore {
     /// readable. When availability returns, state flips back to
     /// `.idle` but the existing conversation is preserved.
     func refreshAvailability() {
-        if Self.isCloudAskJotEnabled() {
+        if isCloudAskJotEnabled() {
             if case .unavailable = state {
                 state = .idle
             }
@@ -166,10 +181,14 @@ final class HelpChatStore {
         return false
     }
 
-    private static func isCloudAskJotEnabled() -> Bool {
-        let provider = LLMConfiguration.shared.provider
+    private static func isCloudAskJotEnabled(llmConfiguration: LLMConfiguration) -> Bool {
+        let provider = llmConfiguration.provider
         return provider != .appleIntelligence &&
             UserDefaults.standard.bool(forKey: allowCloudPreferenceKey)
+    }
+
+    private func isCloudAskJotEnabled() -> Bool {
+        Self.isCloudAskJotEnabled(llmConfiguration: llmConfiguration)
     }
 
     // MARK: - Prewarm
@@ -179,7 +198,7 @@ final class HelpChatStore {
     /// prewarm has latency cost, so we don't call it at app launch —
     /// users may never open Ask Jot.
     func prewarmIfNeeded() {
-        guard !Self.isCloudAskJotEnabled() else { return }
+        guard !isCloudAskJotEnabled() else { return }
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             guard case .idle = state else { return }
@@ -206,13 +225,13 @@ final class HelpChatStore {
     func send(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        if Self.isCloudAskJotEnabled(), case .unavailable = state {
+        if isCloudAskJotEnabled(), case .unavailable = state {
             state = .idle
         }
         guard case .idle = state else { return }
 
         messages.append(ChatMessage(role: .user, content: trimmed))
-        if Self.isCloudAskJotEnabled() {
+        if isCloudAskJotEnabled() {
             streamCloudResponse(prompt: trimmed)
             return
         }
@@ -246,7 +265,7 @@ final class HelpChatStore {
     private static let streamingFlushIntervalNs: UInt64 = 50_000_000
 
     private func streamCloudResponse(prompt: String) {
-        let config = LLMConfiguration.shared
+        let config = llmConfiguration
         let provider = config.provider
         guard provider != .appleIntelligence else { return }
 
@@ -271,21 +290,21 @@ final class HelpChatStore {
         }
     }
 
-    private func cloudStream(for provider: LLMProvider) -> any CloudChatStream {
+    func cloudStream(for provider: LLMProvider) -> any CloudChatStream {
         switch provider {
         case .appleIntelligence:
             preconditionFailure("Apple Intelligence uses the FoundationModels path")
         case .openai:
-            return OpenAIChatStream()
+            return OpenAIChatStream(session: urlSession)
         case .anthropic:
-            return AnthropicChatStream()
+            return AnthropicChatStream(session: urlSession)
         case .gemini:
-            return GeminiChatStream()
+            return GeminiChatStream(session: urlSession)
         case .ollama:
-            return OllamaChatStream()
+            return OllamaChatStream(session: urlSession)
         #if JOT_FLAVOR_1
         case .flavor1:
-            preconditionFailure("flavor_1 Ask Jot integration not yet implemented")
+            return Flavor1ChatStream(session: urlSession)
         #endif
         }
     }
@@ -558,7 +577,7 @@ final class HelpChatStore {
         messages.removeAll()
         state = .idle
 
-        guard !Self.isCloudAskJotEnabled() else {
+        guard !isCloudAskJotEnabled() else {
             refreshAvailability()
             return
         }
@@ -583,7 +602,7 @@ final class HelpChatStore {
     /// Pure helper so `clear()` doesn't mutate `state` twice when
     /// reading current availability.
     private func initialAvailabilityFresh() -> ChatState {
-        Self.initialAvailabilityState()
+        Self.initialAvailabilityState(llmConfiguration: llmConfiguration)
     }
 
     // MARK: - Session factory

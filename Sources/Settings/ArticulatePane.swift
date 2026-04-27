@@ -8,13 +8,33 @@ import SwiftUI
 ///
 /// v1.5 rename: `RewritePane` → `ArticulatePane`. File renamed accordingly.
 struct ArticulatePane: View {
-    @ObservedObject private var config = LLMConfiguration.shared
+    @EnvironmentObject private var config: LLMConfiguration
     @AppStorage("jot.askjot.allowCloud") private var allowCloudAskJot = false
     @Environment(\.helpNavigator) private var navigator
     @State private var apiKeyInput: String = ""
     @State private var cleanupPromptExpanded: Bool = false
     @State private var testStatus: TestStatus = .idle
     @State private var isTesting = false
+
+    /// Constructor-injected seams for the Test Connection path. Pre-fix
+    /// this pane reached `AppServices.live` lazily inside `testConnection()`,
+    /// which on a fresh install raced with `applicationDidFinishLaunching`'s
+    /// `AppDelegate.services` assignment — the pane could materialise (or
+    /// the user could click) before the live graph was wired, so the
+    /// guard tripped and surfaced "App services not yet ready". Threading
+    /// the deps through `init(...)` here mirrors Phase 3 #29's pattern for
+    /// `LLMConfiguration` and removes the only `AppServices.live` reach
+    /// in the Settings pane that wasn't already a deferred-action handler.
+    private let urlSession: URLSession
+    private let appleIntelligence: any AppleIntelligenceClienting
+
+    init(
+        urlSession: URLSession,
+        appleIntelligence: any AppleIntelligenceClienting
+    ) {
+        self.urlSession = urlSession
+        self.appleIntelligence = appleIntelligence
+    }
 
     private enum TestStatus: Equatable {
         case idle
@@ -68,10 +88,7 @@ struct ArticulatePane: View {
                         )
                     }
                     .id("ai-provider")
-                    // Flavor1 Ask Jot integration is deferred — hide the
-                    // "Allow Ask Jot to use this provider" toggle until it
-                    // ships to avoid implying support that isn't wired.
-                    if !isAppleIntelligenceSelected && !isFlavor1Selected {
+                    if !isAppleIntelligenceSelected {
                         Toggle("Allow Ask Jot to use this provider", isOn: $allowCloudAskJot)
                         Text("Sends your Ask Jot conversation and Jot's help content to the selected provider using your API key.")
                             .font(.system(size: 11))
@@ -301,7 +318,11 @@ struct ArticulatePane: View {
             }
             return
         }
-        let success = await LLMClient().healthCheck()
+        let success = await LLMClient(
+            session: urlSession,
+            appleClient: appleIntelligence,
+            llmConfiguration: config
+        ).healthCheck()
         if success {
             testStatus = .success
         } else {

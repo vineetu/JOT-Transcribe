@@ -3,7 +3,7 @@ import Foundation
 struct AnthropicChatStream: CloudChatStream {
     private let session: URLSession
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession) {
         self.session = session
     }
 

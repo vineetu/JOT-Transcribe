@@ -20,6 +20,10 @@ final class JotMenuBarController: NSObject {
     /// Context for the SwiftData store, used by the "Recent Transcriptions"
     /// submenu to fetch the 10 most recent `Recording` rows on demand.
     private let modelContext: ModelContext
+    /// Source of truth for the active Parakeet model. Drives the
+    /// "Switch model" submenu that appears once 2+ models are
+    /// installed (Phase 4 / `docs/plans/japanese-support.md` §Tray).
+    private let transcriberHolder: TranscriberHolder
     private let checkForUpdatesAction: () -> Void
 
     private static let menuBarIconName = NSImage.Name("JotMenuIcon")
@@ -43,6 +47,14 @@ final class JotMenuBarController: NSObject {
     private var toggleItem: NSMenuItem?
     private var copyLastItem: NSMenuItem?
 
+    /// Items currently splicing the model quick-switch section
+    /// (separator + "Switch model" submenu item) into the root
+    /// menu. Tracked by reference so the Combine-driven rebuild can
+    /// remove exactly those items when the installed-model set or
+    /// primary changes.
+    private var modelSwitchSectionItems: [NSMenuItem] = []
+    private let modelSwitchSubmenu = NSMenu()
+
     #if JOT_FLAVOR_1
     /// Items currently splicing the flavor_1 PFB Enterprise section into the
     /// root menu. Tracked by reference so a Combine-driven rebuild can remove
@@ -55,6 +67,8 @@ final class JotMenuBarController: NSObject {
 
     private var stateCancellable: AnyCancellable?
     private var transcriptCancellable: AnyCancellable?
+    private var primaryModelCancellable: AnyCancellable?
+    private var installedModelsCancellable: AnyCancellable?
     #if JOT_FLAVOR_1
     private var flavor1StateCancellable: AnyCancellable?
     #endif
@@ -67,14 +81,20 @@ final class JotMenuBarController: NSObject {
         recorder: RecorderController,
         delivery: DeliveryService,
         modelContext: ModelContext,
+        transcriberHolder: TranscriberHolder,
+        pasteboard: any Pasteboarding,
         checkForUpdatesAction: @escaping () -> Void
     ) {
         self.recorder = recorder
         self.delivery = delivery
         self.modelContext = modelContext
+        self.transcriberHolder = transcriberHolder
+        self.pasteboard = pasteboard
         self.checkForUpdatesAction = checkForUpdatesAction
         super.init()
     }
+
+    private let pasteboard: any Pasteboarding
 
     /// Installs the status item in the system menu bar and wires up Combine
     /// subscriptions. Safe to call exactly once, from
@@ -97,6 +117,23 @@ final class JotMenuBarController: NSObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] transcript in
                 self?.copyLastItem?.isEnabled = (transcript?.isEmpty == false)
+            }
+
+        // Re-render the model quick-switch section whenever either the
+        // installed-model set or the primary changes. Driven through the
+        // holder's `@Published` properties so a download finishing
+        // outside the menu (Settings → Transcription) reflects in the
+        // tray immediately, and a primary swap re-points the
+        // "Switch to <name>" actions without the user reopening the menu.
+        primaryModelCancellable = transcriberHolder.$primaryModelID
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.rebuildModelSwitchSection()
+            }
+        installedModelsCancellable = transcriberHolder.$installedModelIDs
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.rebuildModelSwitchSection()
             }
 
         #if JOT_FLAVOR_1
@@ -137,10 +174,17 @@ final class JotMenuBarController: NSObject {
         installFlavor1Section()
         #endif
 
+        // Model quick-switch section (only visible when 2+ models are
+        // installed, see `installModelSwitchSection`). Sits above the
+        // separator that precedes "Copy Last Transcription" so the
+        // ASR-affecting action lives in the same visual region as
+        // "Start Recording".
+        installModelSwitchSection()
+
         menu.addItem(.separator())
 
         let copyLast = NSMenuItem(
-            title: "Copy Last Transcription",
+            title: String(localized: "Copy Last Transcription"),
             action: #selector(copyLastTranscription),
             keyEquivalent: ""
         )
@@ -157,7 +201,7 @@ final class JotMenuBarController: NSObject {
         recentSubmenu.delegate = self
         recentSubmenu.autoenablesItems = false
         let recent = NSMenuItem(
-            title: "Recent Transcriptions",
+            title: String(localized: "Recent Transcriptions"),
             action: nil,
             keyEquivalent: ""
         )
@@ -165,7 +209,7 @@ final class JotMenuBarController: NSObject {
         menu.addItem(recent)
 
         let showWindow = NSMenuItem(
-            title: "Open Jot…",
+            title: String(localized: "Open Jot…"),
             action: #selector(showMainWindow),
             keyEquivalent: ""
         )
@@ -175,7 +219,7 @@ final class JotMenuBarController: NSObject {
         menu.addItem(.separator())
 
         let checkUpdates = NSMenuItem(
-            title: "Check for Updates…",
+            title: String(localized: "Check for Updates…"),
             action: #selector(checkForUpdates),
             keyEquivalent: ""
         )
@@ -183,7 +227,7 @@ final class JotMenuBarController: NSObject {
         menu.addItem(checkUpdates)
 
         let quit = NSMenuItem(
-            title: "Quit Jot",
+            title: String(localized: "Quit Jot"),
             action: #selector(quitApp),
             keyEquivalent: "q"
         )
@@ -244,6 +288,96 @@ final class JotMenuBarController: NSObject {
     }
     #endif
 
+    // MARK: - Model quick-switch submenu
+
+    /// Anchor the model-switch section into the root menu. Called once
+    /// from `buildMenu()`. Items are populated lazily by
+    /// `rebuildModelSwitchSection()` based on
+    /// `transcriberHolder.installedModelIDs` — at install time a fresh
+    /// graph typically has only v3 cached, so the section starts empty;
+    /// a Combine emission populates it the moment a 2nd model lands on
+    /// disk.
+    private func installModelSwitchSection() {
+        rebuildModelSwitchSection()
+    }
+
+    /// Tear down the section's existing items and re-emit a fresh
+    /// section for the current `installedModelIDs` / `primaryModelID`
+    /// snapshot. The section is hidden (zero items inserted) when
+    /// fewer than 2 models are installed — single-model users never
+    /// see this affordance.
+    private func rebuildModelSwitchSection() {
+        // Find the anchor: items go right before the separator that
+        // precedes "Copy Last Transcription". On first install the
+        // tracked items list is empty, so we anchor on the separator
+        // we know `buildMenu()` inserted right after our call site.
+        let anchorIndex: Int
+        if let firstItem = modelSwitchSectionItems.first,
+           let idx = menu.items.firstIndex(of: firstItem) {
+            anchorIndex = idx
+        } else if let copyLastItem,
+                  let idx = menu.items.firstIndex(of: copyLastItem) {
+            // The separator immediately before `copyLastItem` is the
+            // one `buildMenu()` emitted right after
+            // `installModelSwitchSection()`. Insert before that
+            // separator so a populated section sits above it.
+            anchorIndex = max(idx - 1, 0)
+        } else {
+            // Menu hasn't been built yet — first call from buildMenu()
+            // before copyLastItem exists. Skip; the next emission
+            // (post-build) will insert correctly.
+            return
+        }
+
+        for item in modelSwitchSectionItems where menu.items.contains(item) {
+            menu.removeItem(item)
+        }
+        modelSwitchSectionItems.removeAll(keepingCapacity: true)
+
+        let installed = transcriberHolder.installedModelIDs
+        guard installed.count >= 2 else { return }
+
+        let primary = transcriberHolder.primaryModelID
+
+        modelSwitchSubmenu.removeAllItems()
+        modelSwitchSubmenu.autoenablesItems = false
+
+        // Disabled label row showing the current primary, mirroring the
+        // "Active: <name>" pattern the spec references.
+        let activeLabel = NSMenuItem(
+            title: String(localized: "Active: \(primary.displayName)"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        activeLabel.isEnabled = false
+        modelSwitchSubmenu.addItem(activeLabel)
+        modelSwitchSubmenu.addItem(.separator())
+
+        // One "Switch to <name>" row per other installed model. Stable
+        // ordering via `ParakeetModelID.allCases` so the menu doesn't
+        // reshuffle between rebuilds.
+        for model in ParakeetModelID.allCases where model != primary && installed.contains(model) {
+            let item = NSMenuItem(
+                title: String(localized: "Switch to \(model.displayName)"),
+                action: #selector(switchModel(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = model.rawValue
+            modelSwitchSubmenu.addItem(item)
+        }
+
+        let parent = NSMenuItem(
+            title: String(localized: "Switch model"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        parent.submenu = modelSwitchSubmenu
+
+        menu.insertItem(parent, at: anchorIndex)
+        modelSwitchSectionItems.append(parent)
+    }
+
     // MARK: - Recent Transcriptions submenu
 
     private func populateRecentSubmenu() {
@@ -251,7 +385,7 @@ final class JotMenuBarController: NSObject {
 
         let recordings = fetchRecentRecordings(limit: 10)
         guard !recordings.isEmpty else {
-            let empty = NSMenuItem(title: "No recordings yet", action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: String(localized: "No recordings yet"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             recentSubmenu.addItem(empty)
             return
@@ -273,7 +407,7 @@ final class JotMenuBarController: NSObject {
 
         recentSubmenu.addItem(.separator())
         let showAll = NSMenuItem(
-            title: "Show All Recordings…",
+            title: String(localized: "Show All Recordings…"),
             action: #selector(showRecordingsHome),
             keyEquivalent: ""
         )
@@ -301,7 +435,7 @@ final class JotMenuBarController: NSObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let preview: String
         if rawPreview.isEmpty {
-            preview = "(empty)"
+            preview = String(localized: "(empty)")
         } else if rawPreview.count > 60 {
             preview = String(rawPreview.prefix(60)) + "…"
         } else {
@@ -331,11 +465,11 @@ final class JotMenuBarController: NSObject {
 
     private static func toggleTitle(for state: RecorderController.State) -> String {
         switch state {
-        case .idle: return "Start Recording"
-        case .recording: return "Stop Recording"
-        case .transcribing: return "Transcribing…"
-        case .transforming: return "Cleaning up…"
-        case .error: return "Retry"
+        case .idle: return String(localized: "Start Recording")
+        case .recording: return String(localized: "Stop Recording")
+        case .transcribing: return String(localized: "Transcribing…")
+        case .transforming: return String(localized: "Cleaning up…")
+        case .error: return String(localized: "Retry")
         }
     }
 
@@ -388,11 +522,11 @@ final class JotMenuBarController: NSObject {
 
     private static func accessibilityDescription(for state: RecorderController.State) -> String {
         switch state {
-        case .idle: return "Jot: idle"
-        case .recording: return "Jot: recording"
-        case .transcribing: return "Jot: transcribing"
-        case .transforming: return "Jot: cleaning up"
-        case .error: return "Jot: error"
+        case .idle: return String(localized: "Jot: idle")
+        case .recording: return String(localized: "Jot: recording")
+        case .transcribing: return String(localized: "Jot: transcribing")
+        case .transforming: return String(localized: "Jot: cleaning up")
+        case .error: return String(localized: "Jot: error")
         }
     }
 
@@ -406,9 +540,7 @@ final class JotMenuBarController: NSObject {
 
     @objc private func copyLastTranscription() {
         guard let text = recorder.lastTranscript, !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        _ = pasteboard.write(text)
     }
 
     /// Opens the unified "Jot" window with the given sidebar selection
@@ -487,9 +619,16 @@ final class JotMenuBarController: NSObject {
         guard let recording = (try? modelContext.fetch(descriptor))?.first else { return }
         let text = recording.transcript
         guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        _ = pasteboard.write(text)
+    }
+
+    @objc private func switchModel(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let id = ParakeetModelID(rawValue: raw)
+        else { return }
+        Task { @MainActor in
+            await transcriberHolder.setPrimary(id)
+        }
     }
 
     @objc private func quitApp() {

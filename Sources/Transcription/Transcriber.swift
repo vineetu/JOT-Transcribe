@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import FluidAudio
 import Foundation
 import os.log
@@ -16,7 +16,7 @@ import os.log
 ///   cleaned strings on `TranscriptionResult`.
 ///
 /// Actor-isolated. Safe to hold one instance for the lifetime of the app.
-public actor Transcriber {
+public actor Transcriber: Transcribing {
     private let log = Logger(subsystem: "com.jot.Jot", category: "Transcriber")
 
     private let cache: ModelCache
@@ -94,7 +94,21 @@ public actor Transcriber {
 
         let result: ASRResult
         do {
-            result = try await manager.transcribe(samples, source: .microphone)
+            // FluidAudio 0.13.7+ exposes the TDT decoder state explicitly
+            // instead of hiding it behind a `source: .microphone` enum
+            // (#502). Each utterance Jot transcribes is independent —
+            // there's no streaming chunk continuity to preserve — so we
+            // hand the manager a fresh decoder state per call. The number
+            // of LSTM layers is version-specific (1 for `tdtCtc110m`, 2
+            // for v2/v3/tdtJa) and `AsrModelVersion.decoderLayers` is the
+            // SDK's source of truth. Language hint is intentionally
+            // unused: it's silently ignored for tdtJa (Japanese is always
+            // kept) and Jot doesn't surface a per-call language switch
+            // for v3 either.
+            var decoderState = TdtDecoderState.make(
+                decoderLayers: modelID.fluidAudioVersion.decoderLayers
+            )
+            result = try await manager.transcribe(samples, decoderState: &decoderState)
         } catch {
             await ErrorLog.shared.error(component: "Transcriber", message: "FluidAudio transcribe failed", context: ["sampleCount": String(samples.count), "error": ErrorLog.redactedAppleError(error)])
             throw TranscriberError.fluidAudio(error)
@@ -122,7 +136,7 @@ public actor Transcriber {
             }
         }
 
-        let cleaned = PostProcessing.apply(transcriptText)
+        let cleaned = PostProcessing.apply(transcriptText, language: modelID)
         return TranscriptionResult(
             text: cleaned,
             rawText: result.text,

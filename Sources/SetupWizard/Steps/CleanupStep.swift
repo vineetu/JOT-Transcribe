@@ -24,7 +24,20 @@ struct CleanupStep: View {
     @State private var cleanedText: String = ""
     @State private var errorMessage: String?
 
-    private let llm = LLMClient()
+    /// Resolved lazily from `AppServices.live` so the view picks up the
+    /// shared seam URLSession (Phase 0.5). The wizard step is presented
+    /// well after `applicationDidFinishLaunching` finishes assigning
+    /// `services`, so the live AppServices is always available here.
+    private var llm: LLMClient {
+        guard let services = AppServices.live else {
+            preconditionFailure("AppServices not yet resolved — wizard step presented before applicationDidFinishLaunching")
+        }
+        return LLMClient(
+            session: services.urlSession,
+            appleClient: services.appleIntelligence,
+            llmConfiguration: services.llmConfiguration
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -123,7 +136,7 @@ struct CleanupStep: View {
         }
     }
 
-    private var buttonLabel: String {
+    private var buttonLabel: LocalizedStringKey {
         switch phase {
         case .idle: return "Preview cleanup"
         case .loading: return "Cleaning up…"

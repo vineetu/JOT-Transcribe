@@ -11,14 +11,19 @@
 		A000000000000000000000B2 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = A000000000000000000000A2 /* KeyboardShortcuts */; };
 		A000000000000000000000B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* Assets.xcassets */; };
 		A000000000000000000000B4 /* help-content.md in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* help-content.md */; };
+		A000000000000000000000B5 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* Localizable.xcstrings */; };
+		A000000000000000000000B6 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* InfoPlist.xcstrings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		A00000000000000000000001 /* Jot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Jot.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000002 /* JotTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JotTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A00000000000000000000011 /* Jot.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Jot.entitlements; sourceTree = "<group>"; };
 		A00000000000000000000012 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A00000000000000000000013 /* help-content.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "help-content.md"; sourceTree = "<group>"; };
+		A00000000000000000000014 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		A00000000000000000000015 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -51,6 +56,16 @@
 			path = Sources;
 			sourceTree = "<group>";
 		};
+		A00000000000000000000120 /* Tests/JotTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests/JotTests;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000121 /* Tests/JotHarness */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests/JotHarness;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,6 +78,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A00000000000000000000112 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -70,6 +92,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000020 /* Sources */,
+				A00000000000000000000140 /* Tests */,
 				A00000000000000000000050 /* Resources */,
 				A00000000000000000000041 /* Products */,
 			);
@@ -79,6 +102,7 @@
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000001 /* Jot.app */,
+				A00000000000000000000002 /* JotTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -90,13 +114,47 @@
 				A00000000000000000000010 /* Info.plist */,
 				A00000000000000000000011 /* Jot.entitlements */,
 				A00000000000000000000013 /* help-content.md */,
+				A00000000000000000000014 /* Localizable.xcstrings */,
+				A00000000000000000000015 /* InfoPlist.xcstrings */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000140 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000120 /* Tests/JotTests */,
+				A00000000000000000000121 /* Tests/JotHarness */,
+			);
+			name = Tests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A00000000000000000000110 /* JotTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000130 /* Build configuration list for PBXNativeTarget "JotTests" */;
+			buildPhases = (
+				A00000000000000000000111 /* Sources */,
+				A00000000000000000000112 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A00000000000000000000150 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A00000000000000000000120 /* Tests/JotTests */,
+				A00000000000000000000121 /* Tests/JotHarness */,
+			);
+			name = JotTests;
+			packageProductDependencies = (
+			);
+			productName = JotTests;
+			productReference = A00000000000000000000002 /* JotTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		A00000000000000000000060 /* Jot */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A00000000000000000000070 /* Build configuration list for PBXNativeTarget "Jot" */;
@@ -145,6 +203,10 @@
 					A00000000000000000000060 = {
 						CreatedOnToolsVersion = 26.4;
 					};
+					A00000000000000000000110 = {
+						CreatedOnToolsVersion = 26.4;
+						TestTargetID = A00000000000000000000060;
+					};
 				};
 			};
 			buildConfigurationList = A00000000000000000000091 /* Build configuration list for PBXProject "Jot" */;
@@ -153,6 +215,7 @@
 			knownRegions = (
 				en,
 				Base,
+				ja,
 			);
 			mainGroup = A00000000000000000000040 /* MainGroup */;
 			minimizedProjectReferenceProxies = 1;
@@ -167,6 +230,7 @@
 			projectRoot = "";
 			targets = (
 				A00000000000000000000060 /* Jot */,
+				A00000000000000000000110 /* JotTests */,
 			);
 		};
 /* End PBXProject section */
@@ -178,6 +242,8 @@
 			files = (
 				A000000000000000000000B3 /* Assets.xcassets in Resources */,
 				A000000000000000000000B4 /* help-content.md in Resources */,
+				A000000000000000000000B5 /* Localizable.xcstrings in Resources */,
+				A000000000000000000000B6 /* InfoPlist.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -202,6 +268,7 @@
 			);
 			outputPaths = (
 				"$(SRCROOT)/Resources/fragments/languages.md",
+				"$(SRCROOT)/Resources/fragments/jot-asr-languages.md",
 				"$(SRCROOT)/Resources/fragments/cleanup-passes.md",
 				"$(SRCROOT)/Resources/fragments/articulate-invariants.md",
 				"$(SRCROOT)/Resources/fragments/articulate-branches.md",
@@ -230,6 +297,7 @@
 				"$(SRCROOT)/Resources/help-content-base.md",
 				"$(SRCROOT)/tools/concat-help-content.swift",
 				"$(SRCROOT)/Resources/fragments/languages.md",
+				"$(SRCROOT)/Resources/fragments/jot-asr-languages.md",
 				"$(SRCROOT)/Resources/fragments/cleanup-passes.md",
 				"$(SRCROOT)/Resources/fragments/articulate-invariants.md",
 				"$(SRCROOT)/Resources/fragments/articulate-branches.md",
@@ -283,7 +351,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A00000000000000000000111 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		A00000000000000000000151 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000090 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000060;
+			remoteInfo = Jot;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		A00000000000000000000150 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000060 /* Jot */;
+			targetProxy = A00000000000000000000151 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A000000000000000000000D1 /* Debug */ = {
@@ -433,6 +526,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.jot.Jot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				SWIFT_VERSION = 5.0;
 				VALID_ARCHS = arm64;
 			};
@@ -465,8 +559,49 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.jot.Jot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				SWIFT_VERSION = 5.0;
 				VALID_ARCHS = arm64;
+			};
+			name = Release;
+		};
+		A00000000000000000000131 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8VB2ULDN22;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jot.Jot.JotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Jot.app/Contents/MacOS/Jot";
+			};
+			name = Debug;
+		};
+		A00000000000000000000132 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8VB2ULDN22;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.jot.Jot.JotTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Jot.app/Contents/MacOS/Jot";
 			};
 			name = Release;
 		};
@@ -487,6 +622,15 @@
 			buildConfigurations = (
 				A000000000000000000000D3 /* Debug */,
 				A000000000000000000000D4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A00000000000000000000130 /* Build configuration list for PBXNativeTarget "JotTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000131 /* Debug */,
+				A00000000000000000000132 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

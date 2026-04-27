@@ -16,6 +16,8 @@ import SwiftUI
 /// not "skip this step and proceed to the next."
 struct DoneStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
+    @ObservedObject private var permissions = PermissionsService.shared
 
     var body: some View {
         VStack(spacing: 20) {
@@ -86,7 +88,11 @@ struct DoneStep: View {
         HStack(spacing: 12) {
             // Continue to advanced. Bordered / secondary — power-user path.
             Button {
-                coordinator.advance()
+                coordinator.advance(given: WizardState(
+                    permissionGrants: permissions.statuses,
+                    installedModelIDs: transcriberHolder.installedModelIDs,
+                    primaryModelID: transcriberHolder.primaryModelID
+                ))
             } label: {
                 Text("Continue")
                     .frame(minWidth: 120, minHeight: 32)

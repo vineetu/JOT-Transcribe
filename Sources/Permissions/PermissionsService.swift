@@ -7,10 +7,27 @@ import IOKit.hid
 import os.log
 
 @MainActor
-final class PermissionsService: ObservableObject {
+final class PermissionsService: ObservableObject, PermissionsObserving {
     static let shared = PermissionsService()
 
     @Published private(set) var statuses: [Capability: PermissionStatus] = [:]
+
+    /// `PermissionsObserving` protocol conformance — single-capability
+    /// lookup that defaults to `.notDetermined` on missing entries. Saves
+    /// every operational call site the `?? .notDetermined` it'd otherwise
+    /// repeat.
+    func status(for capability: Capability) -> PermissionStatus {
+        statuses[capability] ?? .notDetermined
+    }
+
+    /// `PermissionsObserving` protocol conformance — Combine projection of
+    /// the `@Published statuses`. Lets `any PermissionsObserving`
+    /// consumers subscribe to changes without depending on
+    /// `ObservableObject` (which can't be expressed through an existential
+    /// once associated types enter the picture).
+    var statusesPublisher: AnyPublisher<[Capability: PermissionStatus], Never> {
+        $statuses.eraseToAnyPublisher()
+    }
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "Permissions")
 

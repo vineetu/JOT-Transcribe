@@ -56,7 +56,7 @@ private enum AppleIntelligenceStreamOutcome {
 ///     `SystemLanguageModel.default.availability == .available`, which is
 ///     false on ineligible Apple Silicon or when Apple Intelligence is
 ///     disabled in System Settings.
-actor AppleIntelligenceClient {
+actor AppleIntelligenceClient: AppleIntelligenceClienting {
 
     /// True when FoundationModels exists AND the current machine reports the
     /// default system language model as `.available`. Returns false on older
@@ -71,6 +71,14 @@ actor AppleIntelligenceClient {
         #else
         return false
         #endif
+    }
+
+    /// `AppleIntelligenceClienting` protocol conformance — instance read
+    /// that delegates to the static lookup. Marked `nonisolated` so it can
+    /// be called from any isolation domain (matches the protocol's
+    /// `nonisolated var isAvailable: Bool { get }` requirement).
+    nonisolated var isAvailable: Bool {
+        Self.isAvailable
     }
 
     /// Clean up a raw dictation transcript. Mirrors the contract of

@@ -45,7 +45,7 @@ struct HeroCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
-                Text(hero.title)
+                Text(LocalizedStringKey(hero.title))
                     .font(.title2)
                     .fontWeight(.medium)
                 if hero.isOptional {
@@ -59,7 +59,7 @@ struct HeroCard: View {
                 }
             }
 
-            Text(hero.subtitle)
+            Text(LocalizedStringKey(hero.subtitle))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
@@ -71,7 +71,7 @@ struct HeroCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: HelpSharedStyle.cardCornerRadius))
 
             if let action = hero.conditionalAction, action.shouldShow() {
-                Button(action.label) { action.perform() }
+                Button(LocalizedStringKey(action.label)) { action.perform() }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
             }
@@ -95,8 +95,13 @@ struct HeroCard: View {
             cornerRadius: HelpSharedStyle.heroCornerRadius
         )
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(
-            "\(hero.title)\(hero.isOptional ? ", optional" : ""). \(hero.subtitle)"
-        )
+        .accessibilityLabel(Self.accessibilityLabel(for: hero))
+    }
+
+    private static func accessibilityLabel(for hero: Hero) -> String {
+        let title = String(localized: String.LocalizationValue(hero.title))
+        let subtitle = String(localized: String.LocalizationValue(hero.subtitle))
+        let optionalSuffix = hero.isOptional ? String(localized: ", optional") : ""
+        return "\(title)\(optionalSuffix). \(subtitle)"
     }
 }

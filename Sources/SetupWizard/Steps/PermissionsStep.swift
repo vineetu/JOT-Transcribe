@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PermissionsStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
     @ObservedObject private var permissions = PermissionsService.shared
     @State private var showResetAlert = false
 
@@ -100,10 +101,17 @@ struct PermissionsStep: View {
     }
 
     private func updateChrome() {
-        let micGranted = permissions.statuses[.microphone] == .granted
+        // Phase 3 #31: gating rule lives on the coordinator. View
+        // builds the persistent state and asks; harness builds the same
+        // state and asks the same function — no mirror to drift.
+        let state = WizardState(
+            permissionGrants: permissions.statuses,
+            installedModelIDs: transcriberHolder.installedModelIDs,
+            primaryModelID: transcriberHolder.primaryModelID
+        )
         coordinator.setChrome(WizardStepChrome(
             primaryTitle: "Continue",
-            canAdvance: micGranted,
+            canAdvance: coordinator.canAdvance(from: .permissions, given: state),
             isPrimaryBusy: false,
             showsSkip: false
         ))
@@ -112,10 +120,10 @@ struct PermissionsStep: View {
 
 private struct PermissionRow: View {
     let capability: Capability
-    let title: String
-    let subtitle: String
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
     let status: PermissionStatus
-    let primaryLabel: String
+    let primaryLabel: LocalizedStringKey
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -167,7 +175,7 @@ private struct StatusPill: View {
             .foregroundStyle(foreground)
     }
 
-    private var label: String {
+    private var label: LocalizedStringKey {
         switch status {
         case .granted: return "Granted"
         case .denied: return "Denied"

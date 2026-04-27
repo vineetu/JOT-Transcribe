@@ -162,6 +162,7 @@ extension Feature {
         features.append(dictationSubRow(id: "any-length", title: "Any-length recordings"))
         features.append(dictationSubRow(id: "on-device-transcription", title: "On-device transcription"))
         features.append(dictationSubRow(id: "multilingual", title: "Multilingual (25 languages)"))
+        features.append(dictationSubRow(id: "languages", title: "Languages"))
         features.append(dictationSubRow(id: "custom-vocabulary", title: "Custom vocabulary"))
 
         // Hero: Cleanup
@@ -370,9 +371,11 @@ extension Feature {
     static let expectedSlugs: Set<String> = [
         // Heroes
         "dictation", "cleanup", "articulate",
-        // Dictation sub-rows (7 — removed: auto-transcribe, re-transcribe)
+        // Dictation sub-rows (8 — removed: auto-transcribe, re-transcribe;
+        // added: languages for the JA / multi-model picker explainer).
         "toggle-recording", "push-to-talk", "cancel-recording", "any-length",
-        "on-device-transcription", "multilingual", "custom-vocabulary",
+        "on-device-transcription", "multilingual", "languages",
+        "custom-vocabulary",
         // Cleanup sub-rows
         "cleanup-providers", "cleanup-prompt", "cleanup-fallback",
         "cleanup-raw-preserved",

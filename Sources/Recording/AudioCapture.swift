@@ -38,7 +38,7 @@ public enum AudioCaptureError: Error, Sendable {
 ///
 /// Actor-isolated because the engine + file + buffer state must not be
 /// touched concurrently.
-public actor AudioCapture {
+public actor AudioCapture: AudioCapturing {
     private let log = Logger(subsystem: "com.jot.Jot", category: "AudioCapture")
 
     nonisolated(unsafe) public weak var amplitudePublisher: AmplitudePublisher?
@@ -433,12 +433,22 @@ public actor AudioCapture {
         )
 
         for deviceID in deviceIDs {
-            var uidSize = UInt32(MemoryLayout<CFString?>.size)
-            var deviceUID: CFString? = nil
+            // CoreAudio writes a retained CFString pointer into the
+            // out-parameter. Phase 3 #12: store it through
+            // `Unmanaged<CFString>?` (defined raw-pointer ABI) instead
+            // of `CFString?` (which the Swift compiler flags because
+            // forming `UnsafeMutableRawPointer` to a typed Optional of
+            // an object reference is ambiguous about ARC ownership).
+            // `takeRetainedValue()` matches the +1 retain CoreAudio
+            // returns; no manual release needed.
+            var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            var deviceUID: Unmanaged<CFString>? = nil
             let uidStatus = AudioObjectGetPropertyData(
                 deviceID, &uidAddress, 0, nil, &uidSize, &deviceUID
             )
-            if uidStatus == noErr, let resolved = deviceUID as String?, resolved == uid {
+            if uidStatus == noErr,
+               let resolved = deviceUID?.takeRetainedValue() as String?,
+               resolved == uid {
                 return deviceID
             }
         }

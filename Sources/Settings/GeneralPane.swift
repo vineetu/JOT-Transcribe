@@ -10,8 +10,23 @@ struct GeneralPane: View {
     @AppStorage("jot.retentionDays") private var retentionDays: Int = 7
 
     // Injected at the root scene in `JotApp.swift` so the "Run Setup Wizard…"
-    // button can forward the shared transcriber into the wizard.
-    @Environment(\.transcriber) private var transcriber
+    // button can forward the shared TranscriberHolder into the wizard.
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
+
+    /// Constructor-injected `AudioCapturing` seam for the "Run Setup
+    /// Wizard Again" button. Pre-fix the action did
+    /// `guard let audio = AppServices.live?.audioCapture else { return }`
+    /// — if the live graph wasn't yet attached (race with
+    /// `applicationDidFinishLaunching`'s `AppDelegate.services` assignment
+    /// or an `NSApp.delegate` cast quirk on a fresh-install scene), the
+    /// guard silently returned and the button did nothing. Constructor
+    /// injection through `JotAppWindow`'s `.settings(.general)` route
+    /// closes the race; same pattern as Phase 4 round 5's `ArticulatePane`.
+    private let audioCapture: any AudioCapturing
+
+    init(audioCapture: any AudioCapturing) {
+        self.audioCapture = audioCapture
+    }
 
     /// Donation reminder toggle — master switch for the Home donation
     /// card AND the About "months saved" badge (one switch, two
@@ -108,8 +123,11 @@ struct GeneralPane: View {
                     }
                     Spacer()
                     Button("Run…") {
-                        guard let transcriber else { return }
-                        WizardPresenter.present(reason: .manualFromSettings, transcriber: transcriber)
+                        WizardPresenter.present(
+                            reason: .manualFromSettings,
+                            transcriberHolder: transcriberHolder,
+                            audioCapture: audioCapture
+                        )
                     }
                     InfoPopoverButton(
                         title: "Run Setup Wizard Again",
@@ -160,13 +178,19 @@ struct GeneralPane: View {
         }
         .formStyle(.grouped)
         .alert("Reset settings?", isPresented: $showSoftAlert) {
-            Button("Reset and Relaunch", role: .destructive) { ResetActions.softReset() }
+            Button("Reset and Relaunch", role: .destructive) {
+                guard let keychain = AppServices.live?.keychain else { return }
+                ResetActions.softReset(keychain: keychain)
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Clears your preferences, API keys, and shortcuts. Your recordings and downloaded model stay. Jot will relaunch into setup.")
         }
         .alert("Erase all Jot data?", isPresented: $showHardAlert) {
-            Button("Erase and Relaunch", role: .destructive) { ResetActions.hardReset() }
+            Button("Erase and Relaunch", role: .destructive) {
+                guard let keychain = AppServices.live?.keychain else { return }
+                ResetActions.hardReset(keychain: keychain)
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Deletes every recording, the transcription model (≈600 MB, re-downloads on next launch), and all settings. macOS permissions are untouched. Jot will relaunch into setup.")

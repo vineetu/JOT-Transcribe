@@ -17,17 +17,20 @@ final class RecordingPersister {
     private let log = Logger(subsystem: "com.jot.Jot", category: "RecordingPersister")
     private let recorder: RecorderController
     private let context: ModelContext
-    private let modelIdentifier: String
+    /// Phase 3 F4: model id is read off the holder per persist call (not
+    /// snapshotted at init), so a swap mid-session stamps subsequent rows
+    /// with the new id without rebinding the persister.
+    private let holder: TranscriberHolder
     private var cancellable: AnyCancellable?
 
     init(
         recorder: RecorderController,
         context: ModelContext,
-        modelIdentifier: String = ParakeetModelID.tdt_0_6b_v3.rawValue
+        transcriberHolder: TranscriberHolder
     ) {
         self.recorder = recorder
         self.context = context
-        self.modelIdentifier = modelIdentifier
+        self.holder = transcriberHolder
     }
 
     func start() {
@@ -53,7 +56,7 @@ final class RecordingPersister {
             transcript: transcript,
             rawTranscript: result.rawText,
             audioFileName: audio.fileURL.lastPathComponent,
-            modelIdentifier: modelIdentifier
+            modelIdentifier: holder.primaryModelID.rawValue
         )
         context.insert(recording)
         do {

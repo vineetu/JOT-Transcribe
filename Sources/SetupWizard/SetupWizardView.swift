@@ -6,7 +6,21 @@ import SwiftUI
 /// horizontal step indicator.
 struct SetupWizardView: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
+    @ObservedObject private var permissions = PermissionsService.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Snapshot of the persistent state the coordinator's
+    /// `canAdvance(from:given:)` consults. Re-derived on each render so
+    /// it reflects the latest `@EnvironmentObject` / `@ObservedObject`
+    /// values without a separate publisher.
+    private var wizardState: WizardState {
+        WizardState(
+            permissionGrants: permissions.statuses,
+            installedModelIDs: transcriberHolder.installedModelIDs,
+            primaryModelID: transcriberHolder.primaryModelID
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -133,7 +147,7 @@ struct SetupWizardView: View {
         if coordinator.currentStep.isLast {
             coordinator.finish()
         } else {
-            coordinator.advance()
+            coordinator.advance(given: wizardState)
         }
     }
 }

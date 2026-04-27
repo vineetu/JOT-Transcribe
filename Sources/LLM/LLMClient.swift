@@ -2,29 +2,39 @@ import Foundation
 
 actor LLMClient {
     private let session: URLSession
-    private let appleClient: AppleIntelligenceClient
+    private let appleClient: any AppleIntelligenceClienting
+    private let logSink: any LogSink
+    /// Phase 3 #29: per-graph `LLMConfiguration` replaces
+    /// `LLMConfiguration.shared` reads. Captured at init from the
+    /// composition root.
+    private let llmConfiguration: LLMConfiguration
 
     init(
-        session: URLSession? = nil,
-        appleClient: AppleIntelligenceClient = AppleIntelligenceClient()
+        session: URLSession,
+        appleClient: (any AppleIntelligenceClienting)? = nil,
+        logSink: any LogSink = ErrorLog.shared,
+        llmConfiguration: LLMConfiguration
     ) {
-        self.session = session ?? URLSession(configuration: LLMClient.makeSessionConfiguration())
-        self.appleClient = appleClient
+        self.session = session
+        self.appleClient = appleClient ?? AppleIntelligenceClient()
+        self.logSink = logSink
+        self.llmConfiguration = llmConfiguration
     }
 
-    private static func makeSessionConfiguration(
+    /// Phase 0.5 dropped this from LLMClient's init path — the live
+    /// session now comes from `AppServices.urlSession`, which is built
+    /// from `SystemServices.urlSessionConfiguration` (default URLSession
+    /// posture). The 3 s reachability fast-fail that this factory used to
+    /// install on LLMClient's session was defensive — every shipping
+    /// LLMClient call path uses either a per-request `timeoutInterval`
+    /// override or the explicit 3 s `firstByteOrTimeout` watchdog inside
+    /// `streamResponse`, so the session default was never the operative
+    /// timeout. Kept here so a future test can construct a tighter-timeout
+    /// session if needed.
+    static func makeSessionConfiguration(
         requestTimeout: TimeInterval = 3,
         resourceTimeout: TimeInterval = 120
     ) -> URLSessionConfiguration {
-        // Session default `timeoutIntervalForRequest` stays tight (3s) to
-        // give any uncared-for callers fast failure on an unreachable
-        // endpoint. The long-running paths — `articulate`, `transform`,
-        // `healthCheck` — set their own per-request `timeoutInterval`
-        // before handing off to `performLLMRequest`, which overrides the
-        // session default for that request. `streamResponse` additionally
-        // enforces a 3s first-byte watchdog of its own so reachability
-        // fast-fail is preserved even when the per-request override is
-        // generous.
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = requestTimeout
         configuration.timeoutIntervalForResource = resourceTimeout
@@ -35,8 +45,8 @@ actor LLMClient {
     /// (Formerly `rewrite(…)` — renamed with the v1.5 "Articulate (Custom)"
     /// relabel. Behaviorally identical to v1.4 `rewrite`.)
     func articulate(selectedText: String, instruction: String) async throws -> String {
-        let config = await MainActor.run {
-            let c = LLMConfiguration.shared
+        let config = await MainActor.run { [llmConfiguration] in
+            let c = llmConfiguration
             let p = c.provider
             return (
                 provider: p,
@@ -74,7 +84,7 @@ actor LLMClient {
 
         if config.provider.requiresUserAPIKey {
             guard !config.apiKey.isEmpty else {
-                Task { await ErrorLog.shared.error(component: "LLMClient", message: "Missing API key", context: ["provider": config.provider.rawValue, "op": "articulate"]) }
+                Task { await self.logSink.error(component: "LLMClient", message: "Missing API key", context: ["provider": config.provider.rawValue, "op": "articulate"]) }
                 throw LLMError.noAPIKey
             }
         }
@@ -309,7 +319,7 @@ actor LLMClient {
             // detail is our own string (e.g. "stalled"); fine to include shape, redact body content.
             context["detail"] = String(detail.prefix(80))
         }
-        Task { await ErrorLog.shared.error(component: "LLMClient", message: message, context: context) }
+        Task { await self.logSink.error(component: "LLMClient", message: message, context: context) }
     }
 
     private func streamResponse(provider: LLMProvider, request: URLRequest) async throws -> String {
@@ -638,8 +648,8 @@ actor LLMClient {
             return transcript
         }
 
-        let config = await MainActor.run {
-            let c = LLMConfiguration.shared
+        let config = await MainActor.run { [llmConfiguration] in
+            let c = llmConfiguration
             let p = c.provider
             // Homophone rule appends only for cloud providers. Apple
             // Intelligence's on-device model regresses with it (reverts
@@ -671,7 +681,7 @@ actor LLMClient {
         }
 
         guard !config.provider.requiresUserAPIKey || !config.apiKey.isEmpty else {
-            Task { await ErrorLog.shared.error(component: "LLMClient", message: "Missing API key", context: ["provider": config.provider.rawValue, "op": "transform"]) }
+            Task { await self.logSink.error(component: "LLMClient", message: "Missing API key", context: ["provider": config.provider.rawValue, "op": "transform"]) }
             throw LLMError.noAPIKey
         }
 
@@ -697,7 +707,7 @@ actor LLMClient {
         let inputLength = Double(transcript.count)
         let minRatio = inputLength < 50 ? 0.15 : 0.3
         if Double(result.count) < inputLength * minRatio || Double(result.count) > inputLength * 3.0 {
-            Task { await ErrorLog.shared.warn(component: "LLMClient", message: "Suspicious response length — rejected", context: [
+            Task { await self.logSink.warn(component: "LLMClient", message: "Suspicious response length — rejected", context: [
                 "provider": config.provider.rawValue,
                 "op": "transform",
                 "inputLen": String(Int(inputLength)),
@@ -736,8 +746,8 @@ actor LLMClient {
     // MARK: - Health Check
 
     func healthCheck() async -> Bool {
-        let config = await MainActor.run {
-            let c = LLMConfiguration.shared
+        let config = await MainActor.run { [llmConfiguration] in
+            let c = llmConfiguration
             let p = c.provider
             return (
                 provider: p,
@@ -748,7 +758,7 @@ actor LLMClient {
         }
 
         if config.provider == .appleIntelligence {
-            return AppleIntelligenceClient.isAvailable
+            return appleClient.isAvailable
         }
 
         #if JOT_FLAVOR_1
@@ -758,7 +768,8 @@ actor LLMClient {
             // touching the generic API-key path.
             return await Flavor1Client.healthCheck(
                 baseURL: config.baseURL,
-                model: config.model
+                model: config.model,
+                urlSession: session
             )
         }
         #endif
