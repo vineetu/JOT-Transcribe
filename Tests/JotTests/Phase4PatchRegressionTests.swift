@@ -444,7 +444,10 @@ struct Phase4PatchRegressionTests {
     @Test func generalPaneThreadsAudioCaptureSeam() async throws {
         let harness = try await JotHarness(seed: .default)
 
-        let pane = GeneralPane(audioCapture: harness.services.audioCapture)
+        let pane = GeneralPane(
+            audioCapture: harness.services.audioCapture,
+            keychain: harness.stubKeychain
+        )
 
         let mirror = Mirror(reflecting: pane)
         let audioField = mirror.children.first { $0.label == "audioCapture" }?.value
@@ -611,9 +614,15 @@ struct Phase4PatchRegressionTests {
     //   4. A 401 response invalidates `Flavor1Session` so the next request
     //      forces a fresh sign-in.
 
-    /// Bandage #1 (cloud stream dispatch): `HelpChatStore.cloudStream(for: .flavor1)`
-    /// must return a real `Flavor1ChatStream` — pre-bandage it
-    /// `preconditionFailure`'d, crashing the app on first flavor1 Ask Jot turn.
+    /// Bandage #1 (cloud stream dispatch): the dispatcher must resolve
+    /// `.flavor1` to a non-Apple `CloudAIService`, which in turn maps
+    /// to a real `Flavor1ChatStream` for streaming. Pre-bandage the
+    /// flavor1 case in `HelpChatStore.cloudStream(for:)` `preconditionFailure`'d,
+    /// crashing on first flavor1 Ask Jot turn. Post-AIService unification
+    /// the routing lives in `AIServices.serviceForRequest` →
+    /// `CloudAIService.streamChat`; the regression target is unchanged
+    /// (flavor1 must not crash) so we exercise the dispatcher directly
+    /// instead of the now-removed `cloudStream(for:)` accessor.
     @Test func flavor1CloudStreamReturnsNonNil() throws {
         #if JOT_FLAVOR_1
         let suite = "com.jot.Jot.test.\(UUID().uuidString)"
@@ -622,16 +631,37 @@ struct Phase4PatchRegressionTests {
 
         let stubKeychain = StubKeychain(seed: .empty)
         let llmConfig = LLMConfiguration(keychain: stubKeychain, defaults: defaults)
+        llmConfig.provider = .flavor1
         let urlSession = URLSession(configuration: .ephemeral)
+        let appleIntelligence = StubAppleIntelligence(seed: .stub)
 
-        let store = HelpChatStore(
-            navigator: HelpNavigator(),
+        // Post-AIService unification: dispatch lives in
+        // `AIServices.serviceForRequest` rather than
+        // `HelpChatStore.cloudStream(for:)`. Regression target is
+        // unchanged — flavor1 must resolve to a non-Apple cloud
+        // service rather than crashing — so we exercise the
+        // dispatcher directly.
+        let request = AIChatRequest(
+            messages: [],
+            systemInstructions: "",
+            maxTokens: 16,
+            showFeatureTool: { _ in "Shown" },
+            session: nil,
+            providerOverride: AIChatRequest.ProviderSnapshot(
+                provider: .flavor1,
+                apiKey: "",
+                baseURL: "https://example.invalid",
+                model: "stub-model"
+            )
+        )
+        let service = AIServices.serviceForRequest(
+            request: request,
             urlSession: urlSession,
+            appleClient: appleIntelligence,
+            logSink: ErrorLog.shared,
             llmConfiguration: llmConfig
         )
-
-        let stream = store.cloudStream(for: .flavor1)
-        #expect(stream is Flavor1ChatStream)
+        #expect(service is CloudAIService)
         #endif
     }
 

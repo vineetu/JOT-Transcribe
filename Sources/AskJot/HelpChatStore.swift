@@ -2,6 +2,12 @@ import Foundation
 import Observation
 
 #if canImport(FoundationModels)
+// `FoundationModels` is imported only for the
+// `LanguageModelSession.GenerationError` switch in
+// `handleGenerationError(...)`. Session creation, prewarm, and
+// streaming are routed through `AppleIntelligenceClient` and the
+// dispatcher (Tier 2 unification) so the framework's surface stays
+// localized to the LLM layer wherever possible.
 import FoundationModels
 #endif
 
@@ -55,22 +61,15 @@ final class HelpChatStore {
     /// availability change all cancel this and nil it out.
     private var lastStreamTask: Task<Void, Never>?
 
-    #if canImport(FoundationModels)
-    /// FoundationModels session. Recreated on `clear()` and on
+    /// FoundationModels session handle. Recreated on `clear()` and on
     /// context-full auto-recovery. Nil on macOS < 26 or when Apple
     /// Intelligence is unavailable — the store still functions as a
-    /// state holder in that case.
-    @available(macOS 26.0, *)
-    private var session: LanguageModelSession? {
-        get { _session as? LanguageModelSession }
-        set { _session = newValue }
-    }
-
-    /// Type-erased backing so the property declaration can live
-    /// outside the `@available(macOS 26.0, *)` attribute. Always nil
-    /// below macOS 26.
-    private var _session: Any?
-    #endif
+    /// state holder in that case. The handle is opaque
+    /// (`AIChatSession` carries an `AnyObject` storage for the live
+    /// `LanguageModelSession`); the on-device stream lifecycle stays
+    /// consumer-owned per spec §12 (`clear()` mints fresh, context-full
+    /// recovery mints fresh).
+    private var chatSession: AIChatSession?
 
     /// Navigator for `ShowFeatureTool` invocations from the
     /// post-processing pass. Injected on init.
@@ -87,6 +86,17 @@ final class HelpChatStore {
     /// `AppServices.llmConfiguration` via `JotAppWindow`.
     private let llmConfiguration: LLMConfiguration
 
+    /// Apple Intelligence seam — passed to `AIServices.current(...)`
+    /// so the dispatcher can resolve the on-device path. Threaded
+    /// through from `AppServices.appleIntelligence` via `JotAppWindow`.
+    private let appleIntelligence: any AppleIntelligenceClienting
+
+    /// Log sink — passed to `AIServices.current(...)` so the cloud
+    /// `LLMClient` (used for the rare provider-mismatch fall-through
+    /// inside the dispatcher) can log uniformly. Threaded through from
+    /// `AppServices.logSink`.
+    private let logSink: any LogSink
+
     /// Config-snapshot factory the store calls when building a new
     /// session. Injected so tests can override without touching
     /// UserDefaults / KeyboardShortcuts / VocabularyStore. Default
@@ -98,11 +108,15 @@ final class HelpChatStore {
         navigator: HelpNavigator,
         urlSession: URLSession,
         llmConfiguration: LLMConfiguration,
+        appleIntelligence: any AppleIntelligenceClienting,
+        logSink: any LogSink = ErrorLog.shared,
         snapshotBuilder: (@MainActor () -> UserConfigSnapshot)? = nil
     ) {
         self.navigator = navigator
         self.urlSession = urlSession
         self.llmConfiguration = llmConfiguration
+        self.appleIntelligence = appleIntelligence
+        self.logSink = logSink
         self.snapshotBuilder = snapshotBuilder ?? HelpChatStore.liveSnapshot
         self.state = Self.initialAvailabilityState(llmConfiguration: llmConfiguration)
     }
@@ -202,26 +216,43 @@ final class HelpChatStore {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             guard case .idle = state else { return }
-            if session == nil {
-                session = makeSession()
-            }
-            // `prewarm()` on the session warms the KV-cache for the
-            // instructions block — next streamResponse starts faster.
-            // No `promptPrefix` param — the 26.4 API takes no args.
-            session?.prewarm()
+            ensureChatSession()
+            AppleIntelligenceClient.prewarmChatSession(chatSession)
         }
         #endif
+    }
+
+    /// Mint a fresh `AIChatSession` if we don't have one. Caches the
+    /// snapshot used to build the instructions block so subsequent
+    /// turns reuse the same instructions until `clear()` (spec §6:
+    /// "never re-injected mid-session").
+    private func ensureChatSession() {
+        guard chatSession == nil else { return }
+        let snapshot = snapshotBuilder()
+        userConfig = snapshot
+        let instructions = buildInstructions(userConfig: snapshot)
+        chatSession = AppleIntelligenceClient.makeChatSession(
+            instructions: instructions,
+            navigator: navigator
+        )
     }
 
     // MARK: - Send
 
     /// Submit a user message. Appends a user bubble + a streaming
-    /// assistant bubble, kicks off `session.streamResponse(...)`, and
+    /// assistant bubble, kicks off the dispatcher's stream, and
     /// updates the assistant bubble's content as tokens arrive.
     ///
     /// No-op if `state != .idle` — the input bar gates Send on
     /// `state == .idle` but we re-check here as a double-safety
     /// against rapid double-clicks and Enter-key races.
+    ///
+    /// The dispatcher (`AIServices.current(...)`) owns provider routing.
+    /// On Apple Intelligence the request includes the reusable
+    /// `AIChatSession` so KV-cache stays warm across turns; on cloud
+    /// the request includes the per-turn `showFeatureTool` callback so
+    /// inline tool-calling works for OpenAI / Anthropic / Gemini /
+    /// Ollama / Flavor-1 alike.
     func send(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -230,93 +261,137 @@ final class HelpChatStore {
         }
         guard case .idle = state else { return }
 
-        messages.append(ChatMessage(role: .user, content: trimmed))
-        if isCloudAskJotEnabled() {
-            streamCloudResponse(prompt: trimmed)
-            return
-        }
+        // Effective provider for THIS turn — not necessarily the same
+        // as `llmConfiguration.provider`. Ask Jot has its own provider
+        // policy (CLAUDE.md "Ask Jot has its own provider policy"):
+        // when the user's configured provider is non-Apple AND the
+        // "Allow Ask Jot to use this provider" toggle is OFF, Ask Jot
+        // stays on Apple Intelligence regardless of `provider`. This
+        // gate is what `isCloudAskJotEnabled()` encodes.
+        //
+        // Pinning the value once here (and threading it as
+        // `effectiveProvider`) also addresses the Settings-mid-Send
+        // race: a user who flips Settings → AI between Send and the
+        // stream's first byte should see the request still routed to
+        // the provider that was active at Send time, not the one in
+        // place when the stream's spawned task wakes up.
+        let effectiveProvider: LLMProvider =
+            isCloudAskJotEnabled() ? llmConfiguration.provider : .appleIntelligence
 
-        #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            if session == nil {
-                session = makeSession()
-            }
-            guard let session else {
-                state = .error("Ask Jot couldn't start a session. Try again.")
+        // OS-level Apple Intelligence gate. Reached when
+        // `effectiveProvider == .appleIntelligence` (fresh install on
+        // macOS 26+, or the cloud opt-in is off) AND
+        // `SystemLanguageModel.default.availability` is non-`.available`
+        // — `initialAvailabilityState` already produced an `.unavailable`
+        // pill in that case, so we mostly stop at the `guard idle` above.
+        // The os-too-old branch survives here for callers on macOS < 26.
+        if effectiveProvider == .appleIntelligence {
+            #if !canImport(FoundationModels)
+            state = .error("Ask Jot requires macOS 26.4 or later.")
+            return
+            #else
+            if #unavailable(macOS 26.0) {
+                state = .error("Ask Jot requires macOS 26.4 or later.")
                 return
             }
+            #endif
+        }
 
-            // Append a placeholder assistant bubble we'll stream into.
-            let assistantId = UUID()
-            messages.append(ChatMessage(id: assistantId, role: .assistant, content: "", isStreaming: true))
-            state = .streaming
+        messages.append(ChatMessage(role: .user, content: trimmed))
 
-            lastStreamTask = Task { @MainActor [weak self] in
-                await self?.runStream(session: session, prompt: trimmed, assistantId: assistantId)
+        // Build the per-turn snapshot. For cloud the snapshot is fresh
+        // every turn (matches pre-unification behavior); for Apple,
+        // `ensureChatSession()` only mints a new session when we don't
+        // have one, which preserves spec §6 ("never re-injected
+        // mid-session") — the snapshot from session creation stays the
+        // load-bearing one.
+        if effectiveProvider == .appleIntelligence {
+            ensureChatSession()
+            // Apple Intelligence path requires a live session; if
+            // session creation returned nil (FoundationModels missing
+            // or unavailable), surface the error.
+            guard chatSession != nil else {
+                state = .error("Ask Jot couldn't start a session. Try again.")
+                // Drop the user bubble so the input bar's resend works.
+                if let last = messages.last, last.role == .user, last.content == trimmed {
+                    messages.removeLast()
+                }
+                return
             }
         } else {
-            state = .error("Ask Jot requires macOS 26.4 or later.")
+            // Cloud path — refresh the snapshot every turn (no session
+            // reuse), matching the pre-unification cloud behavior.
+            let snapshot = snapshotBuilder()
+            userConfig = snapshot
         }
-        #else
-        state = .error("Ask Jot requires macOS 26.4 or later.")
-        #endif
+
+        let assistantId = beginStreamingAssistantMessage()
+
+        // Snapshot per-provider config at Send time so a user toggling
+        // Settings → AI mid-stream doesn't reroute the in-flight turn.
+        // Cloud paths use this snapshot; Apple ignores apiKey/baseURL/
+        // model.
+        let perTurnAPIKey = llmConfiguration.apiKey(for: effectiveProvider)
+        let perTurnBaseURL = llmConfiguration.effectiveBaseURL(for: effectiveProvider)
+        let perTurnModel = llmConfiguration.effectiveModel(for: effectiveProvider)
+
+        let request = AIChatRequest(
+            messages: aiChatHistory(),
+            systemInstructions: currentInstructions(),
+            maxTokens: 300,
+            showFeatureTool: { [weak self] featureId in
+                await self?.runCloudShowFeatureTool(featureId: featureId) ?? "Feature not available"
+            },
+            session: chatSession,
+            providerOverride: AIChatRequest.ProviderSnapshot(
+                provider: effectiveProvider,
+                apiKey: perTurnAPIKey,
+                baseURL: perTurnBaseURL,
+                model: perTurnModel
+            )
+        )
+
+        let service = AIServices.serviceForRequest(
+            request: request,
+            urlSession: urlSession,
+            appleClient: appleIntelligence,
+            logSink: logSink,
+            llmConfiguration: llmConfiguration
+        )
+
+        let stream = service.streamChat(request: request)
+
+        lastStreamTask = Task { @MainActor [weak self] in
+            await self?.runUnifiedStream(
+                stream,
+                prompt: trimmed,
+                assistantId: assistantId,
+                provider: effectiveProvider
+            )
+        }
     }
 
     private static let streamingFlushIntervalNs: UInt64 = 50_000_000
 
-    private func streamCloudResponse(prompt: String) {
-        let config = llmConfiguration
-        let provider = config.provider
-        guard provider != .appleIntelligence else { return }
-
-        let snapshot = snapshotBuilder()
-        userConfig = snapshot
-
-        let stream = cloudStream(for: provider).streamChat(
-            messages: cloudChatHistory(),
-            systemInstructions: buildInstructions(userConfig: snapshot),
-            showFeatureTool: { [weak self] featureId in
-                await self?.runCloudShowFeatureTool(featureId: featureId) ?? "Feature not available"
-            },
-            apiKey: config.apiKey(for: provider),
-            baseURL: config.effectiveBaseURL(for: provider),
-            model: config.effectiveModel(for: provider),
-            maxTokens: 300
-        )
-
-        let assistantId = beginStreamingAssistantMessage()
-        lastStreamTask = Task { @MainActor [weak self] in
-            await self?.runCloudStream(stream, prompt: prompt, assistantId: assistantId, provider: provider)
-        }
+    /// Resolve the active system instructions block. For Apple, reuse
+    /// the cached `userConfig` snapshot from session creation; for
+    /// cloud, the just-rebuilt `userConfig` is already current.
+    private func currentInstructions() -> String {
+        let snapshot = userConfig ?? snapshotBuilder()
+        return buildInstructions(userConfig: snapshot)
     }
 
-    func cloudStream(for provider: LLMProvider) -> any CloudChatStream {
-        switch provider {
-        case .appleIntelligence:
-            preconditionFailure("Apple Intelligence uses the FoundationModels path")
-        case .openai:
-            return OpenAIChatStream(session: urlSession)
-        case .anthropic:
-            return AnthropicChatStream(session: urlSession)
-        case .gemini:
-            return GeminiChatStream(session: urlSession)
-        case .ollama:
-            return OllamaChatStream(session: urlSession)
-        #if JOT_FLAVOR_1
-        case .flavor1:
-            return Flavor1ChatStream(session: urlSession)
-        #endif
-        }
-    }
-
-    private func cloudChatHistory() -> [CloudChatMessage] {
+    /// Convert `messages` into provider-neutral `AIChatMessage`s for
+    /// the dispatcher. Drops the in-flight assistant placeholder
+    /// (mirrors the pre-unification `cloudChatHistory()` filter).
+    private func aiChatHistory() -> [AIChatMessage] {
         messages.compactMap { message in
             switch message.role {
             case .user:
-                return CloudChatMessage(role: .user, content: message.content)
+                return AIChatMessage(role: .user, content: message.content)
             case .assistant:
                 guard !message.isStreaming else { return nil }
-                return CloudChatMessage(role: .assistant, content: message.content)
+                return AIChatMessage(role: .assistant, content: message.content)
             }
         }
     }
@@ -392,82 +467,43 @@ final class HelpChatStore {
         state = .idle
     }
 
-    private func runCloudStream(
+    /// Drives the dispatcher's delta stream — same loop for cloud and
+    /// Apple Intelligence. Branching on provider-specific concerns is
+    /// kept narrow:
+    ///
+    ///   * **Repetition detection** runs on every turn (Apple's
+    ///     small-model loops were the original motivator; it's a
+    ///     no-op cost for cloud paths).
+    ///   * **Apple-only `LanguageModelSession.GenerationError`
+    ///     handling** is preserved — the dispatcher's Apple conformer
+    ///     propagates the original error, this catch surfaces it on
+    ///     the on-device path. On cloud, `GenerationError` never
+    ///     fires; the catch is dead code there.
+    ///   * **Cloud-only error pill** uses the provider name (matches
+    ///     pre-unification "(cloud error: openai)" suffix).
+    private func runUnifiedStream(
         _ stream: AsyncThrowingStream<String, Error>,
         prompt: String,
         assistantId: UUID,
         provider: LLMProvider
     ) async {
         var accumulated = ""
-        var pendingFlush: Task<Void, Never>?
-
-        do {
-            for try await delta in stream {
-                if Task.isCancelled { break }
-                accumulated += delta
-                schedulePendingFlush(
-                    assistantId: assistantId,
-                    accumulatedText: { accumulated },
-                    pendingFlush: &pendingFlush
-                )
-            }
-
-            pendingFlush?.cancel()
-            await finalizeStream(prompt: prompt, assistantId: assistantId, accumulated: accumulated)
-        } catch is CancellationError {
-            pendingFlush?.cancel()
-            handleCancelledStream(assistantId: assistantId, accumulated: accumulated)
-        } catch {
-            pendingFlush?.cancel()
-            handleCloudStreamError(provider: provider, assistantId: assistantId, accumulated: accumulated)
-        }
-    }
-
-    private func runCloudShowFeatureTool(featureId: String) async -> String {
-        #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            let tool = ShowFeatureTool(navigator: navigator)
-            return (try? await tool.call(arguments: .init(featureId: featureId))) ?? "Feature not available"
-        }
-        #endif
-
-        guard let feature = Feature.bySlug(featureId), feature.isDeepLinkable else {
-            return "Feature not available"
-        }
-        _ = feature
-        return "Shown"
-    }
-
-    #if canImport(FoundationModels)
-    @available(macOS 26.0, *)
-    // Cap prevents the model from rambling or entering degenerate loops past reasonable answer length.
-    private static let responseGenerationOptions = GenerationOptions(
-        sampling: nil,
-        temperature: nil,
-        maximumResponseTokens: 300
-    )
-
-    @available(macOS 26.0, *)
-    private func runStream(session: LanguageModelSession, prompt: String, assistantId: UUID) async {
-        var previousSnapshot = ""
-        var accumulated = ""
         var repetitionDetector = StreamRepetitionDetector()
         var stoppedForRepetition = false
         var pendingFlush: Task<Void, Never>?
 
         do {
-            for try await snapshot in session.streamResponse(to: prompt, options: Self.responseGenerationOptions) {
+            for try await delta in stream {
                 if Task.isCancelled { break }
-                let current = snapshot.content
-                if current.hasPrefix(previousSnapshot) {
-                    let delta = String(current.dropFirst(previousSnapshot.count))
-                    accumulated += delta
-                } else {
-                    // Session rewrote its partial — take the current
-                    // content verbatim. Rare but documented behavior.
-                    accumulated = current
+                // Stream-rewrite sentinel from the Apple conformer:
+                // an empty yield followed by the next chunk means the
+                // model rewrote its partial. Reset the accumulator so
+                // the rewrite replaces the prior content.
+                if delta.isEmpty {
+                    accumulated = ""
+                    continue
                 }
-                previousSnapshot = current
+                accumulated += delta
 
                 repetitionDetector.observe(fullText: accumulated)
                 if repetitionDetector.isLooping() {
@@ -494,27 +530,88 @@ final class HelpChatStore {
                 return
             }
 
+            // `AsyncThrowingStream` cancellation is racy: when the
+            // consumer task is cancelled, the iteration can complete
+            // normally before the producer's `finish(throwing:
+            // CancellationError())` propagates through the buffer. To
+            // get deterministic "user pressed Esc → handleCancelledStream
+            // path" behavior, explicitly check our own task's
+            // cancellation flag after the loop and route to the
+            // cancelled-stream handler.
+            try Task.checkCancellation()
+
             pendingFlush?.cancel()
             await finalizeStream(prompt: prompt, assistantId: assistantId, accumulated: accumulated)
         } catch is CancellationError {
-            // User cancelled with Esc / Clear — leave the partial as-is
-            // with `(stopped)` suffix, state returns to .idle.
             pendingFlush?.cancel()
             handleCancelledStream(assistantId: assistantId, accumulated: accumulated)
-        } catch let error as LanguageModelSession.GenerationError {
-            await handleGenerationError(error, userPrompt: prompt, assistantId: assistantId)
         } catch {
-            // Unknown error — surface a generic message on the bubble.
-            if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
-                messages[idx].isStreaming = false
-                if messages[idx].content.count < 5 {
-                    messages[idx].content = "Something went wrong. Try again."
-                }
-            }
-            state = .error(error.localizedDescription)
+            pendingFlush?.cancel()
+            await handleStreamError(
+                error,
+                provider: provider,
+                userPrompt: prompt,
+                assistantId: assistantId,
+                accumulated: accumulated
+            )
         }
     }
 
+    /// Resolve a stream-loop error into an assistant bubble update +
+    /// `state` transition. Apple's `LanguageModelSession.GenerationError`
+    /// cases drive AskJot-specific recovery; everything else collapses
+    /// to a cloud-flavored or generic error.
+    private func handleStreamError(
+        _ error: Error,
+        provider: LLMProvider,
+        userPrompt: String,
+        assistantId: UUID,
+        accumulated: String
+    ) async {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            if let generationError = error as? LanguageModelSession.GenerationError {
+                await handleGenerationError(
+                    generationError,
+                    userPrompt: userPrompt,
+                    assistantId: assistantId
+                )
+                return
+            }
+        }
+        #endif
+
+        if provider != .appleIntelligence {
+            handleCloudStreamError(provider: provider, assistantId: assistantId, accumulated: accumulated)
+            return
+        }
+
+        // Unknown Apple-path error — surface a generic message.
+        if let idx = messages.firstIndex(where: { $0.id == assistantId }) {
+            messages[idx].isStreaming = false
+            if messages[idx].content.count < 5 {
+                messages[idx].content = "Something went wrong. Try again."
+            }
+        }
+        state = .error(error.localizedDescription)
+    }
+
+    private func runCloudShowFeatureTool(featureId: String) async -> String {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let tool = ShowFeatureTool(navigator: navigator)
+            return (try? await tool.call(arguments: .init(featureId: featureId))) ?? "Feature not available"
+        }
+        #endif
+
+        guard let feature = Feature.bySlug(featureId), feature.isDeepLinkable else {
+            return "Feature not available"
+        }
+        _ = feature
+        return "Shown"
+    }
+
+    #if canImport(FoundationModels)
     @available(macOS 26.0, *)
     private func handleGenerationError(
         _ error: LanguageModelSession.GenerationError,
@@ -575,6 +672,11 @@ final class HelpChatStore {
         lastStreamTask?.cancel()
         lastStreamTask = nil
         messages.removeAll()
+        // Drop the FoundationModels session so the next turn mints a
+        // fresh one with no carry-over context. For cloud paths the
+        // session is always nil, so this is a no-op there.
+        chatSession = nil
+        userConfig = nil
         state = .idle
 
         guard !isCloudAskJotEnabled() else {
@@ -588,8 +690,8 @@ final class HelpChatStore {
                 // Skip session recreate when unavailable — let the
                 // unavailable-reason UI handle it.
             } else {
-                session = makeSession()
-                session?.prewarm()
+                ensureChatSession()
+                AppleIntelligenceClient.prewarmChatSession(chatSession)
             }
         }
         #endif
@@ -604,21 +706,6 @@ final class HelpChatStore {
     private func initialAvailabilityFresh() -> ChatState {
         Self.initialAvailabilityState(llmConfiguration: llmConfiguration)
     }
-
-    // MARK: - Session factory
-
-    #if canImport(FoundationModels)
-    @available(macOS 26.0, *)
-    private func makeSession() -> LanguageModelSession {
-        let snapshot = snapshotBuilder()
-        self.userConfig = snapshot
-        let instructions = buildInstructions(userConfig: snapshot)
-        return LanguageModelSession(
-            tools: [ShowFeatureTool(navigator: navigator)],
-            instructions: instructions
-        )
-    }
-    #endif
 
     /// Assemble the instructions string per spec §6. The grounding doc
     /// is loaded lazily from the bundle; falls back to `stubHelpContent`

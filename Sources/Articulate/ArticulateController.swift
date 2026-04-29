@@ -64,7 +64,16 @@ final class ArticulateController: ObservableObject {
     private var fixedGenerationCounter: UInt64 = 0
 
     private let pipeline: VoiceInputPipeline
-    private let llm: LLMClient
+    /// Direct `LLMClient` retained alongside the dispatcher path so
+    /// the existing `init(llm:)` test seam keeps working — the
+    /// regression-test surface in `Phase4PatchRegressionTests` injects
+    /// a custom client via this parameter to force-route Apple
+    /// Intelligence and verify the seam wiring. Tier 3 production
+    /// callers go through `AIServices.current(...).articulate(...)`.
+    private let llm: LLMClient?
+    private let urlSession: URLSession
+    private let appleIntelligence: any AppleIntelligenceClienting
+    private let llmConfiguration: LLMConfiguration
     private let permissions: any PermissionsObserving
     private let pasteboard: any Pasteboarding
     private let logSink: any LogSink
@@ -81,14 +90,28 @@ final class ArticulateController: ObservableObject {
     ) {
         self.pipeline = pipeline
         self.pasteboard = pasteboard
-        self.llm = llm ?? LLMClient(
-            session: urlSession,
-            appleClient: appleIntelligence,
-            logSink: logSink,
-            llmConfiguration: llmConfiguration
-        )
+        self.llm = llm
+        self.urlSession = urlSession
+        self.appleIntelligence = appleIntelligence
+        self.llmConfiguration = llmConfiguration
         self.permissions = permissions ?? PermissionsService.shared
         self.logSink = logSink
+    }
+
+    /// Resolve the AI service for the current turn. When tests inject a
+    /// custom `LLMClient` via `init(llm:)`, route through that instance
+    /// directly so the seam stays addressable; otherwise fall through
+    /// to the live dispatcher.
+    private func articulateService() -> any AIService {
+        if let llm {
+            return DirectLLMClientAIService(client: llm)
+        }
+        return AIServices.current(
+            configuration: llmConfiguration,
+            urlSession: urlSession,
+            appleClient: appleIntelligence,
+            logSink: logSink
+        )
     }
 
     // MARK: - Articulate (Custom) — voice-driven flow
@@ -209,7 +232,8 @@ final class ArticulateController: ObservableObject {
             }
 
             state = .rewriting
-            let rewritten = try await llm.articulate(
+            let service = articulateService()
+            let rewritten = try await service.articulate(
                 selectedText: selectedText,
                 instruction: instruction
             )
@@ -336,7 +360,8 @@ final class ArticulateController: ObservableObject {
             guard stillFixedActive(generation) else { return }
             state = .rewriting
 
-            let rewritten = try await llm.articulate(
+            let service = articulateService()
+            let rewritten = try await service.articulate(
                 selectedText: selectedText,
                 instruction: Self.fixedInstruction
             )

@@ -37,4 +37,20 @@ protocol AppleIntelligenceClienting: Sendable {
     /// instruction. Throws `LLMError.appleIntelligenceUnavailable` when
     /// the model isn't available.
     func articulate(selectedText: String, instruction: String, branchPrompt: String) async throws -> String
+
+    /// Stream an Ask Jot turn through Apple Intelligence. Returns a
+    /// delta-token stream backed by `LanguageModelSession.streamResponse`.
+    ///
+    /// The caller passes a `request.session` either to reuse an
+    /// existing FoundationModels session (KV-cache warm, conversation
+    /// history retained) or `nil` to mint a fresh one. Errors —
+    /// including the original `LanguageModelSession.GenerationError`
+    /// cases (`exceededContextWindowSize`, `guardrailViolation`,
+    /// `unsupportedLanguageOrLocale`) — propagate verbatim so consumers
+    /// can switch on the typed error.
+    ///
+    /// Returns an empty stream that immediately finishes with
+    /// `LLMError.appleIntelligenceUnavailable` on macOS < 26 or when
+    /// `FoundationModels` is missing.
+    nonisolated func streamChat(request: AIChatRequest) -> AsyncThrowingStream<String, Error>
 }

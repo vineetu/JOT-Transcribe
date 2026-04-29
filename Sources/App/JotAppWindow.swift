@@ -114,7 +114,8 @@ struct JotAppWindow: View {
         _chatStore = State(initialValue: HelpChatStore(
             navigator: nav,
             urlSession: urlSession,
-            llmConfiguration: llmConfiguration
+            llmConfiguration: llmConfiguration,
+            appleIntelligence: appleIntelligence
         ))
         _voiceInput = State(initialValue: ChatbotVoiceInput(
             pipeline: pipeline,
