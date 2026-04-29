@@ -91,6 +91,41 @@ actor StubAppleIntelligence: AppleIntelligenceClienting {
         return articulateResponses.removeFirst()
     }
 
+    /// Stub `AIChatRequest` streaming. Yields each enqueued articulate
+    /// response (one per turn) split into coarse chunks so consumers
+    /// observe the `for try await` loop. No tool-calling — the stub
+    /// surface ignores `request.showFeatureTool`.
+    nonisolated func streamChat(request: AIChatRequest) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
+                }
+                guard self.isAvailable else {
+                    continuation.finish(throwing: LLMError.appleIntelligenceUnavailable)
+                    return
+                }
+                let response = await self.dequeueChatResponse(prompt: request.messages)
+                continuation.yield(response)
+                continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
+            }
+        }
+    }
+
+    private func dequeueChatResponse(prompt: [AIChatMessage]) -> String {
+        if !articulateResponses.isEmpty {
+            return articulateResponses.removeFirst()
+        }
+        // Default echo of the last user prompt so flow tests that
+        // don't enqueue a chat response still get something readable.
+        return prompt.last(where: { $0.role == .user })?.content ?? ""
+    }
+
     // MARK: - Helpers
 
     private func suspendForever() async {

@@ -195,11 +195,11 @@ final class RecorderController: ObservableObject {
                 pendingTransform = (recording: recording, result: result, rawText: rawText)
                 guard pipeline.stillActive(token) else { return }
                 state = .transforming
-                let client = LLMClient(
-                    session: urlSession,
+                let service = AIServices.current(
+                    configuration: llmConfiguration,
+                    urlSession: urlSession,
                     appleClient: appleIntelligence,
-                    logSink: logSink,
-                    llmConfiguration: llmConfiguration
+                    logSink: logSink
                 )
                 transformTask = Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -208,7 +208,7 @@ final class RecorderController: ObservableObject {
                         self.transformTask = nil
                     }
                     do {
-                        let transformed = try await client.transform(transcript: rawText)
+                        let transformed = try await service.transform(transcript: rawText)
                         guard !Task.isCancelled else { return }
                         self.lastTransformedTranscript = transformed
                         self.lastTranscript = transformed

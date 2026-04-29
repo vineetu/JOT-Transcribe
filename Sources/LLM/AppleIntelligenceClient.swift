@@ -81,6 +81,46 @@ actor AppleIntelligenceClient: AppleIntelligenceClienting {
         Self.isAvailable
     }
 
+    // MARK: - Ask Jot session lifecycle
+
+    /// Mint a new `AIChatSession` carrying a fresh
+    /// `LanguageModelSession` configured with the supplied instructions
+    /// and the AskJot `ShowFeatureTool`. Callers (today: `HelpChatStore`)
+    /// hand the result back via `AIChatRequest.session` to keep the
+    /// FoundationModels KV-cache warm across turns and to drive
+    /// `clear()` / context-full recovery by dropping the handle.
+    ///
+    /// Returns `nil` on macOS < 26 or when `FoundationModels` is
+    /// missing — callers that depend on session reuse should fall back
+    /// to passing `nil` for `request.session`, which the streamer
+    /// resolves to a per-turn ephemeral session anyway.
+    @MainActor
+    static func makeChatSession(instructions: String, navigator: HelpNavigator) -> AIChatSession? {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let session = LanguageModelSession(
+                tools: [ShowFeatureTool(navigator: navigator)],
+                instructions: instructions
+            )
+            return AIChatSession(storage: session)
+        }
+        #endif
+        return nil
+    }
+
+    /// Prewarm the supplied chat session's KV-cache. No-op below
+    /// macOS 26 or if `session` doesn't carry a
+    /// `LanguageModelSession`. Safe to call from the main actor; the
+    /// underlying `prewarm()` is itself main-actor-safe.
+    @MainActor
+    static func prewarmChatSession(_ session: AIChatSession?) {
+        #if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            (session?.storage as? LanguageModelSession)?.prewarm()
+        }
+        #endif
+    }
+
     /// Clean up a raw dictation transcript. Mirrors the contract of
     /// `LLMClient.transform(transcript:)`: caller passes the system prompt
     /// (`instruction`) and the raw transcript; we return the cleaned text.
@@ -136,6 +176,116 @@ actor AppleIntelligenceClient: AppleIntelligenceClienting {
         #else
         throw LLMError.appleIntelligenceUnavailable
         #endif
+    }
+
+    /// `AppleIntelligenceClienting.streamChat` conformer. Returns an
+    /// `AsyncThrowingStream<String, Error>` of delta tokens by driving
+    /// `LanguageModelSession.streamResponse(to:)` and converting Apple's
+    /// cumulative snapshots into deltas. Honors `request.session` (reuse
+    /// across turns when supplied; mint a fresh ephemeral session when
+    /// `nil`). Errors — including `LanguageModelSession.GenerationError`
+    /// — propagate verbatim through the stream's error continuation
+    /// so consumers can switch on the original type.
+    ///
+    /// `nonisolated` because it returns synchronously; the work happens
+    /// inside the spawned task. The actor's other methods only sync
+    /// internal state, none of which `streamChat` reads — so isolating
+    /// here would be cosmetic.
+    nonisolated func streamChat(request: AIChatRequest) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            #if canImport(FoundationModels)
+            if #available(macOS 26.0, *) {
+                let task = Task { @MainActor in
+                    // `LanguageModelSession` is `@MainActor`-isolated in
+                    // the FoundationModels API surface — read / mint /
+                    // call it from main actor isolation.
+                    let session: LanguageModelSession
+                    if let existing = request.session?.storage as? LanguageModelSession {
+                        session = existing
+                    } else {
+                        session = LanguageModelSession(instructions: request.systemInstructions)
+                    }
+
+                    // Cap maximum response length so the model can't
+                    // ramble or enter degenerate loops past a reasonable
+                    // answer length. Mirrors AskJot v2 spec §6.
+                    let options = GenerationOptions(
+                        sampling: nil,
+                        temperature: nil,
+                        maximumResponseTokens: request.maxTokens
+                    )
+
+                    // Pull the most recent user turn — the conversation
+                    // history before it is already inside the session
+                    // (Apple's API takes a single new prompt per turn).
+                    let prompt = AppleIntelligenceClient.lastUserPrompt(request.messages)
+
+                    do {
+                        var previousSnapshot = ""
+                        for try await snapshot in session.streamResponse(to: prompt, options: options) {
+                            try Task.checkCancellation()
+                            let current = snapshot.content
+                            let delta: String
+                            if current.hasPrefix(previousSnapshot) {
+                                delta = String(current.dropFirst(previousSnapshot.count))
+                            } else {
+                                // Session rewrote its partial — Apple
+                                // documents this as rare-but-allowed.
+                                // Yield a sentinel reset (the empty
+                                // string) followed by the full current
+                                // snapshot so consumers can rebuild.
+                                continuation.yield("")
+                                delta = current
+                            }
+                            previousSnapshot = current
+                            if !delta.isEmpty {
+                                continuation.yield(delta)
+                            }
+                        }
+                        continuation.finish()
+                    } catch is CancellationError {
+                        // Surface cancellation through the stream so
+                        // consumers can distinguish "user pressed Esc"
+                        // (handleCancelledStream → `(stopped)` suffix +
+                        // state = .idle) from "model finished
+                        // naturally" (finalizeStream). Pre-unification
+                        // the cloud path already did this; the on-device
+                        // path now matches.
+                        continuation.finish(throwing: CancellationError())
+                    } catch {
+                        // Propagate verbatim — `HelpChatStore`'s
+                        // `handleGenerationError` switches on the
+                        // original `LanguageModelSession.GenerationError`
+                        // cases (`exceededContextWindowSize`,
+                        // `guardrailViolation`,
+                        // `unsupportedLanguageOrLocale`) to drive
+                        // AskJot-specific recovery. Don't map them at
+                        // this layer or the switch breaks.
+                        continuation.finish(throwing: error)
+                    }
+                }
+
+                continuation.onTermination = { _ in
+                    task.cancel()
+                }
+            } else {
+                continuation.finish(throwing: LLMError.appleIntelligenceUnavailable)
+            }
+            #else
+            continuation.finish(throwing: LLMError.appleIntelligenceUnavailable)
+            #endif
+        }
+    }
+
+    /// Pull the most recent user turn out of the conversation history.
+    /// FoundationModels' `LanguageModelSession.streamResponse(to:)`
+    /// expects a single new prompt; the rest of the history is already
+    /// inside the session.
+    private static func lastUserPrompt(_ messages: [AIChatMessage]) -> String {
+        for message in messages.reversed() where message.role == .user {
+            return message.content
+        }
+        return ""
     }
 
     #if canImport(FoundationModels)
