@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 import SwiftData
 import os.log
@@ -60,6 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         log.info("Jot launched")
+
+        // Hotfix: ensure Jot appears in System Settings → Privacy → Microphone
+        // by force-triggering TCC registration on launch. Only fires when
+        // status is .notDetermined; no-op when already granted/denied.
+        if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+            Task { _ = await AVCaptureDevice.requestAccess(for: .audio) }
+        }
 
         #if DEBUG
         HelpInfraTests.runAll()

@@ -152,6 +152,13 @@ final class PermissionsService: ObservableObject, PermissionsObserving {
     }
 
     private func requestMicrophone() async {
+        // Open System Settings → Microphone immediately so the click is
+        // never silent — same parity as Input Monitoring and Accessibility
+        // rows, which already deep-link there. macOS 26's tccd has been
+        // observed to "Delay prompt" indefinitely for some Developer ID
+        // builds, so we cannot rely on requestAccess delivering a dialog.
+        SystemSettingsLinks.open(for: .microphone)
+
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         log.info("Microphone request result: \(granted, privacy: .public)")
         if !granted {

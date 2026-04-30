@@ -49,7 +49,7 @@ struct PermissionsStep: View {
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("Restart Jot") { RestartHelper.relaunchApp() }
+                    Button("Restart Jot") { RestartHelper.relaunch() }
                 }
                 .padding(12)
                 .background(
@@ -97,7 +97,7 @@ struct PermissionsStep: View {
         task.arguments = ["reset", "All", bundleID]
         try? task.run()
         task.waitUntilExit()
-        RestartHelper.relaunchApp()
+        RestartHelper.relaunch()
     }
 
     private func updateChrome() {

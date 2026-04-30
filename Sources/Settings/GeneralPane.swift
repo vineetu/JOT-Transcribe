@@ -177,42 +177,46 @@ struct GeneralPane: View {
             }
         }
         .formStyle(.grouped)
-        .alert(item: $pendingAlert) { kind in
+        // Migrated from the legacy `Alert(...primaryButton:secondaryButton:)`
+        // API to the modern `.alert(_:isPresented:presenting:actions:message:)`.
+        // The legacy form has a documented class of bugs where the destructive
+        // button's action closure silently fails to fire — observed behavior
+        // matched ours exactly: alert dismisses, NSBeep, no wipe, no relaunch.
+        .alert(
+            Text(alertTitle(for: pendingAlert)),
+            isPresented: Binding(
+                get: { pendingAlert != nil },
+                set: { if !$0 { pendingAlert = nil } }
+            ),
+            presenting: pendingAlert
+        ) { kind in
             switch kind {
             case .soft:
-                return Alert(
-                    title: Text("Reset settings?"),
-                    message: Text("Clears your preferences, API keys, and shortcuts. Your recordings and downloaded model stay. Jot will relaunch into setup."),
-                    primaryButton: .destructive(Text("Reset and Relaunch")) {
-                        ResetActions.softReset(keychain: self.keychain)
-                    },
-                    secondaryButton: .cancel()
-                )
+                Button("Reset and Relaunch", role: .destructive) {
+                    ResetActions.softReset(keychain: keychain)
+                }
             case .hard:
-                return Alert(
-                    title: Text("Erase all Jot data?"),
-                    message: Text("Deletes every recording, the transcription model (≈600 MB, re-downloads on next launch), and all settings. macOS permissions are untouched. Jot will relaunch into setup."),
-                    primaryButton: .destructive(Text("Erase and Relaunch")) {
-                        ResetActions.hardReset(keychain: self.keychain)
-                    },
-                    secondaryButton: .cancel()
-                )
+                Button("Erase and Relaunch", role: .destructive) {
+                    ResetActions.hardReset(keychain: keychain)
+                }
             case .permissions:
-                return Alert(
-                    title: Text("Reset permissions?"),
-                    message: Text("Revokes all of Jot's macOS privacy grants so macOS re-asks on next launch. Your recordings and settings stay. Jot will relaunch."),
-                    primaryButton: .destructive(Text("Reset and Relaunch")) {
-                        ResetActions.resetPermissions()
-                    },
-                    secondaryButton: .cancel()
-                )
+                Button("Reset and Relaunch", role: .destructive) {
+                    ResetActions.resetPermissions()
+                }
             case .restart:
-                return Alert(
-                    title: Text("Restart Jot?"),
-                    message: Text("Jot will quit and reopen, re-registering global shortcuts from scratch. Your settings and recordings are preserved."),
-                    primaryButton: .default(Text("Restart")) { RestartHelper.relaunch() },
-                    secondaryButton: .cancel()
-                )
+                Button("Restart") { RestartHelper.relaunch() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { kind in
+            switch kind {
+            case .soft:
+                Text("Clears your preferences, API keys, and shortcuts. Your recordings and downloaded model stay. Jot will relaunch into setup.")
+            case .hard:
+                Text("Deletes every recording, the transcription model (≈600 MB, re-downloads on next launch), and all settings. macOS permissions are untouched. Jot will relaunch into setup.")
+            case .permissions:
+                Text("Revokes all of Jot's macOS privacy grants so macOS re-asks on next launch. Your recordings and settings stay. Jot will relaunch.")
+            case .restart:
+                Text("Jot will quit and reopen, re-registering global shortcuts from scratch. Your settings and recordings are preserved.")
             }
         }
         .onAppear {
@@ -264,6 +268,16 @@ struct GeneralPane: View {
             .popover(isPresented: popover, arrowEdge: .trailing) {
                 ResetInfoPopover(kind: kind)
             }
+        }
+    }
+
+    private func alertTitle(for kind: ResetAlertKind?) -> String {
+        switch kind {
+        case .soft: return "Reset settings?"
+        case .hard: return "Erase all Jot data?"
+        case .permissions: return "Reset permissions?"
+        case .restart: return "Restart Jot?"
+        case .none: return ""
         }
     }
 
