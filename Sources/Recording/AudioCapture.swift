@@ -426,23 +426,38 @@ public actor AudioCapture: AudioCapturing {
         let disconnectQueue = self.disconnectQueue
         // Note: stored as a NSObjectProtocol — fine to remove from any
         // thread in `finishDisconnectStream`.
+        let log = self.log
         deviceListObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name.AVCaptureDeviceWasDisconnected,
             object: nil,
             queue: nil
         ) { notification in
+            log.info("[disconnect-diag] AVCapture wasDisconnected fired: device.uniqueID=\((notification.object as? AVCaptureDevice)?.uniqueID ?? "<nil>", privacy: .public) device.localizedName=\((notification.object as? AVCaptureDevice)?.localizedName ?? "<nil>", privacy: .public) activeBoundUID=\(boundUID, privacy: .public)")
             guard let device = notification.object as? AVCaptureDevice,
                   device.uniqueID == boundUID
-            else { return }
+            else {
+                if let mismatched = notification.object as? AVCaptureDevice {
+                    log.info("[disconnect-diag] gate-uid: MISS (notification=\(mismatched.uniqueID, privacy: .public) bound=\(boundUID, privacy: .public))")
+                }
+                return
+            }
+            log.info("[disconnect-diag] gate-uid: MATCH (\(boundUID, privacy: .public))")
             // 250 ms debounce — Bluetooth (AirPods especially) emits a
             // brief disconnect/reconnect during route changes that
             // shouldn't kill an in-progress recording. Re-check the
             // device list at the end of the debounce window; if the
             // device is back, drop the event.
+            log.info("[disconnect-diag] gate-wait: starting 250ms debounce for \(boundUID, privacy: .public)")
             disconnectQueue.asyncAfter(deadline: .now() + .milliseconds(250)) {
                 let stillMissing = AudioCapture.audioDeviceID(forUID: boundUID) == nil
-                guard stillMissing else { return }
-                guard context.tryMarkDisconnected() else { return }
+                guard stillMissing else {
+                    log.info("[disconnect-diag] gate-recheck: REAPPEARED — suppressing")
+                    return
+                }
+                log.info("[disconnect-diag] gate-recheck: STILL_MISSING — proceeding to tryMarkDisconnected()")
+                let casResult = context.tryMarkDisconnected()
+                log.info("[disconnect-diag] gate-cas: tryMarkDisconnected() called, result=\(casResult, privacy: .public)")
+                guard casResult else { return }
                 let continuation = context.disconnectContinuation
                 continuation.yield(.deviceListDropped)
                 continuation.finish()
@@ -1251,6 +1266,7 @@ private func audioCaptureAUHALInputCallback(
             let status = renderStatus
             let log = ctx.log
             ctx.disconnectQueue.async {
+                log.info("[disconnect-diag] auhal-render: status=\(status, privacy: .public)")
                 log.error("AudioUnitRender failed: \(status, privacy: .public)")
                 continuation.yield(.renderError(status))
                 continuation.finish()
