@@ -30,7 +30,8 @@ struct PermissionsStep: View {
                     title: "Input Monitoring",
                     subtitle: "Lets the ⌥Space global hotkey fire from any app.",
                     status: permissions.statuses[.inputMonitoring] ?? .notDetermined,
-                    primaryLabel: "Open System Settings"
+                    primaryLabel: "Open System Settings",
+                    extraInstructions: "If Jot isn't already listed, click the + button, then choose Applications → Jot."
                 )
                 PermissionRow(
                     capability: .accessibilityPostEvents,
@@ -124,29 +125,51 @@ private struct PermissionRow: View {
     let subtitle: LocalizedStringKey
     let status: PermissionStatus
     let primaryLabel: LocalizedStringKey
+    /// Extra inline guidance rendered below the row when the
+    /// capability isn't yet granted. Used by Input Monitoring to tell
+    /// the user to manually add Jot from Applications — macOS no
+    /// longer reliably auto-populates Jot in that pane on dev builds
+    /// (see project memory `project_input_monitoring_auto_register_futile`),
+    /// so guiding them through the manual add is the honest UX.
+    var extraInstructions: LocalizedStringKey? = nil
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(title)
-                        .font(.system(size: 13, weight: .semibold))
-                    StatusPill(status: status)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.system(size: 13, weight: .semibold))
+                        StatusPill(status: status)
+                    }
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
-                Text(subtitle)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+
+                Spacer(minLength: 8)
+
+                if status != .granted {
+                    Button(primaryLabel) {
+                        Task { await PermissionsService.shared.request(capability) }
+                    }
+                    .controlSize(.small)
+                }
             }
 
-            Spacer(minLength: 8)
-
-            if status != .granted {
-                Button(primaryLabel) {
-                    Task { await PermissionsService.shared.request(capability) }
+            if let extraInstructions, status != .granted {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text(extraInstructions)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
-                .controlSize(.small)
             }
         }
         .padding(12)

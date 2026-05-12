@@ -25,6 +25,16 @@ final class HotkeyRouter {
     private var cancelEnabled = false
     private var pttPendingRelease = false
 
+    /// When non-nil, every `.toggleRecording` press routes here instead
+    /// of into `recorder.toggle()`. The Setup Wizard's Test step sets
+    /// this on appear (so the user can validate the real hotkey path
+    /// without triggering paste / Library / chime side effects) and
+    /// clears it on disappear. Single underlying KeyboardShortcuts
+    /// handler — avoids the library's append-handler semantics that
+    /// would otherwise fire both production and wizard logic on every
+    /// press.
+    private var toggleRecordingOverride: (() -> Void)?
+
     init(recorder: RecorderController, delivery: DeliveryService, rewriteController: RewriteController? = nil) {
         self.recorder = recorder
         self.delivery = delivery
@@ -36,16 +46,7 @@ final class HotkeyRouter {
         guard !activated else { return }
         activated = true
 
-        KeyboardShortcuts.onKeyDown(for: .toggleRecording) { [weak self] in
-            guard let self else { return }
-            self.log.info("toggleRecording fired")
-            Task { @MainActor in
-                if case .error = self.recorder.state {
-                    self.recorder.clearError()
-                }
-                await self.recorder.toggle()
-            }
-        }
+        installToggleRecording()
 
         KeyboardShortcuts.onKeyDown(for: .cancelRecording) { [weak self] in
             guard let self else { return }
@@ -150,6 +151,48 @@ final class HotkeyRouter {
         case .idle, .error: false
         case .capturing, .recording, .transcribing, .rewriting: true
         }
+    }
+
+    /// Install the single `.toggleRecording` handler. Routes to the
+    /// active override (if any) — otherwise to `recorder.toggle()`.
+    ///
+    /// We use a single underlying KeyboardShortcuts registration
+    /// because the library APPENDS handlers per shortcut name; a
+    /// naive "register a second wizard handler" would have BOTH the
+    /// production and wizard logic fire on every press. Routing via
+    /// the override property keeps exactly one registration alive
+    /// and makes the wizard's commandeer/restore atomic.
+    private func installToggleRecording() {
+        KeyboardShortcuts.onKeyDown(for: .toggleRecording) { [weak self] in
+            guard let self else { return }
+            self.log.info("toggleRecording fired")
+            if let override = self.toggleRecordingOverride {
+                override()
+                return
+            }
+            Task { @MainActor in
+                if case .error = self.recorder.state {
+                    self.recorder.clearError()
+                }
+                await self.recorder.toggle()
+            }
+        }
+    }
+
+    /// Route every `.toggleRecording` press to `handler` instead of
+    /// the production recorder. Used by the Setup Wizard's Test step
+    /// so the user can exercise the hotkey + Input Monitoring + global
+    /// tap path without triggering paste / Library / chime side
+    /// effects. Pair every call with `clearToggleRecordingOverride()`
+    /// on disappear.
+    func setToggleRecordingOverride(_ handler: @escaping () -> Void) {
+        toggleRecordingOverride = handler
+    }
+
+    /// Stop routing `.toggleRecording` presses through the override —
+    /// the next press goes back to `recorder.toggle()`.
+    func clearToggleRecordingOverride() {
+        toggleRecordingOverride = nil
     }
 
     private func updateCancelEnablement(

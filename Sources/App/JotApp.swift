@@ -66,6 +66,7 @@ private struct JotMainContent: View {
                 audioCapture: services.audioCapture,
                 keychain: services.keychain,
                 llmConfiguration: services.llmConfiguration,
+                hotkeyRouter: services.hotkeyRouter,
                 navigationHistory: navHistory
             )
                 .environmentObject(firstRunState)

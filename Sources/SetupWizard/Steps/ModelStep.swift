@@ -12,9 +12,13 @@ struct ModelStep: View {
     @ObservedObject private var permissions = PermissionsService.shared
 
     @State private var cacheByID: [ParakeetModelID: Bool] = [:]
-    @State private var isDownloading = false
+    /// Which model is currently downloading. `nil` when idle. Only one
+    /// in-flight at a time — `startDownload(for:)` no-ops while another
+    /// download is running so the user can't pile multiple fetches onto
+    /// the same network pipe.
+    @State private var downloadingModel: ParakeetModelID?
     @State private var downloadProgress: Double = 0
-    @State private var errorMessage: String?
+    @State private var errorByID: [ParakeetModelID: String] = [:]
 
     // Optional Parakeet CTC 110M boost bundle used by the Vocabulary
     // feature. Kept local to this step — the main transcription pipeline
@@ -26,10 +30,6 @@ struct ModelStep: View {
 
     private var selectedModel: ParakeetModelID {
         holder.primaryModelID
-    }
-
-    private var selectedIsCached: Bool {
-        cacheByID[selectedModel] ?? false
     }
 
     var body: some View {
@@ -49,45 +49,18 @@ struct ModelStep: View {
                         model: model,
                         isSelected: model == selectedModel,
                         isCached: cacheByID[model] ?? false,
+                        isDownloading: downloadingModel == model,
+                        downloadProgress: downloadingModel == model ? downloadProgress : 0,
+                        anyDownloadInFlight: downloadingModel != nil,
+                        errorMessage: errorByID[model],
                         onSelect: {
                             Task { await holder.setPrimary(model) }
+                        },
+                        onDownload: {
+                            Task { await holder.setPrimary(model) }
+                            startDownload(for: model)
                         }
                     )
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                if selectedIsCached {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Already downloaded.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                } else if isDownloading {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ProgressView(value: downloadProgress)
-                        Text("\(Int(downloadProgress * 100))% downloaded")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                } else {
-                    HStack(spacing: 10) {
-                        Text(sizeLabel(for: selectedModel))
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Download") { startDownload() }
-                            .controlSize(.small)
-                    }
-                }
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -193,11 +166,6 @@ struct ModelStep: View {
         }
     }
 
-    private func sizeLabel(for id: ParakeetModelID) -> String {
-        let gb = Double(id.approxBytes) / 1_000_000_000
-        return String(format: String(localized: "Approx. %.2f GB on disk"), gb)
-    }
-
     private func refreshCache() {
         boostCached = CtcModelCache.shared.isCached
         var updated: [ParakeetModelID: Bool] = [:]
@@ -219,17 +187,17 @@ struct ModelStep: View {
         let persistent = coordinator.canAdvance(from: .model, given: state)
         coordinator.setChrome(WizardStepChrome(
             primaryTitle: "Continue",
-            canAdvance: persistent && !isDownloading,
+            canAdvance: persistent && downloadingModel == nil,
             isPrimaryBusy: false,
             showsSkip: true
         ))
     }
 
-    private func startDownload() {
-        let model = selectedModel
-        isDownloading = true
+    private func startDownload(for model: ParakeetModelID) {
+        guard downloadingModel == nil else { return }
+        downloadingModel = model
         downloadProgress = 0
-        errorMessage = nil
+        errorByID[model] = nil
         updateChrome()
 
         Task {
@@ -239,7 +207,7 @@ struct ModelStep: View {
                     Task { @MainActor in downloadProgress = fraction }
                 }
                 await MainActor.run {
-                    isDownloading = false
+                    downloadingModel = nil
                     downloadProgress = 1.0
                     // Holder owns the canonical `installedModelIDs` set
                     // that `coordinator.canAdvance(from: .model)` reads.
@@ -254,8 +222,8 @@ struct ModelStep: View {
             } catch {
                 await ErrorLog.shared.error(component: "SetupWizard", message: "Parakeet model download failed", context: ["modelID": model.rawValue, "error": ErrorLog.redactedAppleError(error)])
                 await MainActor.run {
-                    isDownloading = false
-                    errorMessage = "Download failed: \(error.localizedDescription)"
+                    downloadingModel = nil
+                    errorByID[model] = "Download failed: \(error.localizedDescription)"
                     refreshCache()
                     updateChrome()
                 }
@@ -268,48 +236,91 @@ private struct ModelOptionRow: View {
     let model: ParakeetModelID
     let isSelected: Bool
     let isCached: Bool
+    let isDownloading: Bool
+    let downloadProgress: Double
+    let anyDownloadInFlight: Bool
+    let errorMessage: String?
     let onSelect: () -> Void
+    let onDownload: () -> Void
 
     var body: some View {
-        Button(action: onSelect) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 12) {
-                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 16))
-                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(model.displayName)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.primary)
-                        if model.isExperimental {
-                            ExperimentalBadge()
+                Button(action: onSelect) {
+                    HStack(alignment: .center, spacing: 12) {
+                        Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                            .font(.system(size: 16))
+                            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(model.displayName)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                if model.isRecommended {
+                                    RecommendedBadge()
+                                }
+                                if model.isExperimental {
+                                    ExperimentalBadge()
+                                }
+                            }
+                            Text(sizeText)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    HStack(spacing: 8) {
-                        Text(sizeText)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        if isCached {
-                            Text("Downloaded")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.green)
-                        }
-                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+
                 Spacer()
+
+                trailing
             }
             .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.10) : Color(nsColor: .controlBackgroundColor).opacity(0.5))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(isSelected ? Color.accentColor.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: 1)
-            )
-            .contentShape(Rectangle())
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+            }
         }
-        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.10) : Color(nsColor: .controlBackgroundColor).opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(isSelected ? Color.accentColor.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var trailing: some View {
+        if isCached {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("Downloaded")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.green)
+            }
+        } else if isDownloading {
+            HStack(spacing: 8) {
+                ProgressView(value: downloadProgress)
+                    .frame(width: 90)
+                Text("\(Int(downloadProgress * 100))%")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        } else {
+            Button("Download", action: onDownload)
+                .controlSize(.small)
+                .disabled(anyDownloadInFlight)
+        }
     }
 
     private var sizeText: String {

@@ -86,6 +86,24 @@ enum TroubleshootingContent {
         },
 
         TroubleshootingCardData(
+            id: "input-monitoring-not-listed",
+            title: "Jot missing from Input Monitoring?",
+            badge: "manual add",
+            body:
+                "Symptom: you open System Settings → Privacy & Security → Input Monitoring and "
+                + "Jot isn't in the list at all.",
+            expansionProse:
+                "Cause: macOS doesn't always auto-populate Jot in this pane on first launch — "
+                + "and we can't reliably force it from the app.\n\n"
+                + "Fix: in the Input Monitoring pane, click the + button below the list, choose "
+                + "Applications, scroll to Jot, and add it. Then toggle the switch on. Jot will "
+                + "ask you to restart so the new permission takes effect.",
+            inlineActions: [.openPrivacySettings]
+        ) {
+            TSIllustration.composite(primary: "lock.shield", accent: "plus.circle")
+        },
+
+        TroubleshootingCardData(
             id: "modifier-required",
             title: "Modifier required",
             badge: "platform",

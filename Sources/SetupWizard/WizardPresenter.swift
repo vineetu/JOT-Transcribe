@@ -40,7 +40,8 @@ enum WizardPresenter {
         urlSession: URLSession,
         appleIntelligence: any AppleIntelligenceClienting,
         llmConfiguration: LLMConfiguration,
-        logSink: any LogSink = ErrorLog.shared
+        logSink: any LogSink = ErrorLog.shared,
+        hotkeyRouter: HotkeyRouter
     ) {
         if let controller {
             // Already open — just bring it forward.
@@ -56,6 +57,7 @@ enum WizardPresenter {
             appleIntelligence: appleIntelligence,
             llmConfiguration: llmConfiguration,
             logSink: logSink,
+            hotkeyRouter: hotkeyRouter,
             onFinish: { closeWindow() }
         )
         let wc = SetupWizardWindowController(

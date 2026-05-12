@@ -12,10 +12,22 @@ enum WizardStepID: Int, CaseIterable, Identifiable, Sendable {
     // Terminal "you're set up for the basics" card shown right after
     // the Test step succeeds. Skip is the suggested first-run action —
     // most users want to stop here and start using Jot. Continue reveals
-    // the advanced steps (LLM cleanup, Rewrite) for power users who
-    // want to set those up inline. Either way the user can return to
-    // Settings → General → Run Setup Wizard later.
+    // the advanced steps (AI provider, LLM cleanup, Rewrite) for power
+    // users who want to set those up inline. Either way the user can
+    // return to Settings → General → Run Setup Wizard later.
     case done
+    /// Optional custom-vocabulary primer. First step of the advanced
+    /// flow because it's the lightest-weight: no API keys, no network
+    /// (except the optional boost-model download), no LLM dependency.
+    /// Users who only want vocabulary can finish here and Skip the AI
+    /// steps entirely.
+    case vocabulary
+    /// AI provider configuration (provider picker, key / URL / model
+    /// fields, Test Connection). Lives between `.vocabulary` and
+    /// `.cleanup` so users entering the advanced flow actively pick
+    /// and verify a provider before they see the Cleanup / Rewrite
+    /// demos run against it.
+    case aiProvider
     case cleanup
     case rewriteIntro
 

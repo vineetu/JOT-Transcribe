@@ -64,6 +64,10 @@ struct JotAppWindow: View {
     private let appleIntelligence: any AppleIntelligenceClienting
     private let audioCapture: any AudioCapturing
     private let keychain: any KeychainStoring
+    /// Forwarded into `GeneralPane` → `WizardPresenter.present(...)` so
+    /// the wizard's hotkey-driven `TestStep` can temporarily commandeer
+    /// `.toggleRecording`.
+    private let hotkeyRouter: HotkeyRouter
 
     @MainActor
     init(
@@ -73,7 +77,8 @@ struct JotAppWindow: View {
         appleIntelligence: any AppleIntelligenceClienting,
         audioCapture: any AudioCapturing,
         keychain: any KeychainStoring,
-        llmConfiguration: LLMConfiguration
+        llmConfiguration: LLMConfiguration,
+        hotkeyRouter: HotkeyRouter
     ) {
         self.init(
             pipeline: pipeline,
@@ -83,6 +88,7 @@ struct JotAppWindow: View {
             audioCapture: audioCapture,
             keychain: keychain,
             llmConfiguration: llmConfiguration,
+            hotkeyRouter: hotkeyRouter,
             navigationHistory: NavigationHistory()
         )
     }
@@ -95,6 +101,7 @@ struct JotAppWindow: View {
         audioCapture: any AudioCapturing,
         keychain: any KeychainStoring,
         llmConfiguration: LLMConfiguration,
+        hotkeyRouter: HotkeyRouter,
         navigationHistory: NavigationHistory
     ) {
         let initial = JotAppWindow.pendingSelection ?? .home
@@ -106,6 +113,7 @@ struct JotAppWindow: View {
         self.appleIntelligence = appleIntelligence
         self.audioCapture = audioCapture
         self.keychain = keychain
+        self.hotkeyRouter = hotkeyRouter
         // Build the store tied to the same navigator instance we own
         // above so `ShowFeatureTool` → navigator → HelpPane routing
         // writes/reads the same observable.
@@ -202,7 +210,8 @@ struct JotAppWindow: View {
                                     keychain: keychain,
                                     urlSession: urlSession,
                                     appleIntelligence: appleIntelligence,
-                                    llmConfiguration: llmConfiguration
+                                    llmConfiguration: llmConfiguration,
+                                    hotkeyRouter: hotkeyRouter
                                 )
             case .transcription: TranscriptionPane()
             case .vocabulary:    VocabularyPane()

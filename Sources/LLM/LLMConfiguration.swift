@@ -68,8 +68,19 @@ final class LLMConfiguration: ObservableObject {
     /// Existing users whose `@AppStorage` already holds a provider value
     /// see no change — `@AppStorage` reads the stored value before this
     /// default ever applies.
+    ///
+    /// v1.8 change for `JOT_FLAVOR_1` (Sony / PFB Enterprise): the
+    /// default becomes `.flavor1` because the flavor exists precisely
+    /// to route AI features through the company gateway. Apple
+    /// Intelligence and the public cloud providers remain selectable
+    /// in Settings → AI and in the Setup Wizard — they're just not the
+    /// first-install pick.
     static var firstInstallDefaultProvider: LLMProvider {
-        AppleIntelligenceClient.isAvailable ? .appleIntelligence : .openai
+        #if JOT_FLAVOR_1
+        return .flavor1
+        #else
+        return AppleIntelligenceClient.isAvailable ? .appleIntelligence : .openai
+        #endif
     }
 
     @AppStorage(LLMConfiguration.providerKey) var provider: LLMProvider = LLMConfiguration.firstInstallDefaultProvider

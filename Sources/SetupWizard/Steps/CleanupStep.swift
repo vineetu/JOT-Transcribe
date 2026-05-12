@@ -19,6 +19,7 @@ import SwiftUI
 ///     it does.
 struct CleanupStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
+    @EnvironmentObject private var config: LLMConfiguration
 
     @State private var phase: PreviewPhase = .idle
     @State private var cleanedText: String = ""
@@ -58,7 +59,14 @@ struct CleanupStep: View {
                 demoCard(for: transcript)
             }
 
-            disclaimerCard
+            // Apple-Intelligence-specific quality caveat: only show
+            // when the user actually chose Apple Intelligence (either
+            // by accepting the on-device default or by switching to it
+            // in the AI provider step). For any other provider, the
+            // caveat is stale and would mislead.
+            if config.provider == .appleIntelligence {
+                disclaimerCard
+            }
 
             settingsPointer
 

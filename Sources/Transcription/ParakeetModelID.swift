@@ -134,6 +134,21 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         }
     }
 
+    /// `true` when the option should be visually surfaced as the
+    /// recommended pick. UI renders a "Recommended" badge alongside
+    /// the display name (and the Experimental badge when both apply).
+    /// The streaming option carries this flag — its live preview is
+    /// the headline experience we want users to try first, even though
+    /// it's still labelled Experimental.
+    public var isRecommended: Bool {
+        switch self {
+        case .tdt_0_6b_v3, .tdt_0_6b_ja:
+            return false
+        case .tdt_0_6b_v2_en_streaming:
+            return true
+        }
+    }
+
     /// Subset of `allCases` that should be rendered in user-facing UI
     /// (Settings → Transcription, Setup Wizard's Model step). Lets a
     /// case land on the enum before its UI is wired without forcing

@@ -57,6 +57,13 @@ final class SetupWizardCoordinator: ObservableObject {
     let llmConfiguration: LLMConfiguration
     let logSink: any LogSink
 
+    /// Production `HotkeyRouter`, threaded through so `TestStep` can
+    /// temporarily commandeer `.toggleRecording` to test the hotkey
+    /// path end-to-end without firing the production recorder (which
+    /// would paste, persist, and chime). `nil` in the harness — its
+    /// flow tests never render `TestStep`'s view body.
+    let hotkeyRouter: HotkeyRouter?
+
     private let onFinish: () -> Void
 
     init(
@@ -67,6 +74,7 @@ final class SetupWizardCoordinator: ObservableObject {
         appleIntelligence: any AppleIntelligenceClienting,
         llmConfiguration: LLMConfiguration,
         logSink: any LogSink = ErrorLog.shared,
+        hotkeyRouter: HotkeyRouter? = nil,
         onFinish: @escaping () -> Void
     ) {
         self.currentStep = step
@@ -76,6 +84,7 @@ final class SetupWizardCoordinator: ObservableObject {
         self.appleIntelligence = appleIntelligence
         self.llmConfiguration = llmConfiguration
         self.logSink = logSink
+        self.hotkeyRouter = hotkeyRouter
         self.onFinish = onFinish
     }
 
@@ -111,7 +120,7 @@ final class SetupWizardCoordinator: ObservableObject {
             // Primary disabled while a recording is in flight — that's
             // chrome-level state, not a precondition.
             return true
-        case .done, .cleanup, .rewriteIntro:
+        case .done, .vocabulary, .aiProvider, .cleanup, .rewriteIntro:
             // Post-basics walkthrough steps. No persistent precondition.
             return true
         }

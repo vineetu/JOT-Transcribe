@@ -290,7 +290,7 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Pick who does the AI work. Apple Intelligence is the default on macOS 26+ — on-device, private, free, but quality for Cleanup trails cloud today. Cloud providers (OpenAI, Anthropic, Gemini) deliver strong results with your own API key. Ollama runs locally.",
+                        prose: "Pick who does the AI work — the setup wizard asks you to choose, with no default pre-selected. Apple Intelligence is on-device, private, and free (no API key). Cloud providers (OpenAI, Anthropic, Gemini) deliver strong results with your own key. Ollama runs locally.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
                             pane: .ai,

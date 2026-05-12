@@ -215,17 +215,19 @@ Info popovers across Settings deep-link into the matching Help section so the us
 
 ## Setup Wizard
 
-Shown on first launch and on demand from Settings → General. Nine steps, in order; each can be skipped. Done is the "you're set up for the basics" checkpoint — most first-run users stop there, and Continue reveals the advanced steps (Cleanup, Rewrite intro) for power users who want to configure them inline.
+Shown on first launch and on demand from Settings → General. Eleven steps, in order; each can be skipped. Done is the "you're set up for the basics" checkpoint — most first-run users stop there, and Continue reveals the advanced steps (Vocabulary, AI Provider, Cleanup, Rewrite intro) for power users who want to configure them inline.
 
 1. **Welcome**
-2. **Permissions** — grant Microphone, Input Monitoring, and Accessibility. A "Restart Jot" button is offered after granting Input Monitoring or Accessibility (a running app can't detect those until it relaunches).
-3. **Model** — pick the transcription engine and download it on first run. Three options: Parakeet TDT 0.6B v3 (multilingual, default), Parakeet 0.6B Japanese, and the experimental Parakeet 0.6B v2 + EOU streaming bundle (English live preview). Already-downloaded models skip straight through.
+2. **Permissions** — grant Microphone, Input Monitoring, and Accessibility. A "Restart Jot" button is offered after granting Input Monitoring or Accessibility (a running app can't detect those until it relaunches). The Input Monitoring row carries an inline instruction: if Jot doesn't auto-populate in the System Settings list, click + → Applications → Jot.
+3. **Model** — pick the transcription engine and download it on first run. Three options: Parakeet TDT 0.6B v3 (multilingual), Parakeet 0.6B Japanese, and Parakeet 0.6B v2 + EOU streaming bundle (English live preview) — badged **Recommended** *and* Experimental for new installs. Each row shows an inline Download button next to the size; cached rows show a green "Downloaded" chip. Already-downloaded models skip straight through.
 4. **Microphone** — pick the input device for recording. A live input-level meter under the picker confirms the mic is hot before you continue. A disconnected preferred device stays visible as "Last used (not connected)".
 5. **Shortcuts** — preview of the default Toggle Recording shortcut.
 6. **Test dictation** — speak to verify the full pipeline end-to-end. The user controls the capture window (no hard 3-second cap) and can re-test as many times as they like.
 7. **Done** — terminal "you're set up for the basics" card shown right after Test succeeds. Skip here to start using Jot; Continue advances into the advanced steps below.
-8. **Cleanup** — introduces Auto-correct (LLM transcript cleanup). When the Test step produced a transcript, a "Preview cleanup" button runs the user's current provider (Apple Intelligence on macOS 26+, or whichever cloud / Ollama provider is configured) against that transcript so the user sees the before/after inline. No toggle here — actually enabling Auto-correct still happens in Settings → AI.
-9. **Rewrite intro** — brief voice-driven-rewrite walkthrough: select → speak instruction → replace. Surfaced after the user has successfully dictated so they know what "Rewrite" means before they're asked to think about binding a shortcut.
+8. **Vocabulary** (optional) — add custom terms Jot should prefer when transcribing (product names, proper nouns, jargon). Inline Add/Delete with hover affordances, a 100 MB boost-model download row, and a Japanese-primary warning. On a fresh install, adding the first term auto-enables vocabulary boosting and prepares the live rescorer; returning users keep whatever isEnabled state they had.
+9. **AI Provider** (optional) — picker for Cleanup / Rewrite provider. Starts at "Choose…" with **no default pre-selected** so users actively pick. Options: Apple Intelligence, OpenAI, Anthropic, Gemini, Ollama. Provider-specific fields (base URL, model, API key) plus Test Connection appear only after a pick. Hides the API-key field for providers that don't use one (Apple Intelligence, Ollama, Flavor-1 JWT). The picker remembers the user's choice across Back/Continue and subsequent wizard reruns.
+10. **Cleanup** — introduces Auto-correct (LLM transcript cleanup). When the Test step produced a transcript, a "Preview cleanup" button runs the user's current provider against that transcript so the user sees the before/after inline. The Apple-Intelligence-specific quality disclaimer is only shown when the user actually picked Apple Intelligence — otherwise hidden. No toggle here — actually enabling Auto-correct still happens in Settings → AI.
+11. **Rewrite intro** — brief voice-driven-rewrite walkthrough: select → speak instruction → replace. Surfaced after the user has successfully dictated so they know what "Rewrite" means before they're asked to think about binding a shortcut.
 
 ## System Integration
 

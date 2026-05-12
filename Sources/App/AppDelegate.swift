@@ -188,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let appleIntelligence = services.appleIntelligence
         let llmConfiguration = services.llmConfiguration
         let logSink = services.logSink
+        let hotkeyRouter = services.hotkeyRouter
         DispatchQueue.main.async {
             WizardPresenter.present(
                 reason: .firstRun,
@@ -196,7 +197,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 urlSession: urlSession,
                 appleIntelligence: appleIntelligence,
                 llmConfiguration: llmConfiguration,
-                logSink: logSink
+                logSink: logSink,
+                hotkeyRouter: hotkeyRouter
             )
         }
     }

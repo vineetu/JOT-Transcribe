@@ -132,6 +132,9 @@ struct TranscriptionPane: View {
                     HStack(spacing: 6) {
                         Text(model.displayName)
                             .font(.system(size: 13, weight: isPrimary ? .semibold : .regular))
+                        if model.isRecommended {
+                            RecommendedBadge()
+                        }
                         if model.isExperimental {
                             ExperimentalBadge()
                         }

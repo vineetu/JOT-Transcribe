@@ -37,19 +37,26 @@ struct GeneralPane: View {
     private let urlSession: URLSession
     private let appleIntelligence: any AppleIntelligenceClienting
     private let llmConfiguration: LLMConfiguration
+    /// Forwarded into `WizardPresenter.present(...)` so the wizard's
+    /// hotkey-driven `TestStep` can temporarily commandeer
+    /// `.toggleRecording` and reinstall the production handler on
+    /// disappear. Threaded from `JotAppWindow`.
+    private let hotkeyRouter: HotkeyRouter
 
     init(
         audioCapture: any AudioCapturing,
         keychain injectedKeychain: any KeychainStoring,
         urlSession: URLSession,
         appleIntelligence: any AppleIntelligenceClienting,
-        llmConfiguration: LLMConfiguration
+        llmConfiguration: LLMConfiguration,
+        hotkeyRouter: HotkeyRouter
     ) {
         self.audioCapture = audioCapture
         keychain = injectedKeychain
         self.urlSession = urlSession
         self.appleIntelligence = appleIntelligence
         self.llmConfiguration = llmConfiguration
+        self.hotkeyRouter = hotkeyRouter
     }
 
     /// Donation reminder toggle — master switch for the Home donation
@@ -162,7 +169,8 @@ struct GeneralPane: View {
                             audioCapture: audioCapture,
                             urlSession: urlSession,
                             appleIntelligence: appleIntelligence,
-                            llmConfiguration: llmConfiguration
+                            llmConfiguration: llmConfiguration,
+                            hotkeyRouter: hotkeyRouter
                         )
                     }
                     InfoPopoverButton(

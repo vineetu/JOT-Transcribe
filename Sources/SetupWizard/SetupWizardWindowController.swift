@@ -33,6 +33,7 @@ final class SetupWizardWindowController: NSWindowController, NSWindowDelegate {
         let rootView = SetupWizardView()
             .environmentObject(coordinator)
             .environmentObject(coordinator.transcriberHolder)
+            .environmentObject(coordinator.llmConfiguration)
         let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: contentSize)
         window.contentView = hostingView
