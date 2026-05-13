@@ -100,7 +100,14 @@ Keep each folder to its single layer. Cross-layer shared types (e.g. `Recording`
 
 ## Releasing a new version
 
-The canonical path is one command: `./scripts/release.sh <version>` (e.g. `./scripts/release.sh 1.1`). It bumps `CFBundleShortVersionString`, derives `CFBundleVersion` from commit count, builds + signs + notarizes the DMG, generates the Sparkle appcast, commits, tags `v<version>`, and pushes to the `origin` remote. The DMG is published via `gh release create`; the website download button resolves to it via GitHub's `releases/latest/download/Jot.dmg` redirect.
+**Use the flavor-specific wrappers, never `release.sh` directly.** They add precondition asserts that catch the two known failure classes (Sony content leaking into public DMG; sony/main push rejected non-fast-forward).
+
+- Public: `./scripts/release-public.sh <version>` — refuses if `JOT_FLAVOR_NAME` is set, asserts Info.plist is clean (no FLAVOR_1, no playstation hosts, no Sony SUFeedURL), confirms `git diff Resources/Info.plist` is empty (catches stale state from manual `xcodebuild archive` testing). Push targets `public` remote only.
+- Sony: `./scripts/release-sony.sh <version>` — sources `.flavor-sony.env`, asserts the env is well-formed, sets `JOT_FORCE_PUSH=1` (sony/main diverges per cycle; force-with-lease + force-if-includes makes it safe). Push targets `sony` remote only.
+
+Both wrappers `exec` into `scripts/release.sh`, which **also runs the same asserts internally** as defense-in-depth. So even a direct `./scripts/release.sh 1.9` invocation bails on a misconfigured worktree — the wrappers fail earlier with clearer messages and never leave the worktree mid-build.
+
+What `release.sh` does once the asserts pass: bumps `CFBundleShortVersionString`, derives `CFBundleVersion` from commit count, builds + signs + notarizes the DMG, generates the Sparkle appcast (public only — `JOT_SKIP_APPCAST=1` for Sony), commits the allowlist, tags `v<version>` (Sony adds `-sony` suffix), pushes to the configured remote, and creates the GitHub release. The DMG is published via `gh release create`; the public website's download button resolves to it via GitHub's `releases/latest/download/Jot.dmg` redirect.
 
 Per-machine prerequisites (one-time):
 
@@ -129,12 +136,16 @@ Release checks before shipping:
 
 ### Custom flavors
 
-To release a custom flavor (different endpoints / models / remote / tag suffix),
-`source .flavor-<name>.env && ./scripts/release.sh <version>`. The env file is
-gitignored and holds flavor-specific values — tag suffix, GH host/repo, push
-remotes, DMG name, and a path to a `KEY=VALUE` overrides file whose entries are
-injected into `Info.plist` for the archive (and restored on exit). See internal
-team docs for the actual flavor values.
+The Sony wrapper (`scripts/release-sony.sh`) is the model — it sources
+`.flavor-sony.env`, sets `JOT_PUSH_REMOTES=sony` + `JOT_FORCE_PUSH=1`, and
+exec's `scripts/release.sh`. The env file is gitignored and holds flavor-
+specific values: tag suffix, GH host/repo, push remotes, DMG name, and a path
+to a `KEY=VALUE` overrides file whose entries are injected into `Info.plist`
+for the archive (and restored on exit). For a new flavor, copy the Sony
+wrapper as a starting template and add a flavor-specific
+`scripts/lib/assert-<flavor>-plist.sh` that runs after overrides apply.
+
+To release the Sony flavor: `./scripts/release-sony.sh <version>`.
 
 **Signing:** Developer ID Application: Vineet Sriram (8VB2ULDN22). Details in `docs/plans/apple-signing.md`.
 
