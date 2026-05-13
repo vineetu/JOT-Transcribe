@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
-# Release a new version of Jot.
+# Release a new version of Jot — shared implementation for both flavors.
 #
-# Usage:
+# **PREFER THE WRAPPERS.** Run one of these instead of calling this script
+# directly:
+#   ./scripts/release-public.sh <version>   # public release, no flavor env
+#   ./scripts/release-sony.sh   <version>   # Sony release, force-push to sony
+#
+# The wrappers add precondition asserts that catch the two known
+# failure classes (Sony content leaking into public DMG; sony/main push
+# rejected non-fast-forward). This script ALSO enforces the same
+# asserts internally as defense in depth, so a direct invocation still
+# bails on misconfiguration — but the wrappers fail earlier with a
+# clearer message and never leave the worktree mid-build.
+#
+# Usage (direct, discouraged):
 #   ./scripts/release.sh 1.1
 #
 # Default (no env vars set) produces a public release: builds dist/Jot.dmg,
@@ -32,6 +44,17 @@
 #                                   the archive and restored on exit.
 #   JOT_PUSH_REMOTES                Space-separated remote names to push
 #                                   (main + tag) to. Default: "public".
+#   JOT_FORCE_PUSH                  If "1", push main with
+#                                   --force-with-lease + --force-if-includes
+#                                   (safe overwrite — only succeeds if the
+#                                   remote tip is what we last fetched).
+#                                   Sony releases set this because
+#                                   sony/main diverges from local main
+#                                   each cycle (the previous Sony commit
+#                                   is preserved by its v<X>-sony tag).
+#                                   Tag push always stays non-force, so
+#                                   re-pushing the same version fails
+#                                   loudly. Default: "" (plain push).
 #   JOT_SKIP_APPCAST                If "1", skip Sparkle appcast generation
 #                                   and upload. Default: 0 (appcast on).
 #   JOT_APPCAST_DOWNLOAD_URL_PREFIX Prefix used for <enclosure url=...> in the
@@ -55,6 +78,7 @@ JOT_FLAVOR_GH_HOST="${JOT_FLAVOR_GH_HOST:-}"
 JOT_FLAVOR_GH_REPO="${JOT_FLAVOR_GH_REPO:-vineetu/JOT-Transcribe}"
 JOT_FLAVOR_INFO_PLIST_OVERRIDES="${JOT_FLAVOR_INFO_PLIST_OVERRIDES:-}"
 JOT_PUSH_REMOTES="${JOT_PUSH_REMOTES:-public}"
+JOT_FORCE_PUSH="${JOT_FORCE_PUSH:-}"
 JOT_SKIP_APPCAST="${JOT_SKIP_APPCAST:-0}"
 JOT_APPCAST_DOWNLOAD_URL_PREFIX="${JOT_APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/vineetu/JOT-Transcribe/releases/latest/download/}"
 JOT_SKIP_GH_RELEASE="${JOT_SKIP_GH_RELEASE:-0}"
@@ -77,6 +101,51 @@ log()  { printf "\033[1;34m[release]\033[0m %s\n" "$*"; }
 fail() { printf "\033[1;31m[release]\033[0m ERROR: %s\n" "$*" >&2; exit 1; }
 
 cd "${REPO_ROOT}"
+
+# ---- 0. Pre-flight safety asserts -------------------------------------------
+# These run BEFORE any version bump, build, or commit. They duplicate the
+# checks in scripts/release-public.sh and scripts/release-sony.sh, so a
+# direct invocation of this script still fails fast on misconfiguration.
+
+# 0a. Must be on the `main` branch. release.sh's commit goes onto whatever
+#     HEAD is, then is pushed as `<remote> main` — running this off a topic
+#     branch would commit there and then push to the wrong place.
+CURRENT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
+[[ "${CURRENT_BRANCH}" == "main" ]] \
+    || fail "Must be on the 'main' branch (currently on '${CURRENT_BRANCH:-<detached>}'). git switch main first."
+
+# 0b. Cross-check JOT_FLAVOR_NAME against JOT_PUSH_REMOTES. A flavor build
+#     must NOT push to the public remote, and an unflavored build must
+#     NOT push to a flavor remote. This catches both:
+#       - public release with stale sony env in shell (would push public-
+#         tagged work to sony remote — confusing but recoverable)
+#       - sony release with JOT_PUSH_REMOTES typo'd to "public" (would
+#         leak Sony work to public users — the v1.8 incident's worst case)
+if [[ -n "${JOT_FLAVOR_NAME}" ]]; then
+    case " ${JOT_PUSH_REMOTES} " in
+        *" public "*) fail "JOT_FLAVOR_NAME='${JOT_FLAVOR_NAME}' but JOT_PUSH_REMOTES contains 'public'. Flavor builds must not push to the public remote." ;;
+    esac
+else
+    case " ${JOT_PUSH_REMOTES} " in
+        *" sony "*) fail "No JOT_FLAVOR_NAME but JOT_PUSH_REMOTES contains 'sony'. Public builds must not push to the sony remote." ;;
+    esac
+fi
+
+# 0c. Tag must not already exist locally. A re-pushed tag is silently
+#     accepted by some hosts and rejected by others — fail loudly and
+#     ask the user to pick a new version.
+TAG_PREVIEW="v${VERSION}${JOT_FLAVOR_TAG_SUFFIX}"
+if git rev-parse "${TAG_PREVIEW}" >/dev/null 2>&1; then
+    fail "Tag ${TAG_PREVIEW} already exists locally. Pick a new version, or delete it: git tag -d ${TAG_PREVIEW}"
+fi
+
+# 0d. Plist asserts. Public-state assertion for unflavored builds;
+#     Sony-state assertion is run AFTER overrides are applied (see
+#     step 2 below).
+if [[ -z "${JOT_FLAVOR_NAME}" ]]; then
+    "${SCRIPT_DIR}/lib/assert-clean-worktree.sh" Resources/Info.plist
+    "${SCRIPT_DIR}/lib/assert-public-plist.sh" Resources/Info.plist
+fi
 
 # ---- Derive build number from commit count -----------------------------------
 BUILD_NUMBER="$(git rev-list --count HEAD)"
@@ -151,6 +220,13 @@ if [[ -n "${JOT_FLAVOR_INFO_PLIST_OVERRIDES}" ]]; then
     done < "${JOT_FLAVOR_INFO_PLIST_OVERRIDES}"
 fi
 
+# 2.5. Post-override sony-plist assertion. Runs after overrides are
+# applied but BEFORE the DMG is built, so a malformed or empty
+# .flavor-sony.overrides gets caught before a bad DMG ships.
+if [[ "${JOT_FLAVOR_NAME}" == "sony" ]]; then
+    "${SCRIPT_DIR}/lib/assert-sony-plist.sh" "${PLIST}"
+fi
+
 # ---- 3. Build, sign, notarize ------------------------------------------------
 log "Building DMG"
 bash "${SCRIPT_DIR}/build-dmg.sh"
@@ -215,7 +291,25 @@ git tag -a "${TAG}" -m "Jot ${TAG}"
 
 for remote in ${JOT_PUSH_REMOTES}; do
     log "Pushing main + ${TAG} to ${remote}"
-    git push "${remote}" main
+    if [[ "${JOT_FORCE_PUSH}" == "1" ]]; then
+        # Force-with-lease + force-if-includes: only succeeds if
+        # ${remote}/main currently points at exactly the SHA we observe
+        # NOW, AND our local main descends from the latest fetched
+        # remote main. Plain --force would silently clobber a
+        # teammate's just-pushed work; lease alone races with an
+        # interleaved `git fetch ${remote}`. The pair is the safe
+        # primitive for "overwrite a known-divergent remote tip."
+        remote_tip="$(git ls-remote "${remote}" refs/heads/main | awk '{print $1}')"
+        [[ -n "${remote_tip}" ]] \
+            || fail "Couldn't read ${remote}/main tip for force-with-lease check"
+        log "Force-with-lease push: expecting ${remote}/main at ${remote_tip:0:7}"
+        git push --force-with-lease="main:${remote_tip}" --force-if-includes "${remote}" main
+    else
+        git push "${remote}" main
+    fi
+    # Tag push is ALWAYS non-force. Re-pushing the same tag means
+    # re-releasing the same version, which should fail loudly so the
+    # caller picks a new version number.
     git push "${remote}" "${TAG}"
 done
 
