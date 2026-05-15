@@ -45,8 +45,12 @@ final class RewriteController: ObservableObject {
         }
     }
 
-    /// Hardcoded instruction for the fixed-prompt Rewrite flow. Intentional
-    /// verbatim wording per product choice — do not paraphrase.
+    /// Display label for the fixed-prompt Rewrite flow's Library row.
+    /// **Not** sent to the LLM — the fixed path now calls
+    /// `service.rewrite(... instruction: nil)`; the system prompt
+    /// (`RewritePrompt.default`) governs no-instruction behavior. This
+    /// constant exists solely so persisted rows in the Library / Home
+    /// have a stable human-readable instruction column.
     static let fixedInstruction = "Rewrite this"
 
     @Published private(set) var state: RewriteState = .idle {
@@ -441,9 +445,12 @@ final class RewriteController: ObservableObject {
 
             let service = rewriteService()
             let modelLabel = snapshotModelLabel()
+            // `instruction: nil` signals the no-voice path. The system
+            // prompt's "if no instruction given, improve clarity/flow…"
+            // fallback kicks in.
             let rewritten = try await service.rewrite(
                 selectedText: selectedText,
-                instruction: Self.fixedInstruction
+                instruction: nil
             )
 
             guard stillFixedActive(generation) else { return }

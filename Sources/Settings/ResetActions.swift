@@ -34,6 +34,7 @@ enum ResetActions {
                 && UserDefaults.standard.bool(forKey: ModelChoiceMigration.pinCheckedKey)
 
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
+            // Relaunch captures setupComplete=false, so single-or-chord migration stays gated off.
 
             if preserveModelChoice {
                 if let id = preservedModelID {

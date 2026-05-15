@@ -34,8 +34,10 @@ protocol AIService: Sendable {
     /// Rewrite a selection according to the user's instruction.
     /// Mirrors `LLMClient.rewrite(selectedText:instruction:)` —
     /// shared invariants + classifier branch composition happen inside
-    /// the conformer.
-    func rewrite(selectedText: String, instruction: String) async throws -> String
+    /// the conformer. Pass `instruction: nil` for the no-voice path;
+    /// the conformer omits the `<instruction>` block and the system
+    /// prompt's no-instruction fallback governs behavior.
+    func rewrite(selectedText: String, instruction: String?) async throws -> String
 
     /// Stream an Ask Jot turn. Returns a delta-token stream; consumers
     /// accumulate into the assistant bubble. Provider-specific errors
@@ -266,7 +268,7 @@ struct AppleAIService: AIService {
         return try await client.transform(transcript: transcript)
     }
 
-    func rewrite(selectedText: String, instruction: String) async throws -> String {
+    func rewrite(selectedText: String, instruction: String?) async throws -> String {
         let client = LLMClient(
             session: urlSession,
             appleClient: appleClient,
@@ -304,7 +306,7 @@ struct CloudAIService: AIService {
         return try await client.transform(transcript: transcript)
     }
 
-    func rewrite(selectedText: String, instruction: String) async throws -> String {
+    func rewrite(selectedText: String, instruction: String?) async throws -> String {
         let client = LLMClient(
             session: urlSession,
             appleClient: appleClient,
@@ -430,7 +432,7 @@ struct DirectLLMClientAIService: AIService {
         try await client.transform(transcript: transcript)
     }
 
-    func rewrite(selectedText: String, instruction: String) async throws -> String {
+    func rewrite(selectedText: String, instruction: String?) async throws -> String {
         try await client.rewrite(selectedText: selectedText, instruction: instruction)
     }
 

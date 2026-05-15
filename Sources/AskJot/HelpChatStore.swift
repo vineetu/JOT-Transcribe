@@ -1060,8 +1060,8 @@ final class HelpChatStore {
 
     ## Dictation
 
-    Toggle [toggle-recording]: press hotkey (default ⌥Space) to start, press
-    again to stop and transcribe.
+    Toggle [toggle-recording]: press hotkey (default single key Caps Lock) to
+    start, press again to stop and transcribe.
 
     Push-to-talk [push-to-talk]: hold hotkey to record, release to stop.
     Unbound by default.
@@ -1102,10 +1102,10 @@ final class HelpChatStore {
 
     ## Shortcuts
 
-    macOS requires global hotkeys to include a modifier. Single-key
-    bindings are impossible [modifier-required]. If a hotkey produces a
-    Unicode character, another app grabbed it while Jot was off — see
-    [hotkey-stopped-working].
+    Each action uses one trigger type: single key (Caps Lock, Fn, or a right
+    modifier) or chord (⌘ ⌥ ⌃ ⇧ plus a key) [modifier-required]. If a chord
+    produces a Unicode character, another app grabbed it while Jot was off —
+    see [hotkey-stopped-working].
 
     ## Troubleshooting
 

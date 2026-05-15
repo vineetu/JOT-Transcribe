@@ -1,4 +1,3 @@
-import KeyboardShortcuts
 import SwiftUI
 
 /// Settings pane for AI features — covers both Rewrite (voice-driven and
@@ -9,6 +8,7 @@ struct RewritePane: View {
     @EnvironmentObject private var config: LLMConfiguration
     @AppStorage("jot.askjot.allowCloud") private var allowCloudAskJot = false
     @Environment(\.helpNavigator) private var navigator
+    @Environment(\.setSidebarSelection) private var setSidebarSelection
     @State private var apiKeyInput: String = ""
     @State private var cleanupPromptExpanded: Bool = false
     @State private var testStatus: TestStatus = .idle
@@ -207,27 +207,22 @@ struct RewritePane: View {
                 }
 
                 Section("Rewrite") {
-                    HStack {
-                        Text("Rewrite with Voice")
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Configure Rewrite shortcuts in the Shortcuts pane.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
                         Spacer()
-                        KeyboardShortcuts.Recorder(for: .rewriteWithVoice)
+                        Button {
+                            setSidebarSelection(.settings(.shortcuts))
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Open Shortcuts")
+                                Image(systemName: "arrow.right")
+                            }
+                        }
+                        .buttonStyle(.link)
                     }
-                    .id("articulate-custom")
-                    Text("Select text, press the shortcut, speak your instruction.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-
-                    HStack {
-                        Text("Rewrite")
-                        Spacer()
-                        KeyboardShortcuts.Recorder(for: .rewrite)
-                    }
-                    .id("articulate-fixed")
-                    Text("Select text and press the shortcut — Jot rewrites it with a built-in prompt. No voice step.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
 
                     CustomizePromptDisclosure(
                         label: "Shared system prompt",
@@ -344,7 +339,5 @@ struct RewritePane: View {
     private static let supportedSettingsAnchors: Set<String> = [
         "ai-provider",
         "cleanup-prompt",
-        "articulate-custom",
-        "articulate-fixed",
     ]
 }

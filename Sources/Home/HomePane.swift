@@ -1,4 +1,3 @@
-import KeyboardShortcuts
 import SwiftUI
 
 /// Landing view for the unified Jot window.
@@ -12,11 +11,8 @@ struct HomePane: View {
     /// `markDismissedForever` mutations flip `@Published state`, which
     /// re-evaluates `shouldShowDonationCard(...)` in the body.
     @ObservedObject private var donationStore = DonationStore.shared
-
-    /// Force the glance HStack to re-read the live shortcut whenever the
-    /// user rebinds it — `KeyboardShortcuts` itself posts no change
-    /// notification we can bind to, so we observe the change via a
-    /// shortcut-rebinding listener installed at `onAppear`.
+    @AppStorage("jot.hotkey.toggleRecording.singleKey") private var toggleSingleKey: SingleKey = .none
+    @AppStorage("jot.hotkey.toggleRecording.triggerType") private var toggleTriggerTypeRaw: String = ""
 
     var body: some View {
         RecordingsListView(navigationTitle: "Home") {
@@ -64,9 +60,8 @@ struct HomePane: View {
     }
 
     private var shortcutDisplay: String {
-        if let s = KeyboardShortcuts.getShortcut(for: .toggleRecording) {
-            return s.description
-        }
-        return "(not set)"
+        _ = toggleSingleKey
+        _ = toggleTriggerTypeRaw
+        return SingleKeyMigration.effectiveBinding(for: .toggleRecording).displayLabel
     }
 }

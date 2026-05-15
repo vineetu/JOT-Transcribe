@@ -41,10 +41,10 @@ actor LLMClient {
         return configuration
     }
 
-    /// Rewrite a selection according to the user's instruction. Used by
-    /// both Rewrite (fixed prompt) and Rewrite with Voice (voice-driven
-    /// instruction) flows.
-    func rewrite(selectedText: String, instruction: String) async throws -> String {
+    /// Rewrite a selection. Used by both Rewrite with Voice (pass the
+    /// spoken instruction) and fixed Rewrite (pass `nil` — the system
+    /// prompt's no-instruction fallback governs behavior).
+    func rewrite(selectedText: String, instruction: String?) async throws -> String {
         let config = await MainActor.run { [llmConfiguration] in
             let c = llmConfiguration
             let p = c.provider
@@ -58,9 +58,11 @@ actor LLMClient {
         }
 
         // Route the instruction to a branch-specific tendency block.
-        // The classifier is a hint, not a gate — the user's instruction
-        // is embedded verbatim below and always wins over the tendency.
-        let branch = RewriteInstructionClassifier.classify(instruction)
+        // With no instruction (fixed path), fall through to
+        // `.voicePreserving` — the safe default that matches the system
+        // prompt's no-instruction fallback. The classifier is a hint,
+        // not a gate.
+        let branch: RewriteBranch = instruction.map(RewriteInstructionClassifier.classify) ?? .voicePreserving
         let systemPrompt = """
             \(config.sharedInvariants)
 
@@ -89,21 +91,33 @@ actor LLMClient {
             }
         }
 
-        // XML-tag delimiters (OWASP 2025 prompt-injection hardening) and
-        // an explicit "instruction is the primary directive" framing so
-        // the LLM attends to the user's voice instruction over any
-        // residual bias from the tendency block.
-        let userPrompt = """
-            <instruction>
-            \(instruction)
-            </instruction>
+        // XML-tag delimiters (OWASP 2025 prompt-injection hardening).
+        // Voice path embeds the spoken instruction in `<instruction>`
+        // so the LLM treats it as the primary directive. Fixed path
+        // omits the block entirely and relies on the system prompt's
+        // no-instruction fallback.
+        let userPrompt: String
+        if let instruction, !instruction.isEmpty {
+            userPrompt = """
+                <instruction>
+                \(instruction)
+                </instruction>
 
-            <selection>
-            \(selectedText)
-            </selection>
+                <selection>
+                \(selectedText)
+                </selection>
 
-            Follow the <instruction> above. Rewrite the <selection> and return only the rewritten text.
-            """
+                Follow the <instruction> above. Rewrite the <selection> and return only the rewritten text.
+                """
+        } else {
+            userPrompt = """
+                <selection>
+                \(selectedText)
+                </selection>
+
+                Rewrite the <selection> and return only the rewritten text.
+                """
+        }
 
         var request = try await buildRequest(
             provider: config.provider,

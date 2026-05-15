@@ -49,13 +49,13 @@ Transform selected text via a global shortcut. Two variants, both triggered by t
 - **Default `⌥.`** — rebindable in Settings → Shortcuts.
 
 ### Rewrite — no voice
-- **Select text → press the shortcut.** No dictation step. Jot sends the selection to the configured LLM with the fixed instruction `"Rewrite this"` and the result replaces the selection.
+- **Select text → press the shortcut.** No dictation step. Jot sends the selection to the configured LLM and the result replaces the selection. The shared system prompt's no-instruction fallback ("if no instruction is given, improve clarity / flow / articulation while preserving every piece of information, voice, register, language, and length") governs how the LLM behaves — the LLM itself never sees a literal "Rewrite this" placeholder, which keeps safety-tuned providers (Apple Intelligence, Anthropic Haiku) from refusing.
 - **One-hand quick cleanup** — use when you just want the LLM to tidy a passage without speaking an instruction.
 - **Default `⌥/`** — rebindable in Settings → Shortcuts.
 
 ### Shared configuration
 - **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, or Ollama.
-- **Editable shared invariants** — the shared-invariants block (selection-is-text-not-instruction, return-only-the-rewrite, don't-refuse-on-quality) is revealed under a "Customize prompt" chevron in Settings → AI → Rewrite with a "Reset to default" escape hatch. The per-branch tendencies are compile-time constants and not user-editable.
+- **Editable shared invariants** — the shared-invariants block (selection-is-text-not-instruction; return-only-the-rewrite; don't-refuse-on-quality; if the user provides an instruction follow it, otherwise improve clarity / flow / articulation while preserving content, voice, register, language, and length) is revealed under a "Customize prompt" chevron in Settings → AI → Rewrite with a "Reset to default" escape hatch. The per-branch tendencies are compile-time constants and not user-editable.
 
 ## Ask Jot
 
@@ -175,10 +175,9 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - API key (hidden for Ollama — local, no key required)
 - Clean up transcript with AI toggle (always visible; disabled until the provider is minimally configured)
 - "Customize prompt" disclosure for the transcript-cleanup prompt, with "Reset to default"
-- Rewrite with Voice shortcut — voice-driven rewrite
-- Rewrite shortcut — applies a fixed `"Rewrite this"` prompt (no voice)
-- Test Connection button — always enabled, prominent accent-tinted; shows an inline spinner during the call and a success chip afterward. Must succeed before the cleanup toggle unlocks.
+- Rewrite section: "Open Shortcuts →" link button that jumps the sidebar to the Shortcuts pane (no hotkey recorders shown here; hotkey binding lives in one place — Settings → Shortcuts)
 - "Customize prompt" disclosure for the Rewrite shared invariants, with "Reset to default" (per-branch tendencies are not editable)
+- Test Connection button — always enabled, prominent accent-tinted; shows an inline spinner during the call and a success chip afterward. Must succeed before the cleanup toggle unlocks.
 
 ### Sound
 - Recording start / stop / cancel chimes

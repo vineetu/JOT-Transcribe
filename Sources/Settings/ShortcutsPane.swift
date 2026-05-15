@@ -15,6 +15,11 @@ struct ShortcutsPane: View {
     @AppStorage("jot.hotkey.pasteLastTranscription.singleKey") private var pasteLastSingleKey: SingleKey = .none
     @AppStorage("jot.hotkey.rewriteWithVoice.singleKey") private var rewriteWithVoiceSingleKey: SingleKey = .none
     @AppStorage("jot.hotkey.rewrite.singleKey") private var rewriteSingleKey: SingleKey = .none
+    @AppStorage("jot.hotkey.toggleRecording.triggerType") private var toggleTriggerTypeRaw: String = ""
+    @AppStorage("jot.hotkey.pushToTalk.triggerType") private var pushToTalkTriggerTypeRaw: String = ""
+    @AppStorage("jot.hotkey.pasteLastTranscription.triggerType") private var pasteLastTriggerTypeRaw: String = ""
+    @AppStorage("jot.hotkey.rewriteWithVoice.triggerType") private var rewriteWithVoiceTriggerTypeRaw: String = ""
+    @AppStorage("jot.hotkey.rewrite.triggerType") private var rewriteTriggerTypeRaw: String = ""
 
     var body: some View {
         let _ = refreshToken
@@ -22,14 +27,14 @@ struct ShortcutsPane: View {
             Form {
                 Section {
                     HStack(alignment: .top) {
-                        Text("Global shortcuts fire from any app when Input Monitoring is granted. Each action lets you bind a single key, a chord (⌘⌥⌃⇧ + key), or both — either will fire it.")
+                        Text("Global shortcuts fire from any app when Input Monitoring is granted. Each action uses one trigger: a single key or a chord (⌘⌥⌃⇧ + key).")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                         Spacer()
                         InfoPopoverButton(
                             title: "Global shortcuts",
-                            body: "Single-key bindings (Caps Lock, Fn, side-modifiers) listen via NSEvent and require Accessibility permission. Chord bindings go through Carbon's hot-key API and must include at least one modifier (⌘ ⌥ ⌃ ⇧). Each row's single-key picker and chord recorder are independent — bind either or both.",
+                            body: "Single-key bindings (Caps Lock, Fn, side-modifiers) listen via NSEvent and require Accessibility permission. Chord bindings go through Carbon's hot-key API and must include at least one modifier (⌘ ⌥ ⌃ ⇧). Choose one trigger type per action.",
                             helpAnchor: "modifier-required"
                         )
                     }
@@ -37,7 +42,6 @@ struct ShortcutsPane: View {
 
                 shortcutSection(
                     action: .toggleRecording,
-                    keyboardShortcutsName: .toggleRecording,
                     singleKey: $toggleSingleKey,
                     modeDescription: "Tap to start recording, tap again to stop.",
                     rowAnchor: "toggle-recording"
@@ -45,7 +49,6 @@ struct ShortcutsPane: View {
 
                 shortcutSection(
                     action: .pushToTalk,
-                    keyboardShortcutsName: .pushToTalk,
                     singleKey: $pushToTalkSingleKey,
                     modeDescription: "Hold to record, release to stop and transcribe.",
                     rowAnchor: "push-to-talk"
@@ -53,7 +56,6 @@ struct ShortcutsPane: View {
 
                 shortcutSection(
                     action: .pasteLastTranscription,
-                    keyboardShortcutsName: .pasteLastTranscription,
                     singleKey: $pasteLastSingleKey,
                     modeDescription: "Single tap pastes the last transcript at the cursor.",
                     rowAnchor: nil
@@ -61,18 +63,16 @@ struct ShortcutsPane: View {
 
                 shortcutSection(
                     action: .rewriteWithVoice,
-                    keyboardShortcutsName: .rewriteWithVoice,
                     singleKey: $rewriteWithVoiceSingleKey,
                     modeDescription: "Select text first. Tap to dictate an instruction; tap again to send.",
-                    rowAnchor: nil
+                    rowAnchor: "articulate-custom"
                 )
 
                 shortcutSection(
                     action: .rewrite,
-                    keyboardShortcutsName: .rewrite,
                     singleKey: $rewriteSingleKey,
                     modeDescription: "Select text first. Single tap applies the built-in rewrite prompt.",
-                    rowAnchor: nil
+                    rowAnchor: "articulate-fixed"
                 )
 
                 Section("Cancel recording") {
@@ -124,18 +124,38 @@ struct ShortcutsPane: View {
     @ViewBuilder
     private func shortcutSection(
         action: SingleKey.Action,
-        keyboardShortcutsName: KeyboardShortcuts.Name,
         singleKey: Binding<SingleKey>,
         modeDescription: String,
         rowAnchor: String?
     ) -> some View {
+        let triggerType = triggerTypeValue(for: action)
         Section(action.displayName) {
-            singleKeyRow(action: action, selection: singleKey, anchor: rowAnchor)
-            chordRow(action: action, keyboardShortcutsName: keyboardShortcutsName)
+            triggerTypeRow(action: action)
+            if triggerType == .singleKey {
+                singleKeyRow(action: action, selection: singleKey, anchor: rowAnchor)
+            } else {
+                chordRow(action: action, anchor: rowAnchor)
+            }
             Text(modeDescription)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+        }
+    }
+
+    @ViewBuilder
+    private func triggerTypeRow(action: SingleKey.Action) -> some View {
+        HStack {
+            Text("Trigger type")
+            Spacer()
+            Picker("", selection: triggerTypeBinding(for: action)) {
+                ForEach(SingleKey.TriggerType.allCases, id: \.self) { type in
+                    Text(type.displayName).tag(type)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(width: 160, alignment: .trailing)
         }
     }
 
@@ -146,7 +166,7 @@ struct ShortcutsPane: View {
         anchor: String?
     ) -> some View {
         let row = HStack {
-            Text("Single key")
+            Text("Key")
             Spacer()
             singleKeyMenu(action: action, selection: selection)
             InfoPopoverButton(
@@ -195,12 +215,12 @@ struct ShortcutsPane: View {
     @ViewBuilder
     private func chordRow(
         action: SingleKey.Action,
-        keyboardShortcutsName: KeyboardShortcuts.Name
+        anchor: String?
     ) -> some View {
-        HStack {
+        let row = HStack {
             Text("Chord")
             Spacer()
-            KeyboardShortcuts.Recorder(for: keyboardShortcutsName) { _ in
+            KeyboardShortcuts.Recorder(for: action.keyboardShortcutsName) { _ in
                 refreshToken &+= 1
             }
             InfoPopoverButton(
@@ -208,6 +228,11 @@ struct ShortcutsPane: View {
                 body: chordPopoverBody(for: action),
                 helpAnchor: helpAnchor(for: action)
             )
+        }
+        if let anchor {
+            row.id(anchor)
+        } else {
+            row
         }
     }
 
@@ -221,12 +246,24 @@ struct ShortcutsPane: View {
     ) -> [SingleKey: SingleKey.Action] {
         var result: [SingleKey: SingleKey.Action] = [:]
         for action in SingleKey.Action.allCases where action != excludedAction {
+            guard singleKeyIsActive(for: action) else { continue }
             let key = singleKeyValue(for: action)
             if key != .none {
                 result[key] = action
             }
         }
         return result
+    }
+
+    private func singleKeyIsActive(for action: SingleKey.Action) -> Bool {
+        switch SingleKeyMigration.storedTriggerType(for: action) {
+        case .singleKey:
+            return singleKeyValue(for: action) != .none
+        case .chord:
+            return false
+        case nil:
+            return singleKeyValue(for: action) != .none
+        }
     }
 
     private func singleKeyValue(for action: SingleKey.Action) -> SingleKey {
@@ -239,14 +276,39 @@ struct ShortcutsPane: View {
         }
     }
 
+    private func triggerTypeValue(for action: SingleKey.Action) -> SingleKey.TriggerType {
+        _ = triggerTypeRawValue(for: action)
+        return SingleKeyMigration.effectiveTriggerType(for: action)
+    }
+
+    private func triggerTypeBinding(for action: SingleKey.Action) -> Binding<SingleKey.TriggerType> {
+        Binding(
+            get: { triggerTypeValue(for: action) },
+            set: { type in
+                SingleKeyMigration.setTriggerType(type, for: action)
+                refreshToken &+= 1
+            }
+        )
+    }
+
+    private func triggerTypeRawValue(for action: SingleKey.Action) -> String {
+        switch action {
+        case .toggleRecording:        return toggleTriggerTypeRaw
+        case .pushToTalk:             return pushToTalkTriggerTypeRaw
+        case .pasteLastTranscription: return pasteLastTriggerTypeRaw
+        case .rewriteWithVoice:       return rewriteWithVoiceTriggerTypeRaw
+        case .rewrite:                return rewriteTriggerTypeRaw
+        }
+    }
+
     /// Chord conflicts — same shortcut bound to multiple actions.
     /// Extended from the original 4-binding banner to cover all 5
     /// `KeyboardShortcuts.Name`s shown in this pane.
     private func conflictMessage() -> String? {
         var seen: [KeyboardShortcuts.Shortcut: [String]] = [:]
         for action in SingleKey.Action.allCases {
-            let name = keyboardShortcutsName(for: action)
-            if let shortcut = KeyboardShortcuts.getShortcut(for: name) {
+            guard chordIsActive(for: action) else { continue }
+            if let shortcut = KeyboardShortcuts.getShortcut(for: action.keyboardShortcutsName) {
                 seen[shortcut, default: []].append(action.displayName)
             }
         }
@@ -255,13 +317,14 @@ struct ShortcutsPane: View {
         return "Conflict: \(first.value.joined(separator: " and ")) share the same chord."
     }
 
-    private func keyboardShortcutsName(for action: SingleKey.Action) -> KeyboardShortcuts.Name {
-        switch action {
-        case .toggleRecording:        return .toggleRecording
-        case .pushToTalk:             return .pushToTalk
-        case .pasteLastTranscription: return .pasteLastTranscription
-        case .rewriteWithVoice:       return .rewriteWithVoice
-        case .rewrite:                return .rewrite
+    private func chordIsActive(for action: SingleKey.Action) -> Bool {
+        switch SingleKeyMigration.storedTriggerType(for: action) {
+        case .singleKey:
+            return false
+        case .chord:
+            return KeyboardShortcuts.getShortcut(for: action.keyboardShortcutsName) != nil
+        case nil:
+            return KeyboardShortcuts.getShortcut(for: action.keyboardShortcutsName) != nil
         }
     }
 
@@ -286,7 +349,7 @@ struct ShortcutsPane: View {
         let chordDefinition = "A chord is a multi-key global hotkey — at least one modifier (⌘ ⌥ ⌃ ⇧) plus another key, like ⌥Space. Click the recorder field, then press the keys you want."
         switch action {
         case .toggleRecording:
-            return "\(chordDefinition) Fires the same start/stop as the single-key trigger; either or both can be bound."
+            return "\(chordDefinition) Fires the same start/stop as the single-key trigger."
         case .pushToTalk:
             return "\(chordDefinition) Hold the chord to record; release to stop and transcribe."
         case .pasteLastTranscription:
@@ -325,20 +388,28 @@ struct ShortcutsPane: View {
         pasteLastSingleKey = .none
         rewriteWithVoiceSingleKey = .none
         rewriteSingleKey = .none
-        // Clear Toggle Recording chord — matches fresh-install defaults
-        // where Caps Lock is the sole binding. The other four actions
-        // keep their KeyboardShortcuts library defaults from `.reset(…)`.
-        KeyboardShortcuts.setShortcut(nil, for: .toggleRecording)
+        SingleKeyMigration.setTriggerType(.singleKey, for: .toggleRecording)
+        SingleKeyMigration.setTriggerType(.chord, for: .pushToTalk)
+        SingleKeyMigration.setTriggerType(.chord, for: .pasteLastTranscription)
+        SingleKeyMigration.setTriggerType(.chord, for: .rewriteWithVoice)
+        SingleKeyMigration.setTriggerType(.chord, for: .rewrite)
         refreshToken &+= 1
     }
 
     private func consumePendingSettingsFieldAnchor(with proxy: ScrollViewProxy) {
         guard let anchor = navigator.pendingSettingsFieldAnchor,
-              anchor == "toggle-recording" || anchor == "push-to-talk"
+              Self.supportedSettingsAnchors.contains(anchor)
         else { return }
         withAnimation {
             proxy.scrollTo(anchor, anchor: .top)
         }
         navigator.clearPendingSettingsFieldAnchor()
     }
+
+    private static let supportedSettingsAnchors: Set<String> = [
+        "toggle-recording",
+        "push-to-talk",
+        "articulate-custom",
+        "articulate-fixed",
+    ]
 }

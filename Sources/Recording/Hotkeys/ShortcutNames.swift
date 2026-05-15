@@ -19,6 +19,8 @@ import KeyboardShortcuts
 ///     as `rewriteWithVoice`, but with a hardcoded instruction string and
 ///     no voice step. The KeyboardShortcuts raw-value storage key remains
 ///     stable across renames so any v1.5 user-customized binding survives.
+/// Keep raw string declarations in sync with
+/// `SingleKey.Action.rawKeyboardShortcutsName`.
 extension KeyboardShortcuts.Name {
     static let toggleRecording = Self(
         "toggleRecording",

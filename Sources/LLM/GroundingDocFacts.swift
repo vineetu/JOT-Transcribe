@@ -94,7 +94,7 @@ enum RetentionPeriod: Int, CaseIterable, Sendable {
     }
 }
 
-/// Default KeyboardShortcuts bindings at first launch, as documented in
+/// Default shortcut trigger types and bindings at first launch, as documented in
 /// `docs/features.md` §"Global Shortcuts". "(unbound)" reflects shortcuts
 /// that ship with no default key — the user assigns them in Settings.
 ///
@@ -103,9 +103,9 @@ enum RetentionPeriod: Int, CaseIterable, Sendable {
 /// this (as it has historically between releases), treat features.md as
 /// canonical and align the KeyboardShortcuts.Name defaults back.
 struct DefaultShortcuts {
-    static let toggleRecording = "⌥Space"
-    static let pushToTalk = "(unbound)"
-    static let rewriteWithVoice = "⌥,"
-    static let rewrite = "(unbound)"
-    static let pasteLast = "⌥⇧V"
+    static let toggleRecording = "Single key — Caps Lock"
+    static let pushToTalk = "Chord — (unbound)"
+    static let rewriteWithVoice = "Chord — ⌥."
+    static let rewrite = "Chord — ⌥/"
+    static let pasteLast = "Chord — ⌥,"
 }

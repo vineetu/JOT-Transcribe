@@ -45,11 +45,11 @@ final class HotkeyRouter {
     /// callers don't care which path fired.
     private var rewriteOverride: (() -> Void)?
 
-    /// One single-key handler per `SingleKey.Action`. Each lives alongside
-    /// the corresponding Carbon-backed chord handler — either binding
-    /// fires the action. Reads its key from
-    /// `@AppStorage(SingleKey.Action.<case>.storageKey)`; changes to any
-    /// of those defaults trigger `applySingleKeys()` via the observer.
+    /// One single-key handler per `SingleKey.Action`. Trigger-type state
+    /// decides whether this handler or the corresponding Carbon-backed
+    /// chord name is active. Pre-migration rows with no trigger type keep
+    /// legacy behavior and allow both non-empty sides until the modal
+    /// migration completes.
     private var singleKeyHotkeys: [SingleKey.Action: SingleKeyHotkey] = [:]
     private var singleKeyObserver: AnyCancellable?
 
@@ -67,9 +67,9 @@ final class HotkeyRouter {
         installToggleRecording()
         applySingleKeys()
         // Observe UserDefaults so a Settings → Shortcuts edit takes
-        // effect without an app relaunch. Any of the five
-        // `SingleKey.Action.<case>.storageKey` keys can change; we
-        // rebind all of them on any defaults change (cheap — five
+        // effect without an app relaunch. Any single-key or trigger-type
+        // key can change; we rebind all of them on any defaults change
+        // (cheap — five
         // `bind()` calls, each is O(1) when the key hasn't actually
         // changed).
         singleKeyObserver = NotificationCenter.default
@@ -261,9 +261,8 @@ final class HotkeyRouter {
     }
 
     private func applySingleKey(for action: SingleKey.Action) {
-        let raw = UserDefaults.standard.string(forKey: action.storageKey)
-            ?? SingleKey.none.rawValue
-        let key = SingleKey(rawValue: raw) ?? .none
+        let triggerType = SingleKeyMigration.storedTriggerType(for: action)
+        let key = SingleKeyMigration.storedSingleKey(for: action)
 
         let hotkey = singleKeyHotkeys[action] ?? {
             let h = SingleKeyHotkey()
@@ -271,6 +270,26 @@ final class HotkeyRouter {
             return h
         }()
 
+        switch triggerType {
+        case .singleKey:
+            KeyboardShortcuts.disable(action.keyboardShortcutsName)
+            bindSingleKey(key, for: action, hotkey: hotkey)
+        case .chord:
+            hotkey.unbind()
+            KeyboardShortcuts.enable(action.keyboardShortcutsName)
+        case nil:
+            // Legacy mode for upgraded users until the migration wizard
+            // completes: keep both sides live when they are bound.
+            KeyboardShortcuts.enable(action.keyboardShortcutsName)
+            bindSingleKey(key, for: action, hotkey: hotkey)
+        }
+    }
+
+    private func bindSingleKey(
+        _ key: SingleKey,
+        for action: SingleKey.Action,
+        hotkey: SingleKeyHotkey
+    ) {
         if key == .none {
             hotkey.unbind()
             return

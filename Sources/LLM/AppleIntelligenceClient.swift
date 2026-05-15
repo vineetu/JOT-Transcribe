@@ -152,23 +152,35 @@ actor AppleIntelligenceClient: AppleIntelligenceClienting {
 
     /// Rewrite a user selection. Mirrors `LLMClient.rewrite(...)`: the
     /// caller composes the combined system prompt (shared invariants +
-    /// branch tendency) into `branchPrompt`, and hands us the selection +
-    /// the user's (voice or fixed) instruction.
-    func rewrite(selectedText: String, instruction: String, branchPrompt: String) async throws -> String {
+    /// branch tendency) into `branchPrompt`. Pass `instruction: nil`
+    /// for the fixed-prompt path — we omit the `<instruction>` block
+    /// and the system prompt's no-instruction fallback governs.
+    func rewrite(selectedText: String, instruction: String?, branchPrompt: String) async throws -> String {
         #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
             let combinedInstructions = branchPrompt
-            let content = """
-                <instruction>
-                \(instruction)
-                </instruction>
+            let content: String
+            if let instruction, !instruction.isEmpty {
+                content = """
+                    <instruction>
+                    \(instruction)
+                    </instruction>
 
-                <selection>
-                \(selectedText)
-                </selection>
+                    <selection>
+                    \(selectedText)
+                    </selection>
 
-                Follow the <instruction> above. Rewrite the <selection> and return only the rewritten text.
-                """
+                    Follow the <instruction> above. Rewrite the <selection> and return only the rewritten text.
+                    """
+            } else {
+                content = """
+                    <selection>
+                    \(selectedText)
+                    </selection>
+
+                    Rewrite the <selection> and return only the rewritten text.
+                    """
+            }
             return try await runSession(instructions: combinedInstructions, content: content)
         } else {
             throw LLMError.appleIntelligenceUnavailable

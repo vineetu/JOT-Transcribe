@@ -5,7 +5,7 @@ Jot cannot transcribe pre-recorded audio files — live mic input only.
 Keyboard modifier glossary: ⌥=Option, ⌘=Command, ⌃=Control, ⇧=Shift.
 
 ## Dictation
-toggle-recording: press hotkey (default ⌥Space, Option+Space) start; press again stop+transcribe.
+toggle-recording: press hotkey (default single key Caps Lock) start; press again stop+transcribe.
 push-to-talk: hold hotkey record, release stop. Unbound default.
 cancel-recording: Esc discards. Active only while recording, never steals Esc when idle.
 any-length: no hard limit. Quality diminishes past ~1 hr; shorter sessions best.
@@ -32,9 +32,9 @@ articulate-intent-classifier: routes instruction into four branches — voice-pr
 Both use configured AI provider (same as Cleanup).
 
 ## Shortcuts
-modifier-required: chord shortcuts need a modifier (⌘ ⌥ ⌃ ⇧). Single-key triggers (Caps Lock default, also Fn / right-modifier keys) use a separate path — Settings → Shortcuts → Toggle recording → Single key. Caps Lock's LED is the recording indicator.
+modifier-required: each action uses one trigger type: single key (Caps Lock, Fn, or right-modifier keys) or chord (⌘ ⌥ ⌃ ⇧ plus a key). Chords need a modifier; single-key triggers use Jot's separate event path.
 hotkey-stopped-working: hotkey produces Unicode char (≤, ÷) when another app grabbed it while Jot was off. Re-register in Settings → Shortcuts.
-Defaults: toggle-recording ⌥Space (Option+Space); push-to-talk unbound; articulate-custom ⌥. (Option+Period); articulate-fixed ⌥/ (Option+Slash); paste-last ⌥, (Option+Comma).
+Defaults: toggle-recording single key Caps Lock; push-to-talk chord unbound; articulate-custom chord ⌥. (Option+Period); articulate-fixed chord ⌥/ (Option+Slash); paste-last chord ⌥, (Option+Comma).
 shortcuts: bindings in Settings → Shortcuts. Cancel (Esc) hardcoded.
 
 ## Paste & Clipboard

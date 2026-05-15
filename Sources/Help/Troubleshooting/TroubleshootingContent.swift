@@ -105,13 +105,14 @@ enum TroubleshootingContent {
 
         TroubleshootingCardData(
             id: "modifier-required",
-            title: "Modifier required",
+            title: "Chord modifiers",
             badge: "platform",
-            body: "macOS rejects single-key global shortcuts. Every binding must include ⌘ ⌥ ⌃ ⇧ or Fn.",
+            body: "Chord shortcuts must include ⌘ ⌥ ⌃ ⇧ plus a key. Single-key triggers use Jot's separate Caps Lock/Fn/right-modifier path.",
             expansionProse:
-                "This is a macOS-level constraint, not a Jot policy. Cancel (Esc) is the sole "
-                + "exception — it's scoped to in-flight operations and only active while recording, "
-                + "transcribing, or rewriting, so it doesn't collide with the global rule."
+                "This chord requirement is a macOS-level constraint, not a Jot policy. Jot's "
+                + "single-key trigger type uses a separate event-monitoring path for Caps Lock, "
+                + "Fn, and right-side modifier keys. Cancel (Esc) is scoped to in-flight operations "
+                + "and only active while recording, transcribing, or rewriting."
         ) {
             TSIllustration.single("keyboard.badge.ellipsis")
         },

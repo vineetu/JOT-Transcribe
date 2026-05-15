@@ -3,15 +3,14 @@ import KeyboardShortcuts
 import SwiftUI
 
 /// Step 5 (merged) — "your dictation shortcut" + "try your hotkey" in
-/// one page. Shows the current `.toggleRecording` binding (single-key
-/// chosen by `SingleKeyMigration` — Caps Lock on fresh installs — plus
-/// the optional chord), exposes inline controls to change either, and
-/// then drives an end-to-end smoke test from the *real* hotkey press.
+/// one page. Shows the current `.toggleRecording` binding, exposes inline
+/// controls to pick a single key or chord trigger, and then drives an
+/// end-to-end smoke test from the *real* hotkey press.
 ///
 /// Why merged: users were setting a binding on the previous "Shortcuts"
 /// step, hitting Continue, and only verifying it on the next "Test"
 /// step — which made the relationship between the two pages confusing
-/// (especially after single-key + chord became dual bindings).
+/// (especially after the trigger can now be either a single key or chord).
 ///
 /// Why hotkey-driven test (and not an in-app Test button): the button
 /// bypasses the global event tap and Input Monitoring permission, so
@@ -52,21 +51,18 @@ struct TestStep: View {
     /// Read live so the displayed hotkey reflects edits the user may
     /// make in a different Settings window between wizard runs.
     @AppStorage(SingleKey.storageKey) private var toggleSingleKey: SingleKey = .none
+    @AppStorage("jot.hotkey.toggleRecording.triggerType") private var toggleTriggerTypeRaw: String = ""
 
     private var selectedModel: ParakeetModelID {
         holder.primaryModelID
     }
 
-    /// The hotkey shown in the big chip. Single-key beats chord — on a
-    /// fresh install that's Caps Lock; an existing user who customized
-    /// to a chord sees their chord; if both are set, single-key wins
-    /// (it's the "first-class" 1.9+ default).
+    /// The hotkey shown in the big chip follows the active trigger type.
     private var shortcutDisplay: String {
         _ = bindingsRefreshToken
-        if toggleSingleKey != .none {
-            return toggleSingleKey.displayName
-        }
-        return KeyboardShortcuts.getShortcut(for: .toggleRecording)?.description ?? "(not set)"
+        _ = toggleSingleKey
+        _ = toggleTriggerTypeRaw
+        return SingleKeyMigration.effectiveBinding(for: .toggleRecording).displayLabel
     }
 
     var body: some View {
@@ -111,7 +107,7 @@ struct TestStep: View {
 
     // MARK: - Binding controls
 
-    /// Inline single-key picker + chord recorder for `.toggleRecording`.
+    /// Inline trigger-type picker plus the active editor for `.toggleRecording`.
     /// Changes here write to `@AppStorage` / `UserDefaults` and
     /// `HotkeyRouter.applySingleKeys()` rebinds on the next
     /// `UserDefaults.didChangeNotification` tick — so the next press
@@ -119,25 +115,32 @@ struct TestStep: View {
     @ViewBuilder
     private var bindingControls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Picker("", selection: $toggleSingleKey) {
-                    Text(SingleKey.none.displayName).tag(SingleKey.none)
-                    Divider()
-                    ForEach(SingleKey.Action.toggleRecording.pickerCases) { key in
-                        Text(key.displayName).tag(key)
-                    }
+            Picker("Trigger type", selection: triggerTypeBinding) {
+                ForEach(SingleKey.TriggerType.allCases, id: \.self) { type in
+                    Text(type.displayName).tag(type)
                 }
-                .labelsHidden()
-                .frame(maxWidth: 200)
-                Text("or")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                KeyboardShortcuts.Recorder(for: .toggleRecording) { _ in
-                    bindingsRefreshToken &+= 1
+            }
+            .pickerStyle(.segmented)
+
+            HStack(spacing: 10) {
+                if triggerType == .singleKey {
+                    Picker("", selection: $toggleSingleKey) {
+                        Text(SingleKey.none.displayName).tag(SingleKey.none)
+                        Divider()
+                        ForEach(SingleKey.Action.toggleRecording.pickerCases) { key in
+                            Text(key.displayName).tag(key)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
+                } else {
+                    KeyboardShortcuts.Recorder(for: .toggleRecording) { _ in
+                        bindingsRefreshToken &+= 1
+                    }
                 }
                 Spacer(minLength: 0)
             }
-            Text("Either fires recording. Change anytime in Settings → Shortcuts.")
+            Text("Change anytime in Settings → Shortcuts.")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
         }
@@ -149,6 +152,21 @@ struct TestStep: View {
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var triggerType: SingleKey.TriggerType {
+        _ = toggleTriggerTypeRaw
+        return SingleKeyMigration.effectiveTriggerType(for: .toggleRecording)
+    }
+
+    private var triggerTypeBinding: Binding<SingleKey.TriggerType> {
+        Binding(
+            get: { triggerType },
+            set: { type in
+                SingleKeyMigration.setTriggerType(type, for: .toggleRecording)
+                bindingsRefreshToken &+= 1
+            }
         )
     }
 
