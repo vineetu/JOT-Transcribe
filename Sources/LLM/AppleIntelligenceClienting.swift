@@ -33,10 +33,12 @@ protocol AppleIntelligenceClienting: Sendable {
 
     /// Rewrite a user selection. The caller composes the combined system
     /// prompt (shared invariants + branch tendency) into `branchPrompt` and
-    /// hands the seam the selection plus the user's (voice or fixed)
-    /// instruction. Throws `LLMError.appleIntelligenceUnavailable` when
-    /// the model isn't available.
-    func rewrite(selectedText: String, instruction: String, branchPrompt: String) async throws -> String
+    /// hands the seam the selection plus the user's spoken instruction
+    /// (`nil` for the fixed/no-voice path — the conformer omits the
+    /// `<instruction>` block and the system prompt's no-instruction
+    /// fallback governs). Throws `LLMError.appleIntelligenceUnavailable`
+    /// when the model isn't available.
+    func rewrite(selectedText: String, instruction: String?, branchPrompt: String) async throws -> String
 
     /// Stream an Ask Jot turn through Apple Intelligence. Returns a
     /// delta-token stream backed by `LanguageModelSession.streamResponse`.

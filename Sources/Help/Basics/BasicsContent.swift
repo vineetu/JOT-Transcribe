@@ -174,13 +174,13 @@ struct BasicsContent {
                 SubRow(
                     id: "toggle-recording",
                     name: "Toggle recording",
-                    shortcutChip: ["⌥", "Space"],
+                    shortcutChip: ["Caps Lock"],
                     isExpandable: true,
                     detail: SubRowDetailContent(
                         prose: "Press once to start, press again to stop and transcribe. Works in any app, in any field with focus.",
                         inlineTip: InlineTip(
-                            chip: ["⌥", "Space"],
-                            description: "Default shortcut — rebind in Settings → Shortcuts"
+                            chip: ["Caps Lock"],
+                            description: "Default single-key trigger — rebind in Settings → Shortcuts"
                         ),
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
@@ -210,7 +210,7 @@ struct BasicsContent {
                     isExpandable: true,
                     detail: SubRowDetailContent(
                         prose: "Press Esc to discard without transcribing. Active only while recording so it doesn't steal Esc from other apps when you're not dictating.",
-                        warning: "Esc is hardcoded, not configurable. macOS global hotkeys must include a modifier — Esc is an exception reserved for canceling in-flight transformations."
+                        warning: "Esc is hardcoded, not configurable. Chord shortcuts must include a modifier; single-key triggers use Jot's separate Caps Lock/Fn/right-modifier path."
                     )
                 ),
                 SubRow(
@@ -342,17 +342,17 @@ struct BasicsContent {
                 SubRow(
                     id: "articulate-custom",
                     name: "Rewrite with Voice",
-                    shortcutChip: ["voice"],
+                    shortcutChip: ["⌥", "."],
                     isExpandable: true,
                     detail: SubRowDetailContent(
                         prose: "Select any text, press the shortcut, speak an instruction like 'make this formal' or 'translate to Japanese' — the rewritten text replaces your selection.",
                         inlineTip: InlineTip(
-                            chip: ["voice"],
-                            description: "Voice-driven rewrite — unbound by default"
+                            chip: ["⌥", "."],
+                            description: "Default chord — rebind in Settings → Shortcuts"
                         ),
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
-                            pane: .ai,
+                            pane: .shortcuts,
                             anchor: "articulate-custom"
                         )
                     )
@@ -360,13 +360,13 @@ struct BasicsContent {
                 SubRow(
                     id: "articulate-fixed",
                     name: "Rewrite",
-                    shortcutChip: nil,
+                    shortcutChip: ["⌥", "/"],
                     isExpandable: true,
                     detail: SubRowDetailContent(
                         prose: "Select text, press the shortcut, and Jot rewrites it with a fixed 'Rewrite this' instruction. No voice step — useful when you just want a quick cleanup pass.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
-                            pane: .ai,
+                            pane: .shortcuts,
                             anchor: "articulate-fixed"
                         )
                     )

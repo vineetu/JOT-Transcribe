@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var windowObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let wasSetupCompleteAtLaunch = FirstRunState.shared.setupComplete
         NSApp.setActivationPolicy(.regular)
         log.info("Jot launched")
 
@@ -91,7 +92,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
 
         wireUp(services)
-        presentSetupWizardIfNeeded(services)
+        let setupPresented = presentSetupWizardIfNeeded(
+            services,
+            wasSetupCompleteAtLaunch: wasSetupCompleteAtLaunch
+        )
+        if !setupPresented {
+            DispatchQueue.main.async {
+                SingleOrChordMigrationWizardPresenter.presentIfNeeded(
+                    wasSetupCompleteAtLaunch: wasSetupCompleteAtLaunch
+                )
+            }
+        }
         prewarmTranscriber(services)
     }
 
@@ -123,8 +134,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // already constructed; this binds the runtime channel between
         // them.
         services.delivery.bind(recorder: services.recorder)
-        // One-shot migration to the v1.9 dual-binding hotkey model
-        // (chord + single-key). Must run BEFORE `hotkeyRouter.activate()`
+        // One-shot migration that introduced single-key Toggle Recording.
+        // Must run BEFORE `hotkeyRouter.activate()`
         // so the router's first `applySingleKeys()` reads the
         // migration-installed default.
         SingleKeyMigration.runIfNeeded()
@@ -183,10 +194,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         services.retention.start()
     }
 
-    private func presentSetupWizardIfNeeded(_ services: AppServices) {
+    private func presentSetupWizardIfNeeded(
+        _ services: AppServices,
+        wasSetupCompleteAtLaunch: Bool
+    ) -> Bool {
         let missingPermissions = [Capability.microphone, .inputMonitoring, .accessibilityPostEvents]
             .contains { services.permissions.statuses[$0] != .granted }
-        guard !FirstRunState.shared.setupComplete || missingPermissions else { return }
+        guard !FirstRunState.shared.setupComplete || missingPermissions else { return false }
         let holder = services.transcriberHolder
         let audio = services.audioCapture
         let urlSession = services.urlSession
@@ -203,9 +217,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 appleIntelligence: appleIntelligence,
                 llmConfiguration: llmConfiguration,
                 logSink: logSink,
-                hotkeyRouter: hotkeyRouter
+                hotkeyRouter: hotkeyRouter,
+                onDismiss: {
+                    SingleOrChordMigrationWizardPresenter.presentIfNeeded(
+                        wasSetupCompleteAtLaunch: wasSetupCompleteAtLaunch
+                    )
+                }
             )
         }
+        return true
     }
 
     private func installCloseInterceptorIfNeeded(for window: NSWindow?) {

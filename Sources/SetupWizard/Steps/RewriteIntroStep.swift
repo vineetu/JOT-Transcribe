@@ -34,6 +34,7 @@ struct RewriteIntroStep: View {
     /// nudge needed.
     @AppStorage("jot.hotkey.rewrite.singleKey") private var rewriteSingleKey: SingleKey = .none
     @AppStorage("jot.hotkey.rewriteWithVoice.singleKey") private var rewriteWithVoiceSingleKey: SingleKey = .none
+    @AppStorage("jot.hotkey.rewrite.triggerType") private var rewriteTriggerTypeRaw: String = ""
 
     /// Bundled sample draft. A casual Slack-style message — a realistic
     /// thing someone would want to polish with Rewrite (fixed-prompt).
@@ -171,14 +172,9 @@ struct RewriteIntroStep: View {
     /// commandeers both keys behind the scenes.
     private var rewriteBindingLabels: [String] {
         _ = bindingsRefreshToken
-        var labels: [String] = []
-        if rewriteSingleKey != .none {
-            labels.append(rewriteSingleKey.displayName)
-        }
-        if let chord = KeyboardShortcuts.getShortcut(for: .rewrite)?.description {
-            labels.append(chord)
-        }
-        return labels
+        _ = rewriteSingleKey
+        _ = rewriteTriggerTypeRaw
+        return SingleKeyMigration.effectiveBindingLabel(for: .rewrite).map { [$0] } ?? []
     }
 
     @ViewBuilder
@@ -226,21 +222,27 @@ struct RewriteIntroStep: View {
             Text("Set a Rewrite hotkey to try it here:")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
-            HStack(spacing: 10) {
-                Picker("", selection: $rewriteSingleKey) {
-                    Text(SingleKey.none.displayName).tag(SingleKey.none)
-                    Divider()
-                    ForEach(SingleKey.Action.rewrite.pickerCases) { key in
-                        Text(key.displayName).tag(key)
-                    }
+            Picker("Trigger type", selection: rewriteTriggerTypeBinding) {
+                ForEach(SingleKey.TriggerType.allCases, id: \.self) { type in
+                    Text(type.displayName).tag(type)
                 }
-                .labelsHidden()
-                .frame(maxWidth: 200)
-                Text("or")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.tertiary)
-                KeyboardShortcuts.Recorder(for: .rewrite) { _ in
-                    bindingsRefreshToken &+= 1
+            }
+            .pickerStyle(.segmented)
+            HStack(spacing: 10) {
+                if rewriteTriggerType == .singleKey {
+                    Picker("", selection: $rewriteSingleKey) {
+                        Text(SingleKey.none.displayName).tag(SingleKey.none)
+                        Divider()
+                        ForEach(SingleKey.Action.rewrite.pickerCases) { key in
+                            Text(key.displayName).tag(key)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
+                } else {
+                    KeyboardShortcuts.Recorder(for: .rewrite) { _ in
+                        bindingsRefreshToken &+= 1
+                    }
                 }
                 Spacer(minLength: 0)
             }
@@ -248,6 +250,21 @@ struct RewriteIntroStep: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
         }
+    }
+
+    private var rewriteTriggerType: SingleKey.TriggerType {
+        _ = rewriteTriggerTypeRaw
+        return SingleKeyMigration.effectiveTriggerType(for: .rewrite)
+    }
+
+    private var rewriteTriggerTypeBinding: Binding<SingleKey.TriggerType> {
+        Binding(
+            get: { rewriteTriggerType },
+            set: { type in
+                SingleKeyMigration.setTriggerType(type, for: .rewrite)
+                bindingsRefreshToken &+= 1
+            }
+        )
     }
 
     @ViewBuilder
@@ -292,7 +309,7 @@ struct RewriteIntroStep: View {
             do {
                 let result = try await service.rewrite(
                     selectedText: Self.sampleDraft,
-                    instruction: "Rewrite this"
+                    instruction: nil
                 )
                 await MainActor.run {
                     rewrittenText = result

@@ -41,7 +41,8 @@ enum WizardPresenter {
         appleIntelligence: any AppleIntelligenceClienting,
         llmConfiguration: LLMConfiguration,
         logSink: any LogSink = ErrorLog.shared,
-        hotkeyRouter: HotkeyRouter
+        hotkeyRouter: HotkeyRouter,
+        onDismiss: (() -> Void)? = nil
     ) {
         if let controller {
             // Already open — just bring it forward.
@@ -64,6 +65,7 @@ enum WizardPresenter {
             coordinator: coordinator,
             onClose: {
                 controller = nil
+                onDismiss?()
             }
         )
         self.controller = wc

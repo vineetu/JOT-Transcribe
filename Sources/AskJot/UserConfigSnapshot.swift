@@ -1,5 +1,4 @@
 import Foundation
-import KeyboardShortcuts
 
 /// A snapshot of the user's current Jot configuration, built once per
 /// `LanguageModelSession` creation and injected into the chatbot's
@@ -43,11 +42,11 @@ struct UserConfigSnapshot: Equatable {
         retentionDays: Int
     ) -> UserConfigSnapshot {
         UserConfigSnapshot(
-            toggleRecordingShortcut: KeyboardShortcuts.getShortcut(for: .toggleRecording)?.description,
-            pushToTalkShortcut: KeyboardShortcuts.getShortcut(for: .pushToTalk)?.description,
-            rewriteWithVoiceShortcut: KeyboardShortcuts.getShortcut(for: .rewriteWithVoice)?.description,
-            rewriteShortcut: KeyboardShortcuts.getShortcut(for: .rewrite)?.description,
-            pasteLastShortcut: KeyboardShortcuts.getShortcut(for: .pasteLastTranscription)?.description,
+            toggleRecordingShortcut: SingleKeyMigration.effectiveBindingLabel(for: .toggleRecording),
+            pushToTalkShortcut: SingleKeyMigration.effectiveBindingLabel(for: .pushToTalk),
+            rewriteWithVoiceShortcut: SingleKeyMigration.effectiveBindingLabel(for: .rewriteWithVoice),
+            rewriteShortcut: SingleKeyMigration.effectiveBindingLabel(for: .rewrite),
+            pasteLastShortcut: SingleKeyMigration.effectiveBindingLabel(for: .pasteLastTranscription),
             cleanupEnabled: cleanupEnabled,
             aiProviderDisplay: aiProviderDisplay,
             modelDownloaded: modelDownloaded,

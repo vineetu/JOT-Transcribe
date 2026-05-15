@@ -1,4 +1,3 @@
-import KeyboardShortcuts
 import SwiftUI
 
 /// Configurable Rewrite-with-Voice wizard step. Runs twice (bullets +
@@ -28,6 +27,7 @@ struct RewriteWithVoiceStep: View {
     @State private var bindingsRefreshToken: Int = 0
 
     @AppStorage("jot.hotkey.rewriteWithVoice.singleKey") private var rewriteWithVoiceSingleKey: SingleKey = .none
+    @AppStorage("jot.hotkey.rewriteWithVoice.triggerType") private var rewriteWithVoiceTriggerTypeRaw: String = ""
 
     struct Config {
         let title: String
@@ -251,13 +251,9 @@ struct RewriteWithVoiceStep: View {
     /// both defaults).
     private var primaryHotkeyLabel: String? {
         _ = bindingsRefreshToken
-        if rewriteWithVoiceSingleKey != .none {
-            return rewriteWithVoiceSingleKey.displayName
-        }
-        if let chord = KeyboardShortcuts.getShortcut(for: .rewriteWithVoice)?.description {
-            return chord
-        }
-        return nil
+        _ = rewriteWithVoiceSingleKey
+        _ = rewriteWithVoiceTriggerTypeRaw
+        return SingleKeyMigration.effectiveBindingLabel(for: .rewriteWithVoice)
     }
 
     // MARK: - Demo runner

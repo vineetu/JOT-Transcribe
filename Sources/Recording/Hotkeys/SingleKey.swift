@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 
 /// User-selectable single-key bindings. These bypass the Carbon Hot Key
 /// API (`KeyboardShortcuts`/`MASShortcut`/`HotKey` all wrap it and all
@@ -99,6 +100,18 @@ enum SingleKey: String, CaseIterable, Identifiable, Sendable {
 // MARK: - Action mapping
 
 extension SingleKey {
+    enum TriggerType: String, Sendable, CaseIterable {
+        case singleKey
+        case chord
+
+        var displayName: String {
+            switch self {
+            case .singleKey: return "Single key"
+            case .chord:     return "Chord"
+            }
+        }
+    }
+
     /// The five user-bindable hotkey actions. Each declares its trigger
     /// mode and the picker set it shows. Maps 1:1 to `KeyboardShortcuts.Name`
     /// — the chord side of each binding still flows through there.
@@ -114,6 +127,61 @@ extension SingleKey {
         /// `jot.hotkey.toggleRecording.singleKey` so existing users don't
         /// reset).
         var storageKey: String { "jot.hotkey.\(rawValue).singleKey" }
+
+        /// `@AppStorage` / `UserDefaults` key for this action's active trigger type.
+        var triggerTypeStorageKey: String { "jot.hotkey.\(rawValue).triggerType" }
+
+        /// Raw `KeyboardShortcuts` storage name. Use for raw defaults reads so
+        /// `KeyboardShortcuts.Name.init` cannot seed defaults while classifying.
+        var rawKeyboardShortcutsName: String {
+            switch self {
+            case .toggleRecording:        return "toggleRecording"
+            case .pushToTalk:             return "pushToTalk"
+            case .pasteLastTranscription: return "pasteLastTranscription"
+            case .rewriteWithVoice:       return "rewriteSelection"
+            case .rewrite:                return "articulate"
+            }
+        }
+
+        /// Runtime `KeyboardShortcuts` name. This may initialize declared defaults;
+        /// do not use it for raw migration classification.
+        var keyboardShortcutsName: KeyboardShortcuts.Name {
+            switch self {
+            case .toggleRecording:        return .toggleRecording
+            case .pushToTalk:             return .pushToTalk
+            case .pasteLastTranscription: return .pasteLastTranscription
+            case .rewriteWithVoice:       return .rewriteWithVoice
+            case .rewrite:                return .rewrite
+            }
+        }
+
+        var hasDeclaredChordDefault: Bool {
+            switch self {
+            case .pushToTalk:
+                return false
+            case .toggleRecording, .pasteLastTranscription, .rewriteWithVoice, .rewrite:
+                return true
+            }
+        }
+
+        var defaultChordDescription: String? {
+            switch self {
+            case .toggleRecording:        return "⌥Space"
+            case .pushToTalk:             return nil
+            case .pasteLastTranscription: return "⌥,"
+            case .rewriteWithVoice:       return "⌥."
+            case .rewrite:                return "⌥/"
+            }
+        }
+
+        var defaultTriggerType: TriggerType {
+            switch self {
+            case .toggleRecording:
+                return .singleKey
+            case .pushToTalk, .pasteLastTranscription, .rewriteWithVoice, .rewrite:
+                return .chord
+            }
+        }
 
         /// User-facing label for the row in Settings → Shortcuts.
         var displayName: String {
