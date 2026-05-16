@@ -121,6 +121,18 @@ struct RewriteIntroStep: View {
 
             if phase == .success, !rewrittenText.isEmpty {
                 transcriptBlock(label: "REWRITTEN", text: rewrittenText, color: .accentColor)
+
+                if let bindingLabel = rewriteBindingLabels.first {
+                    Text("Tip: in any app, select text and press \(bindingLabel) to rewrite it.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Tip: in any app, select text and press your Rewrite shortcut to rewrite it.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             if let msg = errorMessage {
@@ -158,11 +170,10 @@ struct RewriteIntroStep: View {
     /// without leaving the wizard.
     @ViewBuilder
     private var hotkeyInstruction: some View {
-        let bindings = rewriteBindingLabels
-        if bindings.isEmpty {
+        if rewriteBindingLabels.isEmpty {
             inlineBindingPicker
         } else {
-            bindingPillRow(for: bindings)
+            buttonHint
         }
     }
 
@@ -178,31 +189,9 @@ struct RewriteIntroStep: View {
     }
 
     @ViewBuilder
-    private func bindingPillRow(for bindings: [String]) -> some View {
+    private var buttonHint: some View {
         HStack(spacing: 6) {
-            Text("Press")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-            ForEach(Array(bindings.enumerated()), id: \.offset) { idx, label in
-                if idx > 0 {
-                    Text("or")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.tertiary)
-                }
-                Text(label)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(Color.accentColor.opacity(0.16))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .stroke(Color.accentColor.opacity(0.35), lineWidth: 0.5)
-                    )
-            }
-            Text("to rewrite the draft, or click the button.")
+            Text("Click the button to rewrite the draft.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
