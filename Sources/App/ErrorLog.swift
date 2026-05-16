@@ -5,7 +5,8 @@ import Darwin
 #endif
 
 /// Cross-cutting error log. Writes to ~/Library/Logs/Jot/jot.log.
-/// Rolling 2MB cap — on rotate, renames current to jot.log.1 (overwriting any existing).
+/// 100 KB cap — when exceeded, the file is trimmed from the front (oldest
+/// entries discarded, most recent kept). Single file, no rotation litter.
 /// Nothing is ever sent off the device.
 public actor ErrorLog: LogSink {
     public static let shared = ErrorLog()
@@ -23,7 +24,13 @@ public actor ErrorLog: LogSink {
         logFileURL.deletingLastPathComponent().appendingPathComponent("jot.log.1")
     }
 
-    private static let maxSize: UInt64 = 2 * 1024 * 1024  // 2 MB
+    /// Hard cap on log file size. Above this, the file gets trimmed from
+    /// the front. 100 KB holds roughly 1000 entries (~100 B/entry) — plenty
+    /// for debugging the recent past without unbounded disk usage.
+    private static let maxSize: Int = 100 * 1024  // 100 KB
+    /// After a trim, keep this much (80% of cap). Buffer prevents
+    /// trimming on every write once the file is near the cap.
+    private static let trimTargetSize: Int = 80 * 1024  // 80 KB
     private let fallbackLog = Logger(subsystem: "com.jot.Jot", category: "ErrorLog")
 
     private init() {}
@@ -78,13 +85,38 @@ public actor ErrorLog: LogSink {
     }
 
     private func rotateIfNeeded(url: URL) throws {
+        // Clean up any legacy jot.log.1 left behind by the old rotation
+        // scheme (2 MB cap with file rename). Harmless on machines that
+        // never had it; cleans up disk for users upgrading from the
+        // pre-trim builds.
+        try? FileManager.default.removeItem(at: Self.rotatedLogFileURL)
+
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = attrs[.size] as? UInt64,
-              size > Self.maxSize else { return }
+              Int(size) > Self.maxSize else { return }
 
-        let rotated = Self.rotatedLogFileURL
-        try? FileManager.default.removeItem(at: rotated)
-        try FileManager.default.moveItem(at: url, to: rotated)
+        // Trim from the front: read the file, drop the oldest entries,
+        // keep the most recent `trimTargetSize` bytes. Align the cutoff
+        // to a newline so we never split a log line.
+        let data = try Data(contentsOf: url)
+        guard data.count > Self.trimTargetSize else { return }
+
+        let cutoff = data.count - Self.trimTargetSize
+        var lineStart = cutoff
+        // Walk forward to the next newline so the trimmed file starts at
+        // a clean entry boundary.
+        while lineStart < data.count && data[lineStart] != 0x0A {  // \n
+            lineStart += 1
+        }
+        if lineStart < data.count {
+            lineStart += 1  // skip the newline itself
+        }
+
+        let trimmed = data.suffix(from: lineStart)
+        // Data.write(.atomic) writes to a temp file and atomically renames,
+        // so concurrent readers see either the old or the new file — never
+        // a half-written one.
+        try trimmed.write(to: url, options: .atomic)
     }
 
     // MARK: - Redaction helpers (static, usable at log-call sites)

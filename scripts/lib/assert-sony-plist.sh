@@ -25,10 +25,12 @@ jot_flavor="$(/usr/libexec/PlistBuddy -c "Print :JotFlavor" "$PLIST" 2>/dev/null
 [[ "$jot_flavor" == "sony" ]] \
     || fail "JotFlavor='${jot_flavor:-<absent>}', expected 'sony'"
 
-# 2. SUFeedURL must point at the Sony enterprise host.
+# 2. SUFeedURL must point at a recognized Sony-internal anonymous-readable host.
+#    - github.sie.sony.com — legacy (requires SSO; Sparkle can't fetch anonymously)
+#    - kcloud.playstation.net — Simple Host (current; anonymous, no SSO)
 su_feed="$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$PLIST" 2>/dev/null || echo '')"
-[[ "$su_feed" == *"github.sie.sony.com"* ]] \
-    || fail "SUFeedURL='${su_feed:-<absent>}' doesn't point at the Sony host"
+[[ "$su_feed" == *"github.sie.sony.com"* || "$su_feed" == *"kcloud.playstation.net"* ]] \
+    || fail "SUFeedURL='${su_feed:-<absent>}' doesn't point at a recognized Sony host"
 
 # 3. PlayStation gateway endpoint must be present in at least one value.
 grep -q "gateway.ai.studios.playstation.com" "$PLIST" \

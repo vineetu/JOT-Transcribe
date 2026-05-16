@@ -246,6 +246,56 @@ if [[ "${JOT_SKIP_APPCAST}" != "1" ]]; then
     cp "${APPCAST_SRC}" "${APPCAST_DST}"
 fi
 
+# ---- 5b. Upload to Simple Host (opt-in via JOT_SIMPLE_HOST_API_KEY) ----------
+# Sony uses Simple Host (a Sony-internal anonymous-readable static host) for
+# Sparkle auto-update because github.sie.sony.com requires SSO for raw content.
+# Public releases leave JOT_SIMPLE_HOST_API_KEY unset and skip this step.
+if [[ -n "${JOT_SIMPLE_HOST_API_KEY:-}" ]]; then
+    : "${JOT_SIMPLE_HOST_BASE_URL:?required when JOT_SIMPLE_HOST_API_KEY is set}"
+    : "${JOT_SIMPLE_HOST_SITENAME:?required when JOT_SIMPLE_HOST_API_KEY is set}"
+    log "Uploading appcast + DMG to Simple Host (${JOT_SIMPLE_HOST_SITENAME})"
+
+    UPLOAD_DIR="$(mktemp -d)"
+    cat > "${UPLOAD_DIR}/index.html" <<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jot for Sony — Update Feed</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:640px;margin:60px auto;padding:0 20px;color:#1a1a1a;line-height:1.5}h1{margin:0 0 8px 0}.sub{color:#666;margin-bottom:24px}a{color:#0066cc;text-decoration:none}a:hover{text-decoration:underline}</style>
+</head>
+<body>
+<h1>Jot for Sony</h1>
+<p class="sub">Internal Sparkle auto-update feed.</p>
+<p>Latest release: <strong>${TAG}</strong></p>
+<ul>
+<li><a href="appcast.xml">appcast.xml</a> — Sparkle feed</li>
+<li><a href="${JOT_FLAVOR_DMG_NAME}">${JOT_FLAVOR_DMG_NAME}</a> — DMG (latest)</li>
+</ul>
+<p class="sub" style="margin-top:40px;font-size:.85em">Contact: jot.transcribe@gmail.com</p>
+</body>
+</html>
+HTML
+    cp "${APPCAST_DST}" "${UPLOAD_DIR}/appcast.xml"
+    cp "${DMG_FINAL}" "${UPLOAD_DIR}/${JOT_FLAVOR_DMG_NAME}"
+
+    ARCHIVE="$(mktemp -t jot-simple-host).tar.gz"
+    tar -czf "${ARCHIVE}" -C "${UPLOAD_DIR}" .
+
+    HTTP_CODE="$(curl -s -o /tmp/simple-host-upload.out -w "%{http_code}" \
+        -X PUT "${JOT_SIMPLE_HOST_BASE_URL}/api/sites/${JOT_SIMPLE_HOST_SITENAME}" \
+        -H "X-API-Key: ${JOT_SIMPLE_HOST_API_KEY}" \
+        -H "Content-Type: application/gzip" \
+        --data-binary "@${ARCHIVE}")"
+    rm -rf "${UPLOAD_DIR}" "${ARCHIVE}"
+
+    if [[ "${HTTP_CODE}" != "200" ]]; then
+        cat /tmp/simple-host-upload.out 2>&1 || true
+        fail "Simple Host upload failed (HTTP ${HTTP_CODE})"
+    fi
+    log "Simple Host upload OK — feed live at ${JOT_SIMPLE_HOST_BASE_URL}/sites/${JOT_SIMPLE_HOST_USERNAME:-?}/${JOT_SIMPLE_HOST_SITENAME}/"
+fi
+
 # ---- 6. Restore Info.plist flavor overrides BEFORE commit --------------------
 # The DMG built in step 3 already contains the flavor-injected Info.plist, so
 # the archive is correct. But the EXIT trap installed earlier fires AFTER

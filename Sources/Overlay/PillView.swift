@@ -188,9 +188,12 @@ private struct RecordingContent: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .transition(.opacity)
             } else {
-                // No partial yet — keep the layout stable by reserving
-                // the same flexible space the text would occupy.
-                Spacer(minLength: 0)
+                // No partial — fill the flexible space with a wider
+                // waveform so non-streaming users see something alive
+                // where streaming users would see live transcript.
+                AmplitudeTrail(reduceMotion: reduceMotion)
+                    .frame(maxWidth: .infinity, maxHeight: 22)
+                    .transition(.opacity)
             }
             Text(PillViewModel.formatElapsed(elapsed))
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
