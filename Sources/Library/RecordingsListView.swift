@@ -204,35 +204,122 @@ struct RecordingsListView: View {
                 ForEach(RecordingStore.grouped(libraryItems: filteredItems), id: \.0.id) { (group, rows) in
                     Section(group.title) {
                         ForEach(rows) { item in
-                            Button {
-                                switch item {
-                                case .recording(let r): path.append(r)
-                                case .rewrite(let s): path.append(s)
-                                }
-                            } label: {
-                                RecordingRowView(
-                                    item: item,
-                                    onRetranscribe: {
-                                        if case .recording(let r) = item { retranscribe(r) }
-                                    },
-                                    onReveal: {
-                                        if case .recording(let r) = item { reveal(r) }
-                                    },
-                                    onDelete: {
-                                        switch item {
-                                        case .recording(let r): pendingDelete = r
-                                        case .rewrite(let s): pendingDeleteRewrite = s
-                                        }
+                            // Why an outer HStack with the Button + Copy +
+                            // Menu as siblings (instead of `Button { } label: {
+                            // entireRow }`): SwiftUI's `.plain` button style
+                            // on macOS sends every click in its bounds to
+                            // the Button's action. If Copy is a *child* of
+                            // the Button's label, the click is eaten before
+                            // CopyTranscriptButton ever sees it. Pulling
+                            // Copy and the ellipsis Menu out so they sit
+                            // next to the Button (not inside it) means each
+                            // gets its own native click. The Menu used to
+                            // happen to work as a child because it
+                            // registers an AppKit-level NSMenu handler that
+                            // beats the SwiftUI Button gesture system, but
+                            // there's no equivalent escape hatch for a
+                            // plain action button — the only reliable fix
+                            // is to stop nesting them.
+                            HStack(spacing: 0) {
+                                Button {
+                                    switch item {
+                                    case .recording(let r): path.append(r)
+                                    case .rewrite(let s): path.append(s)
                                     }
-                                )
+                                } label: {
+                                    RecordingRowView(
+                                        item: item,
+                                        onRetranscribe: {
+                                            if case .recording(let r) = item { retranscribe(r) }
+                                        },
+                                        onReveal: {
+                                            if case .recording(let r) = item { reveal(r) }
+                                        },
+                                        onDelete: {
+                                            switch item {
+                                            case .recording(let r): pendingDelete = r
+                                            case .rewrite(let s): pendingDeleteRewrite = s
+                                            }
+                                        }
+                                    )
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+
+                                rowTrailingControls(for: item)
+                                    .padding(.leading, 4)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
         }
         .listStyle(.inset)
+    }
+
+    /// Per-item trailing widgets (Copy + ellipsis Menu) rendered as a
+    /// SIBLING of the row's navigation Button — see the long comment at
+    /// the row construction site for why this can't sit inside the
+    /// Button's label. The visual placement matches the previous nested
+    /// layout because both the Button label and these controls share the
+    /// outer `HStack(spacing: 0)`.
+    @ViewBuilder
+    private func rowTrailingControls(for item: LibraryItem) -> some View {
+        // Inner HStack so the trailing widgets carry their own internal
+        // spacing without depending on the outer `spacing: 0` HStack that
+        // the navigation Button + this group share. For dictation rows we
+        // also include the duration here so it lines up with Copy + ⋯
+        // instead of floating up on the title baseline.
+        HStack(spacing: 6) {
+            switch item {
+            case .recording(let r):
+                Text(r.formattedDuration)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+
+                CopyTranscriptButton(text: r.transcript)
+
+                Menu {
+                    Button("Re-transcribe") { retranscribe(r) }
+                    Button("Reveal in Finder") { reveal(r) }
+                    Divider()
+                    Button("Delete", role: .destructive) { pendingDelete = r }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+
+            case .rewrite(let s):
+                CopyTranscriptButton(
+                    text: s.output,
+                    accessibilityLabel: "Copy output",
+                    helpLabel: "Copy output",
+                    emptyHelpLabel: "No output to copy"
+                )
+
+                Menu {
+                    Button("Copy Output") { copyRewriteOutput(s) }
+                    Divider()
+                    Button("Delete", role: .destructive) { pendingDeleteRewrite = s }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(.secondary)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+            }
+        }
+    }
+
+    private func copyRewriteOutput(_ s: RewriteSession) {
+        guard !s.output.isEmpty else { return }
+        guard let pb = AppServices.live?.pasteboard else { return }
+        _ = pb.write(s.output)
     }
 
     private var emptyState: some View {

@@ -32,9 +32,15 @@ su_feed="$(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$PLIST" 2>/dev/null ||
 [[ "$su_feed" == *"github.sie.sony.com"* || "$su_feed" == *"kcloud.playstation.net"* ]] \
     || fail "SUFeedURL='${su_feed:-<absent>}' doesn't point at a recognized Sony host"
 
-# 3. PlayStation gateway endpoint must be present in at least one value.
-grep -q "gateway.ai.studios.playstation.com" "$PLIST" \
-    || fail "No playstation gateway endpoint values present — .flavor-sony.overrides may have failed to apply"
+# 3. PFB endpoint must be present (FLAVOR_1_DEFAULT_ENDPOINT). Used to
+#    assert against `gateway.ai.studios.playstation.com` until v1.9.5
+#    when the Sony picker stopped exposing public clouds and the
+#    `JotDefaultEndpoint.{openai,anthropic,gemini}` rerouting overrides
+#    became dead config and were stripped. The PFB AI-gateway host is
+#    the right invariant now — it's the only endpoint a Sony build
+#    actually calls.
+grep -q "ai-gateway.dspprod.bis.sie.sony.com" "$PLIST" \
+    || fail "No PFB endpoint present — .flavor-sony.overrides may have failed to apply"
 
 # 4. PFB Enterprise (FLAVOR_1_DISPLAY_NAME) marker key must be set.
 grep -q "<key>FLAVOR_1_DISPLAY_NAME" "$PLIST" \

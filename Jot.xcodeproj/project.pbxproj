@@ -13,6 +13,7 @@
 		A000000000000000000000B4 /* help-content.md in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* help-content.md */; };
 		A000000000000000000000B5 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* Localizable.xcstrings */; };
 		A000000000000000000000B6 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* InfoPlist.xcstrings */; };
+		A000000000000000000000B7 /* prompt-library.json in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* prompt-library.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +25,7 @@
 		A00000000000000000000013 /* help-content.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "help-content.md"; sourceTree = "<group>"; };
 		A00000000000000000000014 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A00000000000000000000015 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
+		A00000000000000000000016 /* prompt-library.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "prompt-library.json"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -116,6 +118,7 @@
 				A00000000000000000000013 /* help-content.md */,
 				A00000000000000000000014 /* Localizable.xcstrings */,
 				A00000000000000000000015 /* InfoPlist.xcstrings */,
+				A00000000000000000000016 /* prompt-library.json */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -244,6 +247,7 @@
 				A000000000000000000000B4 /* help-content.md in Resources */,
 				A000000000000000000000B5 /* Localizable.xcstrings in Resources */,
 				A000000000000000000000B6 /* InfoPlist.xcstrings in Resources */,
+				A000000000000000000000B7 /* prompt-library.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

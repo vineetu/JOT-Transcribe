@@ -14,7 +14,12 @@ final class OverlayWindowController {
     private let delivery: DeliveryService
     private let rewriteController: RewriteController?
     private let pipeline: VoiceInputPipeline
-    private let model: PillViewModel
+    /// Exposed read-only so the hotkey router can drive
+    /// `.holdProgress` transitions for the Prompt Picker entry path.
+    /// All other consumers should stick to the published `state`
+    /// stream rather than poking the view model directly.
+    let pillViewModel: PillViewModel
+    private var model: PillViewModel { pillViewModel }
     private let amplitudePublisher = AmplitudePublisher()
 
     private var panel: OverlayPanel?
@@ -23,6 +28,15 @@ final class OverlayWindowController {
     private var stateCancellable: AnyCancellable?
     private var expansionCancellable: AnyCancellable?
     private var streamingActiveCancellable: AnyCancellable?
+
+    /// NSEvent monitors installed while the pill is expanded so any
+    /// click outside the pill's panel collapses it. Cleared when the
+    /// pill collapses (either via the tap-to-toggle path or via these
+    /// monitors themselves) and in `deinit`. `Any?` because
+    /// `addGlobalMonitorForEvents` / `addLocalMonitorForEvents` return
+    /// an opaque token. See `applyOutsideClickMonitor(expanded:)`.
+    private var outsideClickGlobalMonitor: Any?
+    private var outsideClickLocalMonitor: Any?
 
     /// Natural footprint of the compact pill (visual surface, not including
     /// shadow). Error pills can grow beyond this, up to `expandedPillWidth`.
@@ -47,7 +61,7 @@ final class OverlayWindowController {
         self.delivery = delivery
         self.rewriteController = rewriteController
         self.pipeline = pipeline
-        self.model = PillViewModel(recorder: recorder, delivery: delivery, rewriteController: rewriteController)
+        self.pillViewModel = PillViewModel(recorder: recorder, delivery: delivery, rewriteController: rewriteController)
     }
 
     func install() {
@@ -102,11 +116,14 @@ final class OverlayWindowController {
             }
         // Re-layout when the user taps to expand or collapse the
         // recording pill. Frame change is animated by AppKit since
-        // panel.setFrame uses display:true.
+        // panel.setFrame uses display:true. Also (un)installs the
+        // outside-click monitors that dismiss the expanded pill when
+        // the user clicks anywhere off it.
         expansionCancellable = model.$isPillExpanded
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] expanded in
                 self?.updateFrame()
+                self?.applyOutsideClickMonitor(expanded: expanded)
             }
         // Refresh click-through when a streaming session begins or
         // ends. Without this, a v3-then-streaming sequence would keep
@@ -126,6 +143,79 @@ final class OverlayWindowController {
         }
         if let observer = reduceMotionObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        // NSEvent monitors must be removed via `NSEvent.removeMonitor`,
+        // not NotificationCenter. They're owned by AppKit's process-wide
+        // event tap registry, so leaving them installed past the
+        // controller's lifetime would keep dispatching to a freed
+        // closure on the next click.
+        if let monitor = outsideClickGlobalMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = outsideClickLocalMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    // MARK: - Outside-click dismissal
+
+    /// Mounts a pair of NSEvent monitors while the pill is expanded
+    /// (`expanded == true`) and tears them down when it collapses.
+    ///
+    /// Two monitors are needed because AppKit splits event delivery:
+    /// - `addGlobalMonitorForEvents` only sees events dispatched to
+    ///   *other* applications. Catches clicks outside Jot entirely.
+    /// - `addLocalMonitorForEvents` only sees events dispatched to
+    ///   Jot's own process. Catches clicks in Jot's Settings / Home /
+    ///   Ask Jot windows so they also collapse the pill.
+    ///
+    /// The local monitor must skip events targeting the overlay panel
+    /// itself — those are the user clicking the pill to toggle, and
+    /// the existing SwiftUI `.onTapGesture` already handles that path.
+    /// Without the skip we'd collapse twice (and on a fresh expand the
+    /// monitor would race the toggle).
+    private func applyOutsideClickMonitor(expanded: Bool) {
+        if expanded {
+            installOutsideClickMonitorsIfNeeded()
+        } else {
+            removeOutsideClickMonitors()
+        }
+    }
+
+    private func installOutsideClickMonitorsIfNeeded() {
+        let matching: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+
+        if outsideClickGlobalMonitor == nil {
+            outsideClickGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: matching) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.model.collapsePillExpandedIfNeeded()
+                }
+            }
+        }
+
+        if outsideClickLocalMonitor == nil {
+            outsideClickLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: matching) { [weak self] event in
+                // Click on the overlay panel itself: let the pill's
+                // own .onTapGesture handle expand/collapse.
+                if let panel = self?.panel, event.window === panel {
+                    return event
+                }
+                Task { @MainActor [weak self] in
+                    self?.model.collapsePillExpandedIfNeeded()
+                }
+                return event
+            }
+        }
+    }
+
+    private func removeOutsideClickMonitors() {
+        if let monitor = outsideClickGlobalMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickGlobalMonitor = nil
+        }
+        if let monitor = outsideClickLocalMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickLocalMonitor = nil
         }
     }
 
@@ -189,7 +279,7 @@ final class OverlayWindowController {
                 return Self.streamingPillWidth
             }
             return Self.compactPillWidth
-        case .hidden, .transcribing, .condensing, .rewriting, .transforming, .success:
+        case .hidden, .transcribing, .condensing, .rewriting, .transforming, .success, .holdProgress:
             return Self.compactPillWidth
         }
     }
@@ -211,8 +301,10 @@ final class OverlayWindowController {
     private func applyClickThrough(for state: PillViewModel.PillState) {
         guard let panel else { return }
         switch state {
-        case .hidden, .transcribing, .condensing, .rewriting, .transforming, .notice:
+        case .hidden, .transcribing, .condensing, .rewriting, .transforming, .notice, .holdProgress:
             // Notices are pure informational — no copy glyph or follow-up.
+            // Hold-progress is also non-interactive — the user is busy
+            // holding the hotkey.
             panel.ignoresMouseEvents = true
         case .recording:
             // Recording pill is tappable ONLY during a streaming

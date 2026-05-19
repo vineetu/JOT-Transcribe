@@ -53,6 +53,21 @@ final class HotkeyRouter {
     private var singleKeyHotkeys: [SingleKey.Action: SingleKeyHotkey] = [:]
     private var singleKeyObserver: AnyCancellable?
 
+    /// Tap-vs-hold dispatcher for the `.rewrite` hotkey. When non-nil,
+    /// every press of `.rewrite` (chord or single-key) is funneled
+    /// through here so a long-press can open the Prompt Picker instead
+    /// of firing the default `RewriteController.rewrite()`. When nil
+    /// (composition hasn't wired the pill + picker yet, or harness
+    /// tests), presses fall back to direct invocation — preserving the
+    /// pre-picker behavior.
+    private var rewriteHoldDetector: RewriteHoldDetector?
+    /// Closure invoked when the user holds `.rewrite` past the
+    /// dispatcher's threshold. Set by composition once the
+    /// `PromptPickerController` exists. Nil until then — pressing-and-
+    /// holding before the opener is wired is a silent no-op (the tap
+    /// path still works).
+    private var promptPickerOpener: (@MainActor () -> Void)?
+
     init(recorder: RecorderController, delivery: DeliveryService, rewriteController: RewriteController? = nil) {
         self.recorder = recorder
         self.delivery = delivery
@@ -140,19 +155,35 @@ final class HotkeyRouter {
                 }
             }
 
-            // v1.5 — fixed-prompt Rewrite. Selection → LLM → paste with
-            // the literal "Rewrite this" instruction (no voice step, no
-            // classifier). Shares the selection-capture + paste-back path
-            // with Rewrite with Voice.
+            // v1.5 — fixed-prompt Rewrite, now with Prompt Picker tap-vs-hold.
+            // Wired to `rewriteHoldDetector` when composition has installed
+            // it (after the overlay + picker exist). The detector decides
+            // tap-fires-default vs. hold-opens-picker based on press duration.
+            // While `rewriteOverride` is set (Wizard demo), the detector is
+            // bypassed entirely and presses go straight to the override.
+            // Bypass also applies if no detector is wired (test seam /
+            // pre-picker boot order) — falls back to today's direct call.
             KeyboardShortcuts.onKeyDown(for: .rewrite) { [weak self, weak rewriteController] in
-                if let override = self?.rewriteOverride {
+                guard let self else { return }
+                if let override = self.rewriteOverride {
                     override()
+                    return
+                }
+                if let detector = self.rewriteHoldDetector {
+                    detector.keyDown()
                     return
                 }
                 guard let rewriteController else { return }
                 Task { @MainActor in
                     await rewriteController.rewrite()
                 }
+            }
+            KeyboardShortcuts.onKeyUp(for: .rewrite) { [weak self] in
+                guard let self else { return }
+                // Override path doesn't differentiate between down and up
+                // — the override fired on key-down. Drop the up cleanly.
+                if self.rewriteOverride != nil { return }
+                self.rewriteHoldDetector?.keyUp()
             }
         }
 
@@ -246,6 +277,39 @@ final class HotkeyRouter {
     /// production rewrite resumes on the next press.
     func clearRewriteOverride() {
         rewriteOverride = nil
+    }
+
+    /// Install the Prompt Picker tap-vs-hold dispatcher for the
+    /// `.rewrite` hotkey. Composition wires this AFTER the overlay
+    /// exists so the detector can push hold-progress into the pill.
+    /// `onHoldComplete` is intentionally NOT taken here — the picker
+    /// controller is constructed later still; see
+    /// `setPromptPickerOpener(_:)`. Until that opener is wired, a
+    /// completed hold simply collapses the pill and is a silent no-op.
+    func installRewriteHoldDispatch(
+        setHoldProgress: @escaping @MainActor (Double) -> Void,
+        clearHoldProgress: @escaping @MainActor () -> Void
+    ) {
+        rewriteHoldDetector = RewriteHoldDetector(
+            onTap: { [weak self] in
+                guard let self, let rc = self.rewriteController else { return }
+                Task { @MainActor in await rc.rewrite() }
+            },
+            onHoldComplete: { [weak self] in
+                self?.promptPickerOpener?()
+            },
+            setHoldProgress: setHoldProgress,
+            clearHoldProgress: clearHoldProgress
+        )
+    }
+
+    /// Register the closure that opens the Prompt Picker palette when
+    /// the user holds `.rewrite` past the dispatcher's threshold.
+    /// Composition wires this once the `PromptPickerController` is
+    /// constructed. May be called multiple times safely (last writer
+    /// wins).
+    func setPromptPickerOpener(_ open: @escaping @MainActor () -> Void) {
+        promptPickerOpener = open
     }
 
     /// Wire each `SingleKey.Action`'s `SingleKeyHotkey` to whatever the
@@ -440,16 +504,31 @@ final class HotkeyRouter {
             hotkey.unbind()
             return
         }
+        // `.rewrite.mode` is `.hold`, so both edges are delivered. The
+        // dispatcher (when installed) maps the press/release pair to
+        // either default-rewrite (early release) or picker-open (held
+        // past 1.2s). With no dispatcher wired, falls back to the
+        // pre-picker behavior: press fires Rewrite, release is ignored.
         hotkey.bind(
             key,
             mode: SingleKey.Action.rewrite.mode,
             onStart: { [weak self, weak rewriteController] in
-                if let override = self?.rewriteOverride {
+                guard let self else { return }
+                if let override = self.rewriteOverride {
                     override()
+                    return
+                }
+                if let detector = self.rewriteHoldDetector {
+                    detector.keyDown()
                     return
                 }
                 guard let rewriteController else { return }
                 Task { @MainActor in await rewriteController.rewrite() }
+            },
+            onStop: { [weak self] in
+                guard let self else { return }
+                if self.rewriteOverride != nil { return }
+                self.rewriteHoldDetector?.keyUp()
             }
         )
     }

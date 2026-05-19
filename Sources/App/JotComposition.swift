@@ -172,6 +172,17 @@ struct AppServices {
     let soundTriggers: SoundTriggers
     let updaterController: SPUStandardUpdaterController
     let modelContainer: ModelContainer
+    /// Bundled-prompt store + per-prompt usage. Strong-retain so the
+    /// router's weak opener closure has something to call into; also
+    /// future call sites (Settings → Prompts pane in Phase 2) can read
+    /// the same store rather than building a second one.
+    let promptStore: PromptStore
+    /// Prompt Picker palette controller. Strong-retain for the app's
+    /// lifetime — the router's `promptPickerOpener` captures it weakly,
+    /// so without this field the controller would be deallocated as
+    /// soon as `build()` returns and holding Rewrite would silently
+    /// no-op (Codex review, 2026-05-17).
+    let promptPicker: PromptPickerController
 }
 
 extension AppServices {
@@ -378,7 +389,7 @@ enum JotComposition {
             do {
                 let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self,
                     configurations: memoryConfig
                 )
             } catch {
@@ -388,14 +399,14 @@ enum JotComposition {
             do {
                 let config = ModelConfiguration(url: newURL)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self,
                     configurations: config
                 )
             } catch {
                 do {
                     let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                     modelContainer = try ModelContainer(
-                        for: Recording.self, RewriteSession.self,
+                        for: Recording.self, RewriteSession.self, PromptUsage.self,
                         configurations: memoryConfig
                     )
                 } catch {
@@ -498,6 +509,37 @@ enum JotComposition {
             pipeline: pipeline
         )
 
+        // Wire the Prompt Picker tap-vs-hold dispatcher onto the
+        // `.rewrite` hotkey now that the overlay exists. The picker
+        // opener itself is set later (when the PromptPickerController
+        // is constructed — Phase 1 of the picker rollout). Until then,
+        // a completed hold collapses the pill but does not open
+        // anything; the tap path remains today's default rewrite.
+        hotkeyRouter.installRewriteHoldDispatch(
+            setHoldProgress: { [weak pillVM = overlay.pillViewModel] progress in
+                pillVM?.showHoldProgress(progress)
+            },
+            clearHoldProgress: { [weak pillVM = overlay.pillViewModel] in
+                pillVM?.clearHoldProgress()
+            }
+        )
+
+        // Prompt Picker — bundled library + per-prompt usage stats live
+        // alongside the existing Library models in the same SwiftData
+        // store. The opener closure is registered on the router so a
+        // hold-past-threshold press surfaces the palette.
+        let promptStore = PromptStore(modelContext: modelContainer.mainContext)
+        let promptPicker = PromptPickerController(
+            store: promptStore,
+            rewriteController: rewriteController,
+            activeProvider: { [weak llmConfiguration] in
+                llmConfiguration?.provider.rawValue
+            }
+        )
+        hotkeyRouter.setPromptPickerOpener { [weak promptPicker] in
+            promptPicker?.open()
+        }
+
         let recordingPersister = RecordingPersister(
             recorder: recorder,
             context: modelContainer.mainContext,
@@ -529,7 +571,9 @@ enum JotComposition {
             retention: retention,
             soundTriggers: soundTriggers,
             updaterController: updaterController,
-            modelContainer: modelContainer
+            modelContainer: modelContainer,
+            promptStore: promptStore,
+            promptPicker: promptPicker
         )
     }
 }

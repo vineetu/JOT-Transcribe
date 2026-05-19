@@ -38,25 +38,46 @@ struct CopyTranscriptButton: View {
     private var isDisabled: Bool { text.isEmpty }
 
     var body: some View {
-        Button(action: copy) {
+        // Why `Menu { … } primaryAction:` instead of a plain Button:
+        // in the Library list row layout — as a sibling of the row's
+        // navigation Button and the three-dots Menu — `Button` actions
+        // never fire on click. The click is eaten by AppKit's
+        // NSTableView row-selection layer that sits under SwiftUI's
+        // `List`. The three-dots `Menu` in the same sibling position
+        // DOES receive clicks because `Menu` bridges to an AppKit
+        // `NSMenu` whose press tracking runs ahead of the table's row
+        // hit-test. Wrapping Copy as a `Menu` with `primaryAction:`
+        // rides the same AppKit path: left-click fires `primaryAction`,
+        // right-click / long-press shows the menu items (a single
+        // "Copy" item so those gestures stay functional, calling the
+        // same `copy()`).
+        Menu {
+            Button(action: copy) {
+                Label(helpLabel, systemImage: "doc.on.doc")
+            }
+        } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.system(size: pointSize, weight: .medium))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(foreground)
                 .scaleEffect(copied ? 1.08 : 1.0)
                 .animation(.spring(response: 0.22, dampingFraction: 0.7), value: copied)
-                // Reserve a stable hit-target width so the row layout never
-                // shifts when the glyph swaps between `doc.on.doc` and
-                // `checkmark` (the two symbols have slightly different widths).
+                // Reserve a stable hit-target width so the row layout
+                // never shifts when the glyph swaps between
+                // `doc.on.doc` and `checkmark` (the two symbols have
+                // slightly different widths).
                 .frame(width: 16, height: 16)
                 .contentShape(Rectangle())
+        } primaryAction: {
+            copy()
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
         .disabled(isDisabled)
         .onHover { hovering = $0 }
         .help(isDisabled ? emptyHelpLabel : (copied ? "Copied" : helpLabel))
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityAddTraits(.isButton)
     }
 
     private var foreground: Color {
@@ -68,13 +89,25 @@ struct CopyTranscriptButton: View {
 
     private func copy() {
         guard !isDisabled else { return }
-        // Phase 4 patch round 4: route through the Pasteboarding seam
-        // instead of `NSPasteboard.general` so harness flows can verify
-        // the copy via `StubPasteboard`. AppServices.live is always
-        // resolved by the time a SwiftUI body renders.
-        guard let pb = AppServices.live?.pasteboard else { return }
-        _ = pb.write(text)
-
+        // Prefer the Pasteboarding seam (so harness flows can verify
+        // via `StubPasteboard`); fall back to `NSPasteboard.general`
+        // when `AppServices.live` is nil so the clipboard still gets
+        // the text on the cold-launch race window.
+        let wrote: Bool
+        if let pb = AppServices.live?.pasteboard {
+            wrote = pb.write(text)
+        } else {
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            wrote = pb.setString(text, forType: .string)
+        }
+        guard wrote else {
+            Task { await ErrorLog.shared.warn(
+                component: "CopyTranscriptButton",
+                message: "copy failed — pasteboard write returned false"
+            ) }
+            return
+        }
         copied = true
         resetTask?.cancel()
         resetTask = Task { @MainActor in

@@ -14,9 +14,26 @@ struct AboutPane: View {
     @Environment(\.setSidebarSelection) private var setSidebarSelection
     @EnvironmentObject private var llmConfiguration: LLMConfiguration
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
-    @State private var pendingShareAction: ShareAction?
     @State private var viewerText = ""
     @State private var isShowingLogViewer = false
+    /// Drives the in-app Donations page sheet. Replaces the prior
+    /// `Link` to `jot.ideaflow.page/donations` — donations now
+    /// browse in-app and only the actual donate step opens
+    /// every.org in the system browser.
+    @State private var isShowingDonations = false
+    /// Drives the in-app feedback composer sheet for the
+    /// general-feedback path (no log attached, just a plain
+    /// message). Distinct from `pendingBugReport` because the two
+    /// routes share the composer but enter it from different
+    /// buttons with different pre-fills.
+    @State private var isShowingFeedback = false
+
+    /// Drives the in-app feedback composer sheet for the bug-report
+    /// path. Non-nil = a pre-computed (redacted + raw) log footer
+    /// is being passed into the composer, switching it into
+    /// bug-report mode. Computed lazily on button press so a fresh
+    /// log file is read each time the user opens the sheet.
+    @State private var pendingBugReport: FeedbackBugReportContext?
 
     /// Whether Apple Intelligence is currently available on this Mac.
     /// Computed once on appearance; the Ask Jot row hides entirely
@@ -44,6 +61,7 @@ struct AboutPane: View {
                 askJotSection
             }
             donationSection
+            feedbackSection
             privacySection
             troubleshootingSection
             creditSection
@@ -56,18 +74,22 @@ struct AboutPane: View {
             // next visit.
             isAskJotAvailable = AppleIntelligenceClient.isAvailable
         }
-        // Using `.sheet(item:)` instead of `.sheet(isPresented:)` with a
-        // conditional body: guarantees the sheet is only presented when a
-        // non-nil action exists, so the body can never evaluate to empty
-        // (which would leave the sheet with no Cancel button and nothing
-        // for Esc to latch onto).
-        .sheet(item: $pendingShareAction) { action in
-            PrivacyScanSheet(
-                action: action,
-                modelContext: modelContext,
-                llmConfiguration: llmConfiguration,
-                onProceed: handleShare
-            )
+        .sheet(isPresented: $isShowingFeedback) {
+            FeedbackSheet()
+        }
+        // In-app Donations page. Replaces the old `Link` that took
+        // the user out to the website.
+        .sheet(isPresented: $isShowingDonations) {
+            DonationsView()
+        }
+        // Bug-report variant: identical composer, but pre-filled
+        // with the (redacted) log + app-details block and an
+        // in-sheet toggle to swap to the original log. Driven by a
+        // `.sheet(item:)` because the binding carries the
+        // (redacted + raw) footers — `Bool` wouldn't carry that
+        // payload.
+        .sheet(item: $pendingBugReport) { context in
+            FeedbackSheet(bugReport: context)
         }
         .sheet(isPresented: $isShowingLogViewer) {
             VStack(alignment: .leading, spacing: 0) {
@@ -236,13 +258,17 @@ struct AboutPane: View {
                 .textSelection(.enabled)
 
             HStack(spacing: 10) {
-                Link(destination: URL(string: "https://jot.ideaflow.page/donations")!) {
+                Button {
+                    isShowingDonations = true
+                } label: {
                     Label("Donate to charity", systemImage: "heart.fill")
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
 
-                Link(destination: URL(string: "https://jot.ideaflow.page/donations")!) {
+                Button {
+                    isShowingDonations = true
+                } label: {
                     Label("See total raised", systemImage: "chart.bar.fill")
                 }
                 .buttonStyle(.bordered)
@@ -286,6 +312,38 @@ struct AboutPane: View {
         return max(comps.month ?? 0, 0)
     }
 
+    // MARK: - Feedback
+
+    /// Lightweight, in-app feedback composer. Posts a plain message
+    /// (no log file, no attachments) to the `jot-donations` API.
+    /// Separate from the Troubleshooting bug-report flow further
+    /// down — that one carries the log file via mailto, this one is
+    /// for "thoughts, suggestions, what's not working" plain text.
+    /// Sits next to Donation because both are explicit
+    /// "engage with the developer" actions.
+    private var feedbackSection: some View {
+        Section("Feedback") {
+            Text("Have thoughts, suggestions, or notice something off? Send a quick note — it goes straight to the developer. No logs are attached.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+
+            HStack(spacing: 10) {
+                Button {
+                    isShowingFeedback = true
+                } label: {
+                    Label("Send Feedback", systemImage: "envelope.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+
+                Spacer()
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
     // MARK: - Privacy
 
     private var privacySection: some View {
@@ -301,7 +359,7 @@ struct AboutPane: View {
 
     private var troubleshootingSection: some View {
         Section("Troubleshooting") {
-            Text("Errors are logged locally to your Mac. Nothing is sent automatically. If you hit an issue, share the log file manually.")
+            Text("Errors are logged locally to your Mac. Nothing is sent automatically. If you hit an issue, send a bug report — your log and app details are pre-filled and you can describe what happened above them before sending.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -313,15 +371,38 @@ struct AboutPane: View {
                     LogSharing.copyToClipboard(logText(useRedacted: false), pasteboard: pb)
                 }
                 Button("Reveal in Finder") { LogSharing.revealInFinder(ErrorLog.logFileURL) }
-                Button("Send via email") { pendingShareAction = .email }
-                    .buttonStyle(.borderedProminent)
+                Button("Send bug report") {
+                    presentBugReport()
+                }
+                .buttonStyle(.borderedProminent)
                 Spacer()
             }
-            Text("Send to: jottranscribe@gmail.com")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .textSelection(.enabled)
         }
+    }
+
+    /// Compose both the redacted and raw log footers, then present
+    /// the bug-report variant of `FeedbackSheet`. Reads the log file
+    /// fresh on every press so a bug encountered seconds before
+    /// opening the sheet is included.
+    private func presentBugReport() {
+        let raw = logText(useRedacted: false)
+        let redacted = logText(useRedacted: true)
+        let recordingsCount = 0
+        let model = transcriberHolder.primaryModelID.rawValue
+        let redactedFooter = LogSharing.bugReportFooter(
+            logText: redacted,
+            recordingsCount: recordingsCount,
+            modelIdentifier: model
+        )
+        let rawFooter = LogSharing.bugReportFooter(
+            logText: raw,
+            recordingsCount: recordingsCount,
+            modelIdentifier: model
+        )
+        pendingBugReport = FeedbackBugReportContext(
+            redactedFooter: redactedFooter,
+            rawFooter: rawFooter
+        )
     }
 
     // MARK: - Credit
@@ -335,28 +416,6 @@ struct AboutPane: View {
                 Spacer()
             }
             .font(.system(size: 11))
-        }
-    }
-
-    private func handleShare(useRedacted: Bool, action: ShareAction) {
-        let text = logText(useRedacted: useRedacted)
-        switch action {
-        case .copy:
-            guard let pb = AppServices.live?.pasteboard else { return }
-            LogSharing.copyToClipboard(text, pasteboard: pb)
-        case .reveal:
-            LogSharing.revealInFinder(useRedacted ? (LogSharing.writeTemp(text) ?? ErrorLog.logFileURL) : ErrorLog.logFileURL)
-        case .email:
-            guard let pb = AppServices.live?.pasteboard else { return }
-            LogSharing.openEmail(
-                logText: text,
-                recordingsCount: 0,
-                modelIdentifier: transcriberHolder.primaryModelID.rawValue,
-                pasteboard: pb
-            )
-        case .view:
-            viewerText = text
-            isShowingLogViewer = true
         }
     }
 

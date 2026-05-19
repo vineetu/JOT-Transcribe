@@ -118,7 +118,7 @@ struct AIProviderStep: View {
         VStack(alignment: .leading, spacing: 12) {
             Picker("Provider", selection: $pickerChoice) {
                 Text("Choose…").tag(LLMProvider?.none)
-                ForEach(LLMProvider.allCases, id: \.self) { provider in
+                ForEach(LLMProvider.userSelectable, id: \.self) { provider in
                     Text(provider.displayName).tag(LLMProvider?.some(provider))
                 }
             }
@@ -196,6 +196,10 @@ struct AIProviderStep: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+            if let catalogURL = config.provider.modelCatalogURL {
+                Link("Browse models →", destination: catalogURL)
+                    .font(.system(size: 11))
+            }
 
             // Gate on the provider's own contract instead of an
             // explicit case list. `.flavor1` (when JOT_FLAVOR_1 is on)
@@ -214,6 +218,10 @@ struct AIProviderStep: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+                if let keyURL = config.provider.apiKeyURL {
+                    Link("Need a key? Get one →", destination: keyURL)
+                        .font(.system(size: 11))
+                }
             }
         }
     }

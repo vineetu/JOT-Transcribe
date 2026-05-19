@@ -49,7 +49,6 @@ public actor Transcriber: Transcribing {
         }
 
         do {
-            await ErrorLog.shared.info(component: "Transcriber", message: "Parakeet load start", context: ["modelID": modelID.rawValue])
             let models = try await AsrModels.load(
                 from: directory,
                 version: modelID.fluidAudioVersion
@@ -58,7 +57,6 @@ public actor Transcriber: Transcribing {
             try await manager.loadModels(models)
             self.manager = manager
             log.info("Parakeet loaded")
-            await ErrorLog.shared.info(component: "Transcriber", message: "Parakeet load complete", context: ["modelID": modelID.rawValue])
         } catch let error as TranscriberError {
             await ErrorLog.shared.error(component: "Transcriber", message: "Parakeet load failed", context: ["modelID": modelID.rawValue, "error": ErrorLog.redactedAppleError(error)])
             throw error

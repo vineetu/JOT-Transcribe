@@ -1,6 +1,4 @@
-import AppKit
 import SwiftUI
-import os.log
 
 /// Dismissible "Support Jot" card rendered inline on `HomePane` below the
 /// "Recent" row when `shouldShowDonationCard(...)` returns true.
@@ -25,16 +23,20 @@ import os.log
 /// a notification or banner.
 struct DonationCard: View {
     @ObservedObject private var donationStore = DonationStore.shared
-    private let log = Logger(subsystem: "com.jot.Jot", category: "Donation")
+
+    /// Sheet binding for the in-app Donations page. v1.9.7+ the
+    /// card's button opens an in-app browser of charities instead
+    /// of routing the user to `jot.ideaflow.page/donations` in the
+    /// system browser. The optimistic "marked donated" flip also
+    /// moves out of this view — it now fires at the moment the
+    /// user taps a $N pill inside `DonationsView`, which is closer
+    /// to the actual donate moment.
+    @State private var isShowingDonations = false
 
     // MARK: - Copy (spec §3, verbatim)
 
     private let headline = "Jot is free, and stays free."
     private let pitch = "If it's earned a spot in your workflow, consider donating to one of the charities I support."
-
-    // MARK: - URLs (spec §3)
-
-    private static let donateURL = URL(string: "https://jot.ideaflow.page/donations")
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -49,7 +51,7 @@ struct DonationCard: View {
 
             HStack(spacing: 8) {
                 Button {
-                    donate(Self.donateURL)
+                    isShowingDonations = true
                 } label: {
                     Text("Donate to charity")
                 }
@@ -83,18 +85,8 @@ struct DonationCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
-    }
-
-    // MARK: - Actions
-
-    private func donate(_ url: URL?) {
-        guard let url else {
-            log.error("Donation URL failed to parse — this is a build-time bug")
-            return
+        .sheet(isPresented: $isShowingDonations) {
+            DonationsView()
         }
-        NSWorkspace.shared.open(url)
-        // Optimistic transition: see spec §6.6. A false-positive is a
-        // better UX than silently re-asking an actual donor.
-        donationStore.markDonated()
     }
 }

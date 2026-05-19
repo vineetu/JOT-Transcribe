@@ -134,6 +134,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // already constructed; this binds the runtime channel between
         // them.
         services.delivery.bind(recorder: services.recorder)
+        // Wire the rewrite controller so `pasteLast()` can replay
+        // rewrite outputs (not just dictation transcripts) — picks
+        // whichever was most recent. Optional binding so harness
+        // tests that don't construct a rewrite controller still get
+        // the dictation-only paste-last path.
+        services.delivery.bind(rewriteController: services.rewriteController)
         // One-shot migration that introduced single-key Toggle Recording.
         // Must run BEFORE `hotkeyRouter.activate()`
         // so the router's first `applySingleKeys()` reads the

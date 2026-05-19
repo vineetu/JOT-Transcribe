@@ -24,7 +24,35 @@ enum LLMConfigMigration {
     static func runIfNeeded(keychain: any KeychainStoring, defaults: UserDefaults = .standard) {
         trimStoredValuesIfNeeded(keychain: keychain, defaults: defaults)
         runPerProviderBucketsIfNeeded(keychain: keychain, defaults: defaults)
+        #if JOT_FLAVOR_1
+        // Sony flavor only — if a user's stored provider is one of
+        // the now-hidden public clouds (openai/anthropic/gemini), it
+        // can no longer be selected from the picker. Auto-switch to
+        // PFB Enterprise so the UI shows a valid selection. Runs
+        // exactly once per machine; subsequent re-selections of any
+        // hidden provider would require a UI bug to even reach the
+        // stored value, so the one-shot guard is sufficient.
+        forceSonyProviderToFlavor1IfNeeded(defaults: defaults)
+        #endif
     }
+
+    #if JOT_FLAVOR_1
+    /// Migration for Sony users whose stored `jot.llm.provider` is one
+    /// of the public-cloud cases that the Sony flavor's picker no longer
+    /// exposes. Swaps `openai` / `anthropic` / `gemini` to `flavor1`.
+    /// Idempotent — guarded by `jot.migration.sonyProviderFilterV1`.
+    private static func forceSonyProviderToFlavor1IfNeeded(defaults: UserDefaults) {
+        let flagKey = "jot.migration.sonyProviderFilterV1"
+        guard !defaults.bool(forKey: flagKey) else { return }
+        defer { defaults.set(true, forKey: flagKey) }
+
+        let stored = defaults.string(forKey: "jot.llm.provider") ?? ""
+        let hiddenInSony: Set<String> = ["openai", "anthropic", "gemini"]
+        if hiddenInSony.contains(stored) {
+            defaults.set("flavor1", forKey: "jot.llm.provider")
+        }
+    }
+    #endif
 
     /// Strip leading/trailing whitespace + newlines from any already-stored
     /// per-provider baseURLs/models and keychain API keys. Users who pasted

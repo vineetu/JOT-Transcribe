@@ -48,6 +48,10 @@ final class LLMConfiguration: ObservableObject {
             "jot.llm.rewritePrompt",
             store: defaults
         )
+        // Must run BEFORE the first read of `rewritePrompt` so an
+        // un-customized user gets the new default on their next
+        // rewrite, not the legacy default cached from a prior launch.
+        RewritePromptMigration.runIfNeeded(defaults: defaults)
         LLMConfigMigration.runIfNeeded(keychain: keychain, defaults: defaults)
     }
 

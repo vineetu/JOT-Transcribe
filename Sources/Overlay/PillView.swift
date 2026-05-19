@@ -59,6 +59,7 @@ struct PillView: View {
                         RecordingContent(
                             elapsed: elapsed,
                             streamingPartial: streamingPartial,
+                            isStreamingSession: model.isStreamingSessionActive,
                             reduceMotion: reduceMotion
                         )
                     }
@@ -91,6 +92,10 @@ struct PillView: View {
             case .error(let message):
                 pillBody {
                     ErrorContent(message: message)
+                }
+            case .holdProgress(let progress):
+                pillBody {
+                    HoldProgressContent(progress: progress, reduceMotion: reduceMotion)
                 }
             }
         }
@@ -157,6 +162,14 @@ struct PillView: View {
 private struct RecordingContent: View {
     let elapsed: TimeInterval
     let streamingPartial: String?
+    /// True when the active recording is running through the streaming
+    /// pipeline (driven by `PillViewModel.isStreamingSessionActive`,
+    /// which mirrors `StreamingPartialStore.shared.$isActive`). Used to
+    /// suppress the wider waveform fallback in the text slot — for a
+    /// streaming session that slot is reserved for live partials, even
+    /// while the first partial is in flight, so a momentary waveform
+    /// flash before the text lands doesn't look like a glitch.
+    let isStreamingSession: Bool
     let reduceMotion: Bool
 
     /// Empty / whitespace-only partials behave as "no partial yet". The
@@ -187,10 +200,15 @@ private struct RecordingContent: View {
                     .truncationMode(.head)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .transition(.opacity)
+            } else if isStreamingSession {
+                // Streaming session, partial not arrived yet — keep the
+                // text slot reserved (empty) so the first partial lands
+                // here without a brief waveform flash in between.
+                Spacer(minLength: 0)
             } else {
-                // No partial — fill the flexible space with a wider
-                // waveform so non-streaming users see something alive
-                // where streaming users would see live transcript.
+                // Non-streaming primary — fill the flexible space with a
+                // wider waveform so the user sees something alive in the
+                // place where a streaming session would show transcript.
                 AmplitudeTrail(reduceMotion: reduceMotion)
                     .frame(maxWidth: .infinity, maxHeight: 22)
                     .transition(.opacity)
@@ -604,5 +622,37 @@ private struct ErrorContent: View {
         message
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Hold progress (Prompt Picker entry)
+
+/// Rendered for `PillState.holdProgress`. Shows a small filled ring on
+/// the left (whose stroke completes from 0 → 1 over the hold window),
+/// plus the copy "keep holding…". When `reduceMotion` is on the ring
+/// is rendered statically at the current progress value.
+private struct HoldProgressContent: View {
+    let progress: Double
+    let reduceMotion: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.18), lineWidth: 2)
+                    .frame(width: 14, height: 14)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(Color.white.opacity(0.95), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 14, height: 14)
+                    .animation(reduceMotion ? nil : .linear(duration: 1.0 / 30.0), value: progress)
+            }
+            Text("keep holding…")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(.white.opacity(0.85))
+            Spacer(minLength: 0)
+        }
+        .transition(.opacity.animation(.easeOut(duration: 0.14)))
     }
 }

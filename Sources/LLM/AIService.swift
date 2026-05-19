@@ -39,6 +39,17 @@ protocol AIService: Sendable {
     /// prompt's no-instruction fallback governs behavior.
     func rewrite(selectedText: String, instruction: String?) async throws -> String
 
+    /// Rewrite with an explicit system-prompt override.
+    /// Used by the **Prompt Picker** path (`docs/plans/prompt-picker-ux.md`):
+    /// the user holds the Rewrite hotkey, picks a saved prompt, and the
+    /// picked prompt's body replaces the classifier-composed system
+    /// prompt for that single call. When `systemPromptOverride` is nil
+    /// (the picker-less call site), conformers must behave identically
+    /// to the two-parameter `rewrite(selectedText:instruction:)`.
+    /// Default impl in the extension below forwards to the two-parameter
+    /// shape so harness conformers don't need to implement this.
+    func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String?) async throws -> String
+
     /// Stream an Ask Jot turn. Returns a delta-token stream; consumers
     /// accumulate into the assistant bubble. Provider-specific errors
     /// are propagated verbatim through the stream.
@@ -51,6 +62,19 @@ protocol AIService: Sendable {
     /// `request.showFeatureTool` is wired into the per-provider
     /// `CloudChatStream` for inline tool-calling.
     func streamChat(request: AIChatRequest) -> AsyncThrowingStream<String, Error>
+}
+
+extension AIService {
+    /// Default `rewrite(...:systemPromptOverride:)` implementation:
+    /// ignore the override and call the existing two-parameter form.
+    /// Conformers that DO support the Prompt Picker (Apple, Cloud,
+    /// DirectLLMClient) override this method so the override threads
+    /// to `LLMClient.rewrite(...:systemPromptOverride:)`. Test seams
+    /// that don't care about the picker get picker-less behavior for
+    /// free.
+    func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String?) async throws -> String {
+        try await rewrite(selectedText: selectedText, instruction: instruction)
+    }
 }
 
 /// Per-turn input to `AIService.streamChat`. The dispatcher already
@@ -278,6 +302,20 @@ struct AppleAIService: AIService {
         return try await client.rewrite(selectedText: selectedText, instruction: instruction)
     }
 
+    func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String?) async throws -> String {
+        let client = LLMClient(
+            session: urlSession,
+            appleClient: appleClient,
+            logSink: logSink,
+            llmConfiguration: llmConfiguration
+        )
+        return try await client.rewrite(
+            selectedText: selectedText,
+            instruction: instruction,
+            systemPromptOverride: systemPromptOverride
+        )
+    }
+
     func streamChat(request: AIChatRequest) -> AsyncThrowingStream<String, Error> {
         appleClient.streamChat(request: request)
     }
@@ -314,6 +352,20 @@ struct CloudAIService: AIService {
             llmConfiguration: llmConfiguration
         )
         return try await client.rewrite(selectedText: selectedText, instruction: instruction)
+    }
+
+    func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String?) async throws -> String {
+        let client = LLMClient(
+            session: urlSession,
+            appleClient: appleClient,
+            logSink: logSink,
+            llmConfiguration: llmConfiguration
+        )
+        return try await client.rewrite(
+            selectedText: selectedText,
+            instruction: instruction,
+            systemPromptOverride: systemPromptOverride
+        )
     }
 
     func streamChat(request: AIChatRequest) -> AsyncThrowingStream<String, Error> {
@@ -434,6 +486,14 @@ struct DirectLLMClientAIService: AIService {
 
     func rewrite(selectedText: String, instruction: String?) async throws -> String {
         try await client.rewrite(selectedText: selectedText, instruction: instruction)
+    }
+
+    func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String?) async throws -> String {
+        try await client.rewrite(
+            selectedText: selectedText,
+            instruction: instruction,
+            systemPromptOverride: systemPromptOverride
+        )
     }
 
     func streamChat(request: AIChatRequest) -> AsyncThrowingStream<String, Error> {

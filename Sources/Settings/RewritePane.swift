@@ -75,7 +75,7 @@ struct RewritePane: View {
                 Section("Provider") {
                     HStack {
                         Picker("Provider", selection: $config.provider) {
-                            ForEach(LLMProvider.allCases, id: \.self) { provider in
+                            ForEach(LLMProvider.userSelectable, id: \.self) { provider in
                                 Text(provider.displayName).tag(provider)
                             }
                         }
@@ -142,6 +142,10 @@ struct RewritePane: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
+                        if let catalogURL = config.provider.modelCatalogURL {
+                            Link("Browse models →", destination: catalogURL)
+                                .font(.system(size: 11))
+                        }
                     }
                 }
 
@@ -176,6 +180,10 @@ struct RewritePane: View {
                                 body: "Stored in your macOS Keychain, never written to disk in plaintext. When set: Jot authenticates requests to the selected provider. Leave empty when using Ollama locally or Apple Intelligence on-device.",
                                 helpAnchor: "ai-custom-base-url"
                             )
+                        }
+                        if let keyURL = config.provider.apiKeyURL {
+                            Link("Need a key? Get one →", destination: keyURL)
+                                .font(.system(size: 11))
                         }
                     }
                 }
