@@ -26,6 +26,12 @@ final class DeliveryService: ObservableObject {
     private let log = Logger(subsystem: "com.jot.Jot", category: "Delivery")
     private let permissions: any PermissionsObserving
     private weak var recorder: RecorderController?
+    /// Read for `pasteLast()` so the hotkey replays the most recent
+    /// Jot output regardless of whether it was a dictation or a
+    /// rewrite. Optional so the test harness can construct a
+    /// DeliveryService without a rewrite controller and still drive
+    /// the dictation paste-last path.
+    private weak var rewriteController: RewriteController?
 
     /// Pasteboarding seam, injected at init. Phase 3 #30: prior to
     /// this refactor `DeliveryService` was a process-wide singleton
@@ -67,6 +73,14 @@ final class DeliveryService: ObservableObject {
         self.recorder = recorder
     }
 
+    /// Optional companion to `bind(recorder:)` — wires the rewrite
+    /// controller so `pasteLast()` can replay the most recent rewrite
+    /// when it's newer than the most recent dictation. Called from
+    /// composition after both controllers exist.
+    func bind(rewriteController: RewriteController) {
+        self.rewriteController = rewriteController
+    }
+
     /// Main entry point. Called by the wire-up in AppDelegate whenever
     /// `RecorderController.lastResult` publishes a new transcript.
     func deliver(_ text: String) async {
@@ -92,11 +106,38 @@ final class DeliveryService: ObservableObject {
         await performSandwich(text: text)
     }
 
-    /// Re-deliver whatever transcript the recorder last produced, if any.
-    /// Bound to the `.pasteLastTranscription` shortcut.
+    /// Re-deliver the most recent Jot output, whether that was a
+    /// dictation transcript or a Rewrite result. Picks whichever
+    /// source has the newer `*At` timestamp; if only one source has
+    /// produced output this run, that one wins. Bound to the
+    /// `.pasteLastTranscription` shortcut (renamed in Settings →
+    /// Shortcuts to "Paste last result"; the storage key is kept
+    /// stable so existing user bindings don't reset).
     func pasteLast() async {
-        guard let text = recorder?.lastTranscript, !text.isEmpty else {
-            log.info("pasteLast: no last transcript")
+        let transcript = recorder?.lastTranscript ?? ""
+        let transcriptAt = recorder?.lastTranscriptAt
+        let rewrite = rewriteController?.lastRewrite ?? ""
+        let rewriteAt = rewriteController?.lastRewriteAt
+
+        let candidate: String?
+        switch (transcriptAt, rewriteAt) {
+        case (nil, nil):
+            candidate = nil
+        case (.some, nil):
+            candidate = transcript.isEmpty ? nil : transcript
+        case (nil, .some):
+            candidate = rewrite.isEmpty ? nil : rewrite
+        case let (.some(tAt), .some(rAt)):
+            // Newest wins. Tie-break to rewrite — if a user just
+            // rewrote a transcript, that's what they'd want pasted,
+            // and tied timestamps only happen in a corner case.
+            candidate = rAt >= tAt
+                ? (rewrite.isEmpty ? nil : rewrite)
+                : (transcript.isEmpty ? nil : transcript)
+        }
+
+        guard let text = candidate else {
+            log.info("pasteLast: no prior output to replay")
             return
         }
         await deliver(text)

@@ -31,7 +31,10 @@ struct RecordingRowView: View {
 }
 
 /// Dictation-row variant: leading `waveform` icon, title + transcript
-/// preview, trailing duration / copy / menu.
+/// preview, trailing duration. Copy + ellipsis menu are rendered by the
+/// parent `RecordingsListView` as siblings OUTSIDE the row's navigation
+/// Button so their clicks reach them directly instead of being eaten by
+/// the `.plain` Button wrapping this view as its label.
 private struct DictationRowView: View {
     @Bindable var recording: Recording
 
@@ -44,32 +47,15 @@ private struct DictationRowView: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             LibraryRowIcon(systemName: "waveform")
             VStack(alignment: .leading, spacing: 4) {
                 titleRow
                 preview
             }
             Spacer(minLength: 8)
-            Text(recording.formattedDuration)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-
-            CopyTranscriptButton(text: recording.transcript)
-
-            Menu {
-                Button("Re-transcribe", action: onRetranscribe)
-                Button("Reveal in Finder", action: onReveal)
-                Divider()
-                Button("Delete", role: .destructive, action: onDelete)
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .foregroundStyle(.secondary)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+            // Duration moved into `RecordingsListView.rowTrailingControls`
+            // so it sits on the same baseline as the Copy + ⋯ icons.
         }
         .padding(.vertical, 8)
         .contextMenu {
@@ -134,8 +120,11 @@ private struct DictationRowView: View {
 }
 
 /// Rewrite-row variant: leading `wand.and.stars` icon, title + output
-/// preview, optional `provider · timestamp` meta line, trailing copy /
-/// menu (no duration, no Re-transcribe, no Reveal in Finder).
+/// preview, optional `provider · timestamp` meta line. Copy + ellipsis
+/// menu are rendered by the parent `RecordingsListView` as siblings
+/// OUTSIDE the row's navigation Button so their clicks reach them
+/// directly instead of being eaten by the `.plain` Button wrapping
+/// this view as its label.
 private struct RewriteRowView: View {
     @Bindable var session: RewriteSession
 
@@ -154,25 +143,6 @@ private struct RewriteRowView: View {
                 metaLine
             }
             Spacer(minLength: 8)
-
-            CopyTranscriptButton(
-                text: session.output,
-                accessibilityLabel: "Copy output",
-                helpLabel: "Copy output",
-                emptyHelpLabel: "No output to copy"
-            )
-
-            Menu {
-                Button("Copy Output", action: copyOutput)
-                Divider()
-                Button("Delete", role: .destructive, action: onDelete)
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .foregroundStyle(.secondary)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
         }
         .padding(.vertical, 8)
         .contextMenu {

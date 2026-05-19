@@ -57,6 +57,11 @@ final class RewriteController: ObservableObject {
         didSet { scheduleAutoRecoveryIfNeeded() }
     }
     @Published private(set) var lastRewrite: String?
+    /// Timestamp paired with `lastRewrite`. Updated on every write so
+    /// `DeliveryService.pasteLast()` can compare against
+    /// `RecorderController.lastTranscriptAt` and replay whichever
+    /// output is more recent. Nil until the first rewrite completes.
+    @Published private(set) var lastRewriteAt: Date?
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "Rewrite")
     private var autoRecoveryTask: Task<Void, Never>?
@@ -215,6 +220,32 @@ final class RewriteController: ObservableObject {
         }
     }
 
+    /// Picker entry — Rewrite (fixed) with a hand-picked system-prompt
+    /// override. Mirrors `rewrite()` exactly, except the LLM call uses
+    /// the override as its system prompt (skipping the classifier). The
+    /// `pickedTitle` is persisted as the row's instruction column so
+    /// Home reads "Make formal" rather than the generic "Rewrite this".
+    /// Voice-augment (⌘⏎ in the picker) is a separate entry point
+    /// — see `rewriteWithVoice(systemPromptOverride:pickedTitle:)`.
+    func rewrite(systemPromptOverride: String, pickedTitle: String) async {
+        switch state {
+        case .capturing, .recording, .transcribing, .rewriting:
+            log.info("rewrite(picker) ignored — rewrite in progress (\(String(describing: self.state)))")
+            return
+        case .idle, .error:
+            break
+        }
+
+        let generation = nextFixedGeneration()
+        activeFixedFlowTask = Task { @MainActor [weak self] in
+            await self?.runFixed(
+                generation: generation,
+                systemPromptOverride: systemPromptOverride,
+                instructionLabel: pickedTitle
+            )
+        }
+    }
+
     // MARK: - Rewrite with Voice internals
 
     private func runCustom() async {
@@ -312,6 +343,7 @@ final class RewriteController: ObservableObject {
 
             guard pipeline.stillActive(token) else { return }
             lastRewrite = rewritten
+            lastRewriteAt = .now
             state = .idle
         } catch is CancellationError {
             return
@@ -410,7 +442,11 @@ final class RewriteController: ObservableObject {
 
     // MARK: - Fixed flow internals
 
-    private func runFixed(generation: UInt64) async {
+    private func runFixed(
+        generation: UInt64,
+        systemPromptOverride: String? = nil,
+        instructionLabel: String? = nil
+    ) async {
         defer { activeFixedFlowTask = nil }
 
         permissions.refreshAll()
@@ -445,22 +481,27 @@ final class RewriteController: ObservableObject {
 
             let service = rewriteService()
             let modelLabel = snapshotModelLabel()
-            // `instruction: nil` signals the no-voice path. The system
-            // prompt's "if no instruction given, improve clarity/flow…"
-            // fallback kicks in.
+            // `instruction: nil` signals the no-voice path. With no
+            // override the system prompt's no-instruction fallback runs;
+            // with an override (Prompt Picker path) the picked prompt
+            // body is used verbatim.
             let rewritten = try await service.rewrite(
                 selectedText: selectedText,
-                instruction: nil
+                instruction: nil,
+                systemPromptOverride: systemPromptOverride
             )
 
             guard stillFixedActive(generation) else { return }
             // Persist BEFORE paste so a paste failure doesn't lose the
             // row — Home becomes the recovery affordance for the rare
-            // paste-failure case (plan §6).
+            // paste-failure case (plan §6). Picker runs persist with the
+            // picked prompt's title as the instruction column so the
+            // library row reads e.g. "Make formal" rather than the
+            // generic "Rewrite this".
             persistSession(
                 flavor: "fixed",
                 selection: selectedText,
-                instruction: Self.fixedInstruction,
+                instruction: instructionLabel ?? Self.fixedInstruction,
                 output: rewritten,
                 modelUsed: modelLabel,
                 createdAt: createdAt
@@ -469,6 +510,7 @@ final class RewriteController: ObservableObject {
 
             guard stillFixedActive(generation) else { return }
             lastRewrite = rewritten
+            lastRewriteAt = .now
             state = .idle
         } catch is CancellationError {
             return
@@ -505,9 +547,17 @@ final class RewriteController: ObservableObject {
     /// Synthetic ⌘C → read selection → restore clipboard. Shared by both
     /// rewrite flows. Throws a human-readable `RewriteError.message`
     /// that callers drop straight into `state = .error(...)`.
+    ///
+    /// Empty-selection detection: we CLEAR the pasteboard before the
+    /// synthetic ⌘C so a no-selection state is detectable as "pasteboard
+    /// still empty after the copy." Without the pre-clear, a previous
+    /// ⌘C still on the clipboard would let an empty-selection ⌘C "pass
+    /// the test" (the changeCount-only check is unreliable — some apps
+    /// re-write the same content on every ⌘C, others do nothing, and we
+    /// can't tell the cases apart). The deferred restore puts the
+    /// user's original clipboard back regardless of which branch fires.
     private func captureSelection() async throws -> String {
         let snapshot = pasteboard.snapshot()
-        let changeCountBefore = pasteboard.changeCount
         var restored = false
 
         defer {
@@ -515,6 +565,10 @@ final class RewriteController: ObservableObject {
                 pasteboard.restore(snapshot)
             }
         }
+
+        // Pre-clear so a no-op ⌘C leaves the pasteboard empty.
+        _ = pasteboard.write("")
+        let countAfterClear = pasteboard.changeCount
 
         do {
             try pasteboard.postCommandC()
@@ -525,18 +579,21 @@ final class RewriteController: ObservableObject {
         do {
             try await Task.sleep(for: .milliseconds(200))
 
-            guard pasteboard.changeCount != changeCountBefore else {
-                throw RewriteError(message: "No text was copied. Make sure text is selected.")
-            }
-
-            guard let selectedText = pasteboard.readString(),
-                  !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw RewriteError(message: "No text selected.")
+            // Two-part empty-selection check, both treated the same so
+            // the user sees a single clear message.
+            // 1) No write happened → host app didn't respond to ⌘C
+            //    (or there was nothing to copy).
+            // 2) Write happened but resulting string is empty/whitespace.
+            let countChanged = pasteboard.changeCount != countAfterClear
+            let text = pasteboard.readString() ?? ""
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard countChanged, !trimmed.isEmpty else {
+                throw RewriteError(message: "No text selected. Select some text and try again.")
             }
 
             pasteboard.restore(snapshot)
             restored = true
-            return selectedText
+            return text
         } catch {
             pasteboard.restore(snapshot)
             restored = true

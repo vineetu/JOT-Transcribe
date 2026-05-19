@@ -33,6 +33,11 @@ final class RecorderController: ObservableObject {
         didSet { scheduleAutoRecoveryIfNeeded() }
     }
     @Published private(set) var lastTranscript: String?
+    /// Timestamp paired with `lastTranscript`. Updated on every write so
+    /// `DeliveryService.pasteLast()` can compare against the rewrite
+    /// controller's last-output time and replay whichever fired more
+    /// recently. Nil until the first transcript lands.
+    @Published private(set) var lastTranscriptAt: Date?
     @Published private(set) var lastTransformedTranscript: String?
     @Published private(set) var lastResult: TranscriptionResult?
 
@@ -133,6 +138,7 @@ final class RecorderController: ObservableObject {
             if let pending = pendingTransform {
                 lastTransformedTranscript = nil
                 lastTranscript = pending.rawText
+                lastTranscriptAt = .now
                 lastAudioRecording = pending.recording
                 lastResult = pending.result
                 pendingTransform = nil
@@ -153,15 +159,18 @@ final class RecorderController: ObservableObject {
     /// Called on the successful-delivery site in `runFlow()` — i.e. a
     /// non-empty transcript has been handed off to the clipboard / paste path
     /// and state is about to flip back to `.idle`. Increments the
-    /// donation-reminder counter used by `DonationLogic`.
+    /// donation-reminder counter used by `DonationLogic` AND records the
+    /// audio duration into `DictationStats` so the Donations page's
+    /// "Jot has saved you about X" line has data to read.
     ///
     /// Deliberately **not** called on the error, cancel, or
     /// `VoiceInputPipeline.PipelineError.audioTooShort` paths — those don't
     /// hand text to the user, so counting them would inflate the milestone and
     /// ask after a failure.
-    private func noteSuccessfulDelivery(text: String) {
+    private func noteSuccessfulDelivery(text: String, durationSeconds: TimeInterval) {
         guard !text.isEmpty else { return }
         DonationStore.shared.incrementRecordingCount()
+        DictationStats.record(durationSeconds: durationSeconds)
     }
 
     private func scheduleAutoRecoveryIfNeeded() {
@@ -277,6 +286,7 @@ final class RecorderController: ObservableObject {
                         guard !Task.isCancelled else { return }
                         self.lastTransformedTranscript = transformed
                         self.lastTranscript = transformed
+                        self.lastTranscriptAt = .now
                         // Per `docs/plans/mic-disconnect-handling.md`:
                         // publish metadata BEFORE `lastResult` so
                         // subscribers (RecordingPersister, SoundTriggers,
@@ -284,7 +294,7 @@ final class RecorderController: ObservableObject {
                         self.lastAudioRecording = recording
                         self.lastFallbackNotice = composedNotice
                         self.lastResult = result
-                        self.noteSuccessfulDelivery(text: transformed)
+                        self.noteSuccessfulDelivery(text: transformed, durationSeconds: recording.duration)
                         self.state = .idle
                     } catch {
                         guard !Task.isCancelled else { return }
@@ -299,10 +309,11 @@ final class RecorderController: ObservableObject {
                         }
                         self.lastTransformedTranscript = nil
                         self.lastTranscript = rawText
+                        self.lastTranscriptAt = .now
                         self.lastAudioRecording = recording
                         self.lastFallbackNotice = composedNotice
                         self.lastResult = result
-                        self.noteSuccessfulDelivery(text: rawText)
+                        self.noteSuccessfulDelivery(text: rawText, durationSeconds: recording.duration)
                         self.state = .idle
                     }
                 }
@@ -310,10 +321,11 @@ final class RecorderController: ObservableObject {
                 guard pipeline.stillActive(token) else { return }
                 lastTransformedTranscript = nil
                 lastTranscript = rawText
+                lastTranscriptAt = .now
                 lastAudioRecording = recording
                 lastFallbackNotice = composedNotice
                 lastResult = result
-                noteSuccessfulDelivery(text: rawText)
+                noteSuccessfulDelivery(text: rawText, durationSeconds: recording.duration)
                 state = .idle
             }
         } catch is CancellationError {

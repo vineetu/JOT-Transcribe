@@ -33,6 +33,11 @@ final class PillViewModel: ObservableObject {
         /// `.success`. See `docs/plans/mic-disconnect-handling.md`.
         case notice(message: String)
         case error(message: String)
+        /// Press-and-hold progress for the Prompt Picker entry. `progress`
+        /// is 0.0 → 1.0 across the (threshold − grace) window — the pill
+        /// renders a fill / ring driven by this value. Yields to any
+        /// active recorder / rewrite state — see `showHoldProgress(_:)`.
+        case holdProgress(progress: Double)
     }
 
     @Published private(set) var state: PillState = .hidden
@@ -60,6 +65,17 @@ final class PillViewModel: ObservableObject {
         guard case .recording = state else { return }
         guard isStreamingSessionActive else { return }
         isPillExpanded.toggle()
+    }
+
+    /// One-way collapse used by the outside-click dismissal path in
+    /// `OverlayWindowController`. Distinct from `togglePillExpanded()`
+    /// so a stray collapse call from the click monitor can't
+    /// accidentally re-expand the pill if `isPillExpanded` was already
+    /// false (which can happen if the recording ended a microsecond
+    /// before the click landed).
+    func collapsePillExpandedIfNeeded() {
+        guard isPillExpanded else { return }
+        isPillExpanded = false
     }
 
     /// Auto-dismiss windows (seconds).
@@ -196,6 +212,35 @@ final class PillViewModel: ObservableObject {
         dismissTask?.cancel()
     }
 
+    // MARK: - External transitions (Prompt Picker hold detection)
+
+    /// Drive the press-and-hold progress fill. Called every frame by
+    /// `RewriteHoldDetector` between the 200ms grace and the 1.2s
+    /// threshold. Yields if the user is mid-recording / rewriting /
+    /// transcribing so an in-flight pipeline isn't masked.
+    /// Returns whether the transition was accepted.
+    @discardableResult
+    func showHoldProgress(_ progress: Double) -> Bool {
+        switch state {
+        case .hidden, .holdProgress:
+            transition(to: .holdProgress(progress: max(0.0, min(1.0, progress))))
+            return true
+        case .recording, .transcribing, .transforming, .rewriting,
+             .condensing, .success, .notice, .error:
+            return false
+        }
+    }
+
+    /// Tear the hold-progress pill down. Called on early release or
+    /// on threshold (when the picker takes over). Only clears if the
+    /// pill is currently showing hold-progress — leaves other states
+    /// alone.
+    func clearHoldProgress() {
+        if case .holdProgress = state {
+            transition(to: .hidden)
+        }
+    }
+
     // MARK: - External transitions (Ask Jot voice input)
 
     /// Show the "Condensing" pill while `ChatbotVoiceInput` runs the
@@ -227,7 +272,7 @@ final class PillViewModel: ObservableObject {
             // success/error/notice, leave that alone. If we're in recording or
             // transcribing, hide (e.g. a cancel).
             switch self.state {
-            case .success, .error, .notice, .hidden, .rewriting, .condensing:
+            case .success, .error, .notice, .hidden, .rewriting, .condensing, .holdProgress:
                 break
             case .recording, .transcribing, .transforming:
                 transition(to: .hidden)
@@ -255,7 +300,7 @@ final class PillViewModel: ObservableObject {
         switch rewriteState {
         case .idle:
             switch self.state {
-            case .success, .error, .notice, .hidden, .condensing:
+            case .success, .error, .notice, .hidden, .condensing, .holdProgress:
                 break
             case .recording, .transcribing, .rewriting, .transforming:
                 transition(to: .hidden)

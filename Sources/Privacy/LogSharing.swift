@@ -5,6 +5,38 @@ import SwiftUI
 
 @MainActor
 public enum LogSharing {
+    /// Build the trailing "App details + log" block appended to the
+    /// editor's pre-fill when the in-app feedback composer is opened
+    /// in bug-report mode (v1.9.6+). Distinct from `emailBody(...)`
+    /// because the API-driven path doesn't need the mailto template
+    /// noise ("[Paste the log below this line with ⌘V]") — the log
+    /// is already in the message, the user just types their
+    /// description in the empty space above.
+    public static func bugReportFooter(
+        logText: String,
+        recordingsCount: Int,
+        modelIdentifier: String
+    ) -> String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        let os = ProcessInfo.processInfo.operatingSystemVersionString
+        let provider = UserDefaults.standard.string(forKey: "jot.llm.provider") ?? "unknown"
+        let cleanup = UserDefaults.standard.bool(forKey: "jot.transformEnabled") ? "yes" : "no"
+        return """
+        ---
+        App details (non-private):
+        • Jot version: \(v) (build \(b))
+        • macOS: \(os)
+        • LLM provider: \(provider)
+        • Transcription model: \(modelIdentifier)
+        • Auto-correct enabled: \(cleanup)
+        • Recordings count: \(recordingsCount)
+
+        Log:
+        \(logText)
+        """
+    }
+
     /// Phase 3 F4: `modelIdentifier` is threaded in from the caller
     /// (which has access to the `TranscriberHolder` via env injection),
     /// replacing the prior `UserDefaults.standard.string(forKey:)` read

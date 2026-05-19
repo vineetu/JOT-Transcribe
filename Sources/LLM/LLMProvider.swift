@@ -12,6 +12,21 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
 
     var id: String { rawValue }
 
+    /// Providers the user can select in this build's Settings → AI
+    /// picker and the Setup Wizard's provider step. Differs from
+    /// `allCases` only in the Sony flavor, where the public cloud
+    /// providers are hidden — Sony users route through PFB Enterprise
+    /// (`.flavor1`) and don't configure user-owned OpenAI / Anthropic /
+    /// Gemini API keys on a corporate machine. Public builds expose
+    /// every case in `allCases`.
+    static var userSelectable: [LLMProvider] {
+        #if JOT_FLAVOR_1
+        return [.appleIntelligence, .ollama, .flavor1]
+        #else
+        return allCases
+        #endif
+    }
+
     var displayName: String {
         switch self {
         case .appleIntelligence: "Apple Intelligence (on-device)"
@@ -89,7 +104,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .appleIntelligence: return ""
         case .openai:       return "gpt-5.4-mini"
         case .anthropic:    return "claude-haiku-4-5-20251001"
-        case .gemini:       return "gemini-3.1-flash-lite-preview"
+        case .gemini:       return "gemini-3.1-flash-lite"
         case .ollama:       return "gemma4:31b-cloud"
         #if JOT_FLAVOR_1
         case .flavor1:      return ""
@@ -108,6 +123,43 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         // Flavor-1 authenticates via short-lived JWT (not an API key);
         // credential handling lives entirely in Sources/Private/Flavor1/.
         case .flavor1:                     return false
+        #endif
+        }
+    }
+
+    /// URL where the user fetches an API key for this provider. `nil`
+    /// for providers that don't need a user-owned key (Ollama is
+    /// local, Apple Intelligence is on-device, Flavor1 authenticates
+    /// via JWT through its own sign-in flow). Surfaced as a "Need a
+    /// key? Get one →" link below the API-key field in Settings →
+    /// AI and the Setup Wizard's provider step.
+    var apiKeyURL: URL? {
+        switch self {
+        case .openai:    return URL(string: "https://platform.openai.com/settings/organization/api-keys")
+        case .anthropic: return URL(string: "https://platform.claude.com/settings/keys")
+        case .gemini:    return URL(string: "https://aistudio.google.com/api-keys")
+        case .ollama, .appleIntelligence: return nil
+        #if JOT_FLAVOR_1
+        case .flavor1:   return nil
+        #endif
+        }
+    }
+
+    /// URL where the user can browse this provider's model catalog
+    /// (model IDs, context windows, pricing tiers). Surfaced as a
+    /// "Browse models →" link below the Model field. `nil` for
+    /// providers without a meaningful catalog page (Ollama models are
+    /// pulled locally via `ollama pull`, Apple Intelligence is a
+    /// single OS-managed model, Flavor1 exposes its own curated
+    /// picker).
+    var modelCatalogURL: URL? {
+        switch self {
+        case .openai:    return URL(string: "https://platform.openai.com/docs/models")
+        case .anthropic: return URL(string: "https://docs.claude.com/en/docs/about-claude/models")
+        case .gemini:    return URL(string: "https://ai.google.dev/gemini-api/docs/models")
+        case .ollama, .appleIntelligence: return nil
+        #if JOT_FLAVOR_1
+        case .flavor1:   return nil
         #endif
         }
     }

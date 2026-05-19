@@ -188,7 +188,13 @@ extension SingleKey {
             switch self {
             case .toggleRecording:        return "Toggle recording"
             case .pushToTalk:             return "Push to talk"
-            case .pasteLastTranscription: return "Paste last transcription"
+            // Display label says "result" because v1.9.5 broadened this
+            // hotkey to replay the most recent Jot output — dictation OR
+            // rewrite, whichever fired more recently. Storage key
+            // (`rawValue: "pasteLastTranscription"`, raw KeyboardShortcuts
+            // name `"pasteLastTranscription"`) stays the same so existing
+            // user bindings survive the rename.
+            case .pasteLastTranscription: return "Paste last result"
             case .rewriteWithVoice:       return "Rewrite with Voice"
             case .rewrite:                return "Rewrite"
             }
@@ -201,13 +207,19 @@ extension SingleKey {
         ///     friendlier than holding a modifier while speaking).
         ///   • `.hold` — start while held, stop on release. Push to
         ///     Talk's defining shape.
-        ///   • `.tap` — fire once on press. Paste Last and Rewrite
-        ///     (fixed) — single-shot actions with no ongoing state.
+        ///   • `.tap` — fire once on press. Paste Last is single-shot with
+        ///     no ongoing state.
+        ///   • Rewrite is `.hold` so the press/release pair drives the
+        ///     Prompt Picker tap-vs-hold dispatcher (`RewriteHoldDetector`):
+        ///     onStart begins the 1.2s threshold timer, onStop either fires
+        ///     today's default Rewrite (early release) or is a no-op
+        ///     (picker already opened). Single-shot tap semantics are
+        ///     preserved at the dispatcher layer.
         var mode: TriggerMode {
             switch self {
             case .toggleRecording, .rewriteWithVoice: return .toggle
-            case .pushToTalk:                          return .hold
-            case .pasteLastTranscription, .rewrite:    return .tap
+            case .pushToTalk, .rewrite:                return .hold
+            case .pasteLastTranscription:              return .tap
             }
         }
 

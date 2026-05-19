@@ -44,7 +44,14 @@ actor LLMClient {
     /// Rewrite a selection. Used by both Rewrite with Voice (pass the
     /// spoken instruction) and fixed Rewrite (pass `nil` — the system
     /// prompt's no-instruction fallback governs behavior).
-    func rewrite(selectedText: String, instruction: String?) async throws -> String {
+    ///
+    /// When `systemPromptOverride` is non-nil (Prompt Picker path), the
+    /// override REPLACES the classifier-composed system prompt for this
+    /// single call. Shared invariants and branch routing are skipped —
+    /// the picked prompt is hand-written to do its job in a single
+    /// block. `instruction` is still respected; pass `nil` for ⏎-apply,
+    /// pass a voice tweak for ⌘⏎-apply.
+    func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String? = nil) async throws -> String {
         let config = await MainActor.run { [llmConfiguration] in
             let c = llmConfiguration
             let p = c.provider
@@ -57,17 +64,38 @@ actor LLMClient {
             )
         }
 
-        // Route the instruction to a branch-specific tendency block.
-        // With no instruction (fixed path), fall through to
-        // `.voicePreserving` — the safe default that matches the system
-        // prompt's no-instruction fallback. The classifier is a hint,
-        // not a gate.
-        let branch: RewriteBranch = instruction.map(RewriteInstructionClassifier.classify) ?? .voicePreserving
-        let systemPrompt = """
-            \(config.sharedInvariants)
+        // System-prompt composition — three paths:
+        // 1. Override present (picker row picked) → use the override
+        //    verbatim. Picked prompts are self-contained; no classifier
+        //    branch, no shared invariants.
+        // 2. No instruction (⌥/ tap, default Rewrite) → use the user-
+        //    editable Rewrite prompt (`config.sharedInvariants`) verbatim.
+        //    No classifier branch is appended: the prompt already says
+        //    everything the `.voicePreserving` branch was saying.
+        // 3. With instruction (⌥. Rewrite with Voice, picker ⌘⏎ voice-
+        //    augment) → use the internal with-voice prompt + the
+        //    classifier-routed branch tendency. The user's voice
+        //    instruction is the primary signal; the prompt is thin
+        //    scaffolding.
+        let systemPrompt: String
+        if let override = systemPromptOverride, !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            systemPrompt = override
+        } else if instruction == nil {
+            // No-instruction path. The user-editable Rewrite prompt is
+            // the entire system prompt; the model has everything it
+            // needs to articulate the dictation.
+            systemPrompt = config.sharedInvariants
+        } else {
+            // With-instruction path. Route the spoken instruction to a
+            // branch-specific tendency block and append it to the
+            // (non-user-editable) with-voice prompt.
+            let branch: RewriteBranch = instruction.map(RewriteInstructionClassifier.classify) ?? .voicePreserving
+            systemPrompt = """
+                \(RewritePrompt.withVoiceInternal)
 
-            \(RewriteBranchPrompt.prompt(for: branch))
-            """
+                \(RewriteBranchPrompt.prompt(for: branch))
+                """
+        }
 
         // On-device Apple Intelligence short-circuits the HTTP path entirely.
         if config.provider == .appleIntelligence {
@@ -204,8 +232,20 @@ actor LLMClient {
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userPrompt],
             ],
-            "temperature": temperature,
         ]
+        // GPT-5 (the reasoning model — not "gpt-5-mini" or other
+        // variants) rejects any temperature value other than the
+        // default. Empirically: passing `temperature: 0.1` returns a
+        // 400 with `"Unsupported value: 'temperature' does not support
+        // 0.1 with this model. Only the default (1) value is
+        // supported."` (verified 2026-05-18 against the PFB gateway's
+        // `gpt-5` route, which is OpenAI-compatible). Scope intentionally
+        // narrow per design discussion: just `gpt-5`, not the broader
+        // o1/o3/o4 reasoning-model family — if those land later, extend
+        // explicitly with their own model-ID match here.
+        if model != "gpt-5" {
+            body["temperature"] = temperature
+        }
         if stream {
             body["stream"] = true
         }
@@ -230,7 +270,15 @@ actor LLMClient {
 
         var body: [String: Any] = [
             "model": model,
-            "max_tokens": 4096,
+            // Long-form rewrites (a paragraphs-long dictation, a whole
+            // chat transcript) routinely exceed the 4096-token cap
+            // that shipped with v1.5; the response truncates mid-sentence
+            // and the paste-back surfaces a half-rewritten selection.
+            // Haiku 4.5 supports 64K output tokens — 16K is well within
+            // budget and covers every dictation-length we've observed
+            // in practice. Anthropic doesn't bill for unused output, so
+            // setting this high has no cost when the rewrite is short.
+            "max_tokens": 16384,
             "system": systemPrompt,
             "messages": [
                 ["role": "user", "content": userPrompt],

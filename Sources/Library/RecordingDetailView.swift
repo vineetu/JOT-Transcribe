@@ -18,6 +18,12 @@ struct RecordingDetailView: View {
     @State private var isRetranscribing = false
     @State private var retranscribeError: String?
     @State private var showRawTranscript = false
+    /// Briefly flips to `true` right after a successful Copy click so
+    /// the toolbar Copy button can swap its glyph to a checkmark — gives
+    /// the user the same "did anything happen?" feedback the inline
+    /// `CopyTranscriptButton` provides in row contexts.
+    @State private var didCopy = false
+    @State private var copyResetTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView {
@@ -155,8 +161,12 @@ struct RecordingDetailView: View {
             Button {
                 copyTranscript()
             } label: {
-                Label("Copy", systemImage: "doc.on.doc")
+                Label(
+                    didCopy ? "Copied" : "Copy",
+                    systemImage: didCopy ? "checkmark" : "doc.on.doc"
+                )
             }
+            .help(didCopy ? "Copied" : "Copy transcript")
 
             Button {
                 retranscribe()
@@ -202,8 +212,32 @@ struct RecordingDetailView: View {
     }
 
     private func copyTranscript() {
-        guard let pb = AppServices.live?.pasteboard else { return }
-        _ = pb.write(displayedTranscript)
+        // Prefer the Pasteboarding seam; fall back to
+        // `NSPasteboard.general` when `AppServices.live` is nil so
+        // the clipboard still gets the text on the cold-launch race
+        // window.
+        let wrote: Bool
+        if let pb = AppServices.live?.pasteboard {
+            wrote = pb.write(displayedTranscript)
+        } else {
+            let nspb = NSPasteboard.general
+            nspb.clearContents()
+            wrote = nspb.setString(displayedTranscript, forType: .string)
+        }
+        guard wrote else {
+            Task { await ErrorLog.shared.warn(
+                component: "RecordingDetailView",
+                message: "copyTranscript failed — pasteboard write returned false"
+            ) }
+            return
+        }
+        didCopy = true
+        copyResetTask?.cancel()
+        copyResetTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            didCopy = false
+        }
     }
 
     private func format(_ t: TimeInterval) -> String {
