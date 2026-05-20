@@ -3,10 +3,10 @@ import SwiftUI
 /// The unified window's left source-list.
 ///
 /// Layout order:
-///   Home · Settings (expanded, 6 children) · Help · Ask Jot · About
+///   Home · Settings (expanded, 7 children) · Help · Ask Jot · About
 ///
 /// - Expanded by default — most "Open Jot…" clicks are settings-adjacent,
-///   so showing the five sub-items saves a click (design doc §D, option D1).
+///   so showing the settings sub-items saves a click (design doc §D, option D1).
 /// - No dividers between rows — the native source-list grouping reads
 ///   clean enough at this count.
 /// - Sub-item icons use the *subordinate* tint (secondary foreground on
@@ -54,6 +54,11 @@ struct AppSidebar: View {
                         tag: .settings(.vocabulary)
                     )
                 }
+                subRow(
+                    title: "Prompts",
+                    systemImage: "text.bubble",
+                    tag: .settings(.prompts)
+                )
                 subRow(
                     title: "Sound",
                     systemImage: "speaker.wave.2",

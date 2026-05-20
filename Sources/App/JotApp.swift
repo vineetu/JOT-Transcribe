@@ -74,6 +74,7 @@ private struct JotMainContent: View {
                 .environmentObject(services.delivery)
                 .environmentObject(PermissionsService.shared)
                 .environmentObject(services.transcriberHolder)
+                .environmentObject(services.promptStore)
                 .modelContainer(services.modelContainer)
         } else {
             ProgressView()

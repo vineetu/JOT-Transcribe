@@ -4,10 +4,11 @@ import SwiftUI
 
 /// About pane — identity, vision, donation ask, privacy pledge.
 ///
-/// No automatic network calls: the donation total lives on the web at
-/// `jot-donations.ideaflow.page/summary` and opens in the user's browser.
-/// Keeps Jot's privacy invariant intact (model download + daily appcast +
-/// user-configured LLMs are the only outbound calls from within the app).
+/// One opt-in HTTPS GET on appear: `jot-donations.ideaflow.page/summary`
+/// for the inline "$X raised across N donations" caption. No auth, no
+/// device identifier, totals only — same endpoint `DonationsView` uses
+/// and shares the `@AppStorage` cache so the second visit paints from
+/// cache instantly while a refresh runs in the background.
 struct AboutPane: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.helpNavigator) private var helpNavigator
@@ -47,6 +48,14 @@ struct AboutPane: View {
     /// "N months saved" badge update without relaunching the window.
     @ObservedObject private var donationStore = DonationStore.shared
 
+    /// Cached `/summary` payload — shared with `DonationsView` via the
+    /// same `@AppStorage` key so a fetch in either surface warms both.
+    @AppStorage("jot.donations.lastSummary") private var cachedSummaryData: Data = Data()
+
+    /// Latest fetched totals. Hydrated from cache on appear for a fast
+    /// first paint, then refreshed from the server.
+    @State private var donationsSummary: DonationsSummary?
+
     /// Comparable-tools monthly rate used by `SavingsBadge`. Spec §7.6
     /// pins this at $10/mo; keep it wired to a local constant so there's
     /// one place to update it if competitor pricing shifts.
@@ -73,6 +82,13 @@ struct AboutPane: View {
             // Intelligence in System Settings see the row on their
             // next visit.
             isAskJotAvailable = AppleIntelligenceClient.isAvailable
+            // Surface the cached `/summary` payload immediately so the
+            // "raised so far" caption paints without a network round-trip,
+            // then kick off a refresh in the background.
+            if donationsSummary == nil {
+                donationsSummary = DonationsService.decodeCachedSummary(from: cachedSummaryData)
+            }
+            Task { await refreshDonationsSummary() }
         }
         .sheet(isPresented: $isShowingFeedback) {
             FeedbackSheet()
@@ -266,17 +282,16 @@ struct AboutPane: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
 
-                Button {
-                    isShowingDonations = true
-                } label: {
-                    Label("See total raised", systemImage: "chart.bar.fill")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-
                 Spacer()
             }
             .padding(.vertical, 2)
+
+            if let caption = raisedCaption() {
+                Text(caption)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
 
             // Donation acknowledgment: shown only after the user has
             // clicked a donate link from the Home card or the button
@@ -297,6 +312,35 @@ struct AboutPane: View {
                 SavingsBadge(months: months, monthlyRate: comparableMonthlyRate)
                     .padding(.top, 2)
             }
+        }
+    }
+
+    /// One-line caption rendered under the Donate button. Returns nil
+    /// (no caption row at all) when totals haven't loaded yet or when
+    /// the server reports zero donations — better to omit than to
+    /// render "$0 raised across 0 donations" on a fresh fetch.
+    private func raisedCaption() -> String? {
+        guard let summary = donationsSummary, summary.totalDonations > 0 else { return nil }
+        let amount = summary.totalRaisedUSD.formatted(
+            .currency(code: "USD").precision(.fractionLength(0))
+        )
+        let count = summary.totalDonations
+        return "\(amount) raised across \(count) donation\(count == 1 ? "" : "s")"
+    }
+
+    /// Fetch the latest totals from the donations server and persist
+    /// to the shared `@AppStorage` cache. Silent on failure — About is
+    /// not a place for network-error toasts.
+    @MainActor
+    private func refreshDonationsSummary() async {
+        do {
+            let fetched = try await DonationsService.fetchSummary()
+            donationsSummary = fetched
+            if let data = DonationsService.encodeForCache(fetched) {
+                cachedSummaryData = data
+            }
+        } catch {
+            // Intentionally silent — fall back to cached value, or no caption.
         }
     }
 

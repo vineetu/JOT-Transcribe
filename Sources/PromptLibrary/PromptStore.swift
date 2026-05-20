@@ -7,6 +7,7 @@ import os.log
 ///
 /// Responsibilities:
 /// - Load the bundled `prompt-library.json` once at init.
+/// - Merge user-authored `UserPrompt` rows from SwiftData into picker views.
 /// - Read/write per-prompt `PromptUsage` rows (last-used, count, pinned)
 ///   from SwiftData. ModelContext is optional — when `nil` (test seam),
 ///   usage tracking is silently skipped and the picker still works
@@ -24,17 +25,26 @@ final class PromptStore: ObservableObject {
     /// Maximum rows shown in the Recent section before falling back to search.
     static let maxRecent = 3
 
-    @Published private(set) var allPrompts: [Prompt] = []
+    /// Bundled, read-only catalog decoded from `Resources/prompt-library.json`
+    /// at init. Exposed so `PromptsPane` can render a "Built-in prompts"
+    /// browse section alongside the editable user list.
+    let bundledPrompts: [Prompt]
+    var allPrompts: [Prompt] {
+        bundledPrompts + userPrompts.map(Self.project)
+    }
+    @Published private(set) var userPrompts: [UserPrompt] = []
     /// Index of usage rows by prompt id. Reads come from this map so the
     /// UI can render without an additional SwiftData fetch per row.
     @Published private(set) var usage: [String: PromptUsage] = [:]
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "PromptStore")
     private let modelContext: ModelContext?
+    private static let userPromptProviderCompatibility = ["apple", "anthropic", "openai", "gemini", "ollama"]
 
     init(modelContext: ModelContext? = nil, bundle: Bundle = .main) {
         self.modelContext = modelContext
-        self.allPrompts = Self.loadBundled(from: bundle, log: log)
+        self.bundledPrompts = Self.loadBundled(from: bundle, log: log)
+        self.userPrompts = Self.loadUserPrompts(from: modelContext, log: log)
         self.usage = Self.loadUsage(from: modelContext, log: log)
     }
 
@@ -69,7 +79,108 @@ final class PromptStore: ObservableObject {
         }
     }
 
+    private static func loadUserPrompts(from context: ModelContext?, log: Logger) -> [UserPrompt] {
+        guard let context else { return [] }
+        do {
+            let descriptor = FetchDescriptor<UserPrompt>(
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+            )
+            return try context.fetch(descriptor)
+        } catch {
+            log.error("UserPrompt fetch failed: \(String(describing: error), privacy: .public)")
+            return []
+        }
+    }
+
+    private static func project(_ userPrompt: UserPrompt) -> Prompt {
+        Prompt(
+            id: userPrompt.promptID,
+            title: userPrompt.title,
+            tier: .longTail,
+            category: "My Prompts",
+            tags: [],
+            body: userPrompt.body,
+            sampleInput: userPrompt.sampleInput,
+            sampleOutput: userPrompt.sampleOutput,
+            voiceAugmentHint: nil,
+            providerCompatibility: userPromptProviderCompatibility
+        )
+    }
+
+    func reloadUserPrompts() {
+        userPrompts = Self.loadUserPrompts(from: modelContext, log: log)
+    }
+
     // MARK: - Mutations
+
+    func addUserPrompt(
+        title: String,
+        body: String,
+        sampleInput: String? = nil,
+        sampleOutput: String? = nil
+    ) -> UserPrompt {
+        let prompt = UserPrompt(
+            title: title,
+            body: body,
+            sampleInput: sampleInput,
+            sampleOutput: sampleOutput
+        )
+        guard let modelContext else {
+            userPrompts.insert(prompt, at: 0)
+            return prompt
+        }
+        modelContext.insert(prompt)
+        do {
+            try modelContext.save()
+        } catch {
+            log.error("UserPrompt insert failed: \(String(describing: error), privacy: .public)")
+        }
+        reloadUserPrompts()
+        return prompt
+    }
+
+    func updateUserPrompt(
+        _ prompt: UserPrompt,
+        title: String,
+        body: String,
+        sampleInput: String? = nil,
+        sampleOutput: String? = nil
+    ) {
+        prompt.title = title
+        prompt.body = body
+        prompt.sampleInput = sampleInput
+        prompt.sampleOutput = sampleOutput
+        prompt.updatedAt = .now
+        do {
+            try modelContext?.save()
+        } catch {
+            log.error("UserPrompt update failed: \(String(describing: error), privacy: .public)")
+        }
+        reloadUserPrompts()
+    }
+
+    func deleteUserPrompt(_ prompt: UserPrompt) {
+        let promptID = prompt.promptID
+        guard let modelContext else {
+            userPrompts.removeAll { $0.id == prompt.id }
+            usage[promptID] = nil
+            return
+        }
+        do {
+            let usageDescriptor = FetchDescriptor<PromptUsage>(
+                predicate: #Predicate { $0.promptID == promptID }
+            )
+            for row in try modelContext.fetch(usageDescriptor) {
+                modelContext.delete(row)
+            }
+            modelContext.delete(prompt)
+            try modelContext.save()
+            usage[promptID] = nil
+        } catch {
+            log.error("UserPrompt delete failed: \(String(describing: error), privacy: .public)")
+        }
+        reloadUserPrompts()
+    }
 
     /// Record that `promptID` was applied. Increments `useCount`, sets
     /// `lastUsedAt = .now`. Creates the row if none exists. Silently
