@@ -138,10 +138,19 @@ struct TranscriptionPane: View {
                         if model.isExperimental {
                             ExperimentalBadge()
                         }
+                        if model.isLighterVariant {
+                            LighterBadge()
+                        }
                     }
                     Text(rowSubtitle(for: model, installed: installed, state: state))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                    if let detail = model.detailText {
+                        Text(detail)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 Spacer()

@@ -28,14 +28,21 @@ public struct ModelCache: Sendable {
         )
     }()
 
-    /// Directory where the *batch* model files for a given option live.
-    /// FluidAudio's downloader lays files out at `root/<repoFolderName>/...`;
-    /// consumers that load the batch model point `AsrModels.load(from:)`
-    /// at this URL. For the streaming option this returns the TDT v2
-    /// folder; the EOU streaming sibling is reached via
+    /// Directory handed to FluidAudio for the *batch* model files for a
+    /// given option. FluidAudio derives its actual repo folder from the
+    /// parent of this URL. For the int4 v3 option, that parent is a
+    /// dedicated Jot folder so the SDK's `parakeet-tdt-0.6b-v3` cache is
+    /// isolated from the default v3 install. For the streaming option this
+    /// returns the TDT v2 folder; the EOU streaming sibling is reached via
     /// `streamingPartialCacheURL(for:)`.
     public func cacheURL(for id: ParakeetModelID) -> URL {
-        root.appendingPathComponent(id.repoFolderName, isDirectory: true)
+        let base = root.appendingPathComponent(id.repoFolderName, isDirectory: true)
+        switch id {
+        case .tdt_0_6b_v3_int4:
+            return base.appendingPathComponent("parakeet-tdt-0.6b-v3-coreml", isDirectory: true)
+        case .tdt_0_6b_v3, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming:
+            return base
+        }
     }
 
     /// Directory where the streaming-side model bundle for a streaming-
@@ -53,7 +60,7 @@ public struct ModelCache: Sendable {
             return root
                 .appendingPathComponent("parakeet-eou-streaming", isDirectory: true)
                 .appendingPathComponent("160ms", isDirectory: true)
-        case .tdt_0_6b_v3, .tdt_0_6b_ja:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
             return nil
         }
     }
@@ -73,7 +80,11 @@ public struct ModelCache: Sendable {
     /// `false`, which causes Settings to render the option as "Not
     /// installed" with a Retry affordance.
     public func isCached(_ id: ParakeetModelID) -> Bool {
-        let batchPresent = AsrModels.modelsExist(at: cacheURL(for: id), version: id.fluidAudioVersion)
+        let batchPresent = AsrModels.modelsExist(
+            at: cacheURL(for: id),
+            version: id.fluidAudioVersion,
+            encoderPrecision: id.encoderPrecision
+        )
         guard id.supportsStreaming else { return batchPresent }
         guard batchPresent else { return false }
         guard let streamingURL = streamingPartialCacheURL(for: id) else { return batchPresent }
@@ -121,19 +132,34 @@ public struct ModelCache: Sendable {
         }
     }
 
-    /// Both candidate paths for a batch model bundle: the placeholder
-    /// `cacheURL(for:)` (what we hand to FluidAudio's downloader) and
-    /// the actual FluidAudio-derived path (what the SDK writes to).
-    /// Used by `removeCache` to clean both, and exposed to tests so
-    /// the "after remove → isCached false" assertion can verify the
-    /// real cache slot disappeared.
+    /// Candidate paths for a batch model bundle: the placeholder
+    /// `cacheURL(for:)` (what we hand to FluidAudio's downloader), the
+    /// actual FluidAudio-derived path (what the SDK writes to), and for
+    /// the int4 v3 option the dedicated parent folder. Used by
+    /// `removeCache` to clean both placeholder and real cache slots.
     func batchCachePaths(for id: ParakeetModelID) -> [URL] {
         let placeholder = cacheURL(for: id)
-        let derived = root.appendingPathComponent(
-            id.repoFolderName.replacingOccurrences(of: "-coreml", with: ""),
+        let derived = placeholder.deletingLastPathComponent().appendingPathComponent(
+            id.actualRepoFolderName,
             isDirectory: true
         )
-        if placeholder == derived { return [placeholder] }
-        return [placeholder, derived]
+        var paths = placeholder == derived ? [placeholder] : [placeholder, derived]
+        if id == .tdt_0_6b_v3_int4 {
+            paths.append(root.appendingPathComponent(id.repoFolderName, isDirectory: true))
+        }
+        return paths
+    }
+}
+
+private extension ParakeetModelID {
+    var actualRepoFolderName: String {
+        switch self {
+        case .tdt_0_6b_v3_int4:
+            return "parakeet-tdt-0.6b-v3"
+        case .tdt_0_6b_v3, .tdt_0_6b_v2_en_streaming:
+            return repoFolderName.replacingOccurrences(of: "-coreml", with: "")
+        case .tdt_0_6b_ja:
+            return repoFolderName
+        }
     }
 }

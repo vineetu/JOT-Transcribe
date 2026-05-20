@@ -101,6 +101,7 @@ public actor ModelDownloader {
                 to: targetDir,
                 force: false,
                 version: version,
+                encoderPrecision: id.encoderPrecision,
                 progressHandler: progressHandler
             )
         } catch {
@@ -199,6 +200,7 @@ public actor ModelDownloader {
                 to: targetDir,
                 force: false,
                 version: version,
+                encoderPrecision: id.encoderPrecision,
                 progressHandler: progressHandler
             )
         } catch {

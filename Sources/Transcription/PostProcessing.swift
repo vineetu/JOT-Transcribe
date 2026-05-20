@@ -17,7 +17,7 @@ public enum PostProcessing {
         guard !text.isEmpty else { return "" }
 
         switch language {
-        case .tdt_0_6b_v3, .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_v2_en_streaming:
             return applyEnglish(text)
         case .tdt_0_6b_ja:
             return applyJapanese(text)

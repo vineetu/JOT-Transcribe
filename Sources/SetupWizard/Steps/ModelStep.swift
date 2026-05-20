@@ -262,10 +262,19 @@ private struct ModelOptionRow: View {
                                 if model.isExperimental {
                                     ExperimentalBadge()
                                 }
+                                if model.isLighterVariant {
+                                    LighterBadge()
+                                }
                             }
                             Text(sizeText)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
+                            if let detail = model.detailText {
+                                Text(detail)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                     }
                     .contentShape(Rectangle())
