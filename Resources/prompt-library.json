@@ -99,6 +99,18 @@
       "voiceAugmentHint": null,
       "providerCompatibility": ["apple", "anthropic", "openai", "gemini", "ollama"]
     },
+    {
+      "id": "convert-to-ai-prompt",
+      "title": "Convert to AI prompt",
+      "tier": 1,
+      "category": "Essentials",
+      "tags": ["convert", "ai", "prompt", "meta"],
+      "body": "Transform the user's text into a clean, ready-to-use AI prompt. The text is a rough verbal description of something they want an AI to do — extract from it: the task, any context the AI will need, constraints (tone, length, audience, format), and the desired output shape. Write the result as a single coherent prompt addressed to an AI assistant, with each section wrapped in XML tags: <task>, <context>, <constraints>, <output_format>. Be concrete and specific. Do not invent constraints the user did not mention. Do not address the user — write it as instructions to the AI. Omit any tag whose section has no material from the user (do not write empty sections). Return only the tagged prompt — no preamble, no commentary, no surrounding code fence.",
+      "sampleInput": "i need to write a follow-up email to a client who hasn't responded in two weeks about a proposal we sent, i want it to be firm but not pushy, like five sentences max, and end with a specific call to action",
+      "sampleOutput": "<task>Write a follow-up email to a client who has not responded for two weeks regarding a proposal we sent.</task>\n<constraints>\n- Tone: firm but not pushy — clear about needing a response, respectful about their time.\n- Length: five sentences maximum.\n- End with a specific call to action (e.g., a proposed reply deadline or short call).\n</constraints>\n<output_format>Email body only, no subject line.</output_format>",
+      "voiceAugmentHint": "Say which model you'll paste this into (e.g. \"for Claude\")",
+      "providerCompatibility": ["anthropic", "openai", "gemini", "ollama"]
+    },
 
     {
       "id": "translate",
@@ -242,6 +254,18 @@
       "sampleInput": "Hi all — hope you're doing well. So I've been looking at the Q3 numbers and there's a lot going on, but the headline is that we're going to need to cut about $50k from the marketing budget by August. There are a few options for where it could come from, but I wanted to flag it now.",
       "sampleOutput": "Subject: [ACTION] Cut $50k from marketing budget by August\n\nWe need to cut about $50k from the marketing budget by August. The Q3 numbers don't support the current spend, and I'd like to align on where the cut comes from before the end of the month.\n\nOptions to consider:\n- Pause the paid-social experiment\n- Reduce conference sponsorships in Q3\n- Defer the brand refresh work to Q4\n\nHappy to set up a short call this week to decide.",
       "voiceAugmentHint": null,
+      "providerCompatibility": ["anthropic", "openai", "gemini", "ollama"]
+    },
+    {
+      "id": "convert-to-mermaid",
+      "title": "Convert to Mermaid diagram",
+      "tier": 2,
+      "category": "Convert",
+      "tags": ["convert", "mermaid", "diagram", "flowchart"],
+      "body": "Convert the user's text into Mermaid diagram code. Pick the most appropriate diagram type for the content: `flowchart TD` for processes, `sequenceDiagram` for interactions between actors, `stateDiagram-v2` for state transitions, `classDiagram` for type relationships, `erDiagram` for data models, `mindmap` for ideation. Use short, descriptive node IDs and quote labels that contain spaces or punctuation. Do not invent steps that aren't in the source — only diagram what's there. Return only the Mermaid code wrapped in a ```mermaid code fence — no preamble, no explanation.",
+      "sampleInput": "when a user signs up we send them a verification email. if they click the link within 24 hours their account is activated. if they don't we delete the account. once activated they go through onboarding.",
+      "sampleOutput": "```mermaid\nflowchart TD\n    A[User signs up] --> B[Send verification email]\n    B --> C{Click link within 24h?}\n    C -->|Yes| D[Activate account]\n    C -->|No| E[Delete account]\n    D --> F[Begin onboarding]\n```",
+      "voiceAugmentHint": "Specify diagram type (e.g. \"as a sequence diagram\")",
       "providerCompatibility": ["anthropic", "openai", "gemini", "ollama"]
     },
 

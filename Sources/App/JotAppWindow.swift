@@ -215,6 +215,10 @@ struct JotAppWindow: View {
                                 )
             case .transcription: TranscriptionPane()
             case .vocabulary:    VocabularyPane()
+            case .prompts:       PromptsPane(
+                                    urlSession: urlSession,
+                                    appleIntelligence: appleIntelligence
+                                )
             case .sound:         SoundPane()
             case .ai:            RewritePane(
                                     urlSession: urlSession,

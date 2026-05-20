@@ -167,6 +167,47 @@ actor LLMClient {
         return try await performLLMRequest(provider: config.provider, request: request)
     }
 
+    /// Generic system+user completion. No XML wrapping, no rewrite-specific
+    /// shaping — used by authoring surfaces (PromptEditorSheet's
+    /// "Generate sample" path) that need a one-shot completion against
+    /// the user's configured provider.
+    func complete(systemPrompt: String, userPrompt: String) async throws -> String {
+        let config = await MainActor.run { [llmConfiguration] in
+            let c = llmConfiguration
+            let p = c.provider
+            return (
+                provider: p,
+                apiKey: c.apiKey(for: p),
+                baseURL: c.effectiveBaseURL(for: p),
+                model: c.effectiveModel(for: p)
+            )
+        }
+
+        if config.provider == .appleIntelligence {
+            return try await appleClient.transform(
+                transcript: userPrompt,
+                instruction: systemPrompt
+            )
+        }
+
+        if config.provider.requiresUserAPIKey, config.apiKey.isEmpty {
+            throw LLMError.noAPIKey
+        }
+
+        var request = try await buildRequest(
+            provider: config.provider,
+            baseURL: config.baseURL,
+            apiKey: config.apiKey,
+            model: config.model,
+            systemPrompt: systemPrompt,
+            userPrompt: userPrompt,
+            temperature: 0.4,
+            stream: false
+        )
+        request.timeoutInterval = 60
+        return try await performLLMRequest(provider: config.provider, request: request, stream: false)
+    }
+
     private func buildRequest(
         provider: LLMProvider,
         baseURL: String,
@@ -330,9 +371,10 @@ actor LLMClient {
         }
     }
 
-    private func performLLMRequest(provider: LLMProvider, request: URLRequest) async throws -> String {
+    private func performLLMRequest(provider: LLMProvider, request: URLRequest, stream: Bool? = nil) async throws -> String {
+        let useStreaming = stream ?? shouldStream(provider: provider)
         do {
-            if shouldStream(provider: provider) {
+            if useStreaming {
                 return try await streamResponse(provider: provider, request: request)
             }
 
@@ -341,7 +383,7 @@ actor LLMClient {
             return try parseResponse(provider: provider, data: data)
         } catch {
             let mapped = mapError(error)
-            logLLMError(mapped, provider: provider, request: request, streaming: false)
+            logLLMError(mapped, provider: provider, request: request, streaming: useStreaming)
             throw mapped
         }
     }

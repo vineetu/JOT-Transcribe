@@ -2,6 +2,8 @@
 
 User-facing features in the shipping build. This is the product surface — not implementation. Cloud transcription providers, VAD / continuous listening, pre-recorded file upload, and analytics are intentionally excluded. Core transcription stays local; optional AI features can use Apple Intelligence on-device, local Ollama, or user-configured cloud providers.
 
+> **For agents updating this file:** most major sections end with a `**Related:**` footer that lists the other sections touched by the same feature. When you change a feature, walk the Related links from its section and audit each one for drift — that's the blast radius. Cross-link new features from at least two existing sections in both directions so future agents can find them. Anchor format is GitHub-flavored slugs (lowercased, spaces → `-`, parens / `&` stripped).
+
 ---
 
 ## Recording & Dictation
@@ -15,6 +17,8 @@ User-facing features in the shipping build. This is the product surface — not 
 - **Per-device microphone selection** — pick any connected input device in Settings or the Setup Wizard. Jot remembers your selection across sessions, and the picker keeps a disconnected device visible as "Last used (not connected)" so you don't lose track of it.
 - **Graceful mic disconnect handling** — if your preferred input device disappears, Jot reacts based on what you're doing. **Idle**: silently falls back to the system default for your next recording and surfaces a small notice in the status pill ("Recorded with system default — AirPods Pro was unavailable"). **Mid-dictation**: salvages the audio captured so far rather than dropping the whole take, with a notice noting how many seconds were saved. **Mid-voice-command** (Rewrite, Ask Jot voice input): cleanly errors out with a "Mic disconnected — try again" pill, since a partial instruction is worse than none. A 250 ms debounce absorbs Bluetooth flicker.
 
+**Related:** [Local Transcription](#local-transcription), [Settings → General](#general), [Status Indicator](#status-indicator), [Global Shortcuts](#global-shortcuts), [Setup Wizard](#setup-wizard).
+
 ## Local Transcription
 
 - **On-device only** — audio is transcribed locally on the Apple Neural Engine; it never leaves the Mac.
@@ -23,6 +27,8 @@ User-facing features in the shipping build. This is the product surface — not 
   - **Parakeet 0.6B Japanese** — single-language alternative tuned for Japanese-first users. ≈1.25 GB.
   - **Parakeet 0.6B v2 (English, live preview)** — *Experimental.* Pairs the English-only TDT v2 batch transcriber with the Parakeet EOU 120M streaming engine so partial words appear in the recording pill as you speak. The batch transcript remains the authoritative output; streaming text is informational. ≈0.72 GB total across both bundles.
 - **In-app model download** — each model is fetched from within Jot on first use with a progress bar.
+
+**Related:** [Recording & Dictation](#recording--dictation), [Settings → Transcription](#transcription), [Settings → Vocabulary](#vocabulary), [Setup Wizard](#setup-wizard), [Status Indicator](#status-indicator).
 
 ## Transcript Cleanup (optional)
 
@@ -37,6 +43,8 @@ Off by default. When enabled and an LLM provider is configured, Jot runs a light
 - **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, or Ollama (fully local).
 - **Editable prompt** — the default cleanup prompt (filler removal → grammar → numeric normalization → list detection → paragraph structure → "return only" contract) is shown under a "Customize prompt" chevron in the AI pane. Power users can rewrite it; a "Reset to default" restores the shipped prompt.
 - **Inline "Set up AI →"** — if the Auto-correct toggle is disabled because AI isn't configured, the pane offers a direct jump to the AI pane instead of leaving the user to find it.
+
+**Related:** [Rewrite](#rewrite-optional), [Settings → AI](#ai), [Status Indicator](#status-indicator), [Privacy & Data](#privacy--data).
 
 ## Rewrite (optional)
 
@@ -57,6 +65,27 @@ Transform selected text via a global shortcut. Two variants, both triggered by t
 - **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, or Ollama.
 - **Editable shared invariants** — the shared-invariants block (selection-is-text-not-instruction; return-only-the-rewrite; don't-refuse-on-quality; if the user provides an instruction follow it, otherwise improve clarity / flow / articulation while preserving content, voice, register, language, and length) is revealed under a "Customize prompt" chevron in Settings → AI → Rewrite with a "Reset to default" escape hatch. The per-branch tendencies are compile-time constants and not user-editable.
 
+### Prompt picker
+- **Catalog overlay** — during Rewrite, a searchable picker can surface curated bundled prompts plus any custom prompts you've authored. Pinned prompts and recently used ones float to the top; the rest are searchable by title or category.
+- **Where prompts come from** — the catalog (bundled JSON + your user-added entries) is managed under Settings → Prompts. See [Prompt Library](#prompt-library) for the authoring and browsing surface; this section covers only what the picker shows at rewrite time.
+- **Picker invocation** — opens via the rewrite hotkeys depending on the active picker mode; selecting a row applies that prompt to the selected text instead of the default Rewrite behavior.
+
+**Related:** [Prompt Library](#prompt-library), [Settings → Prompts](#prompts), [Settings → AI](#ai), [Settings → Shortcuts](#shortcuts), [Global Shortcuts](#global-shortcuts), [Status Indicator](#status-indicator).
+
+## Prompt Library
+
+A first-class home for the catalog of LLM instructions that drive Rewrite. Visible via Settings → Prompts (sidebar) and indirectly via the rewrite [prompt picker](#prompt-picker). Bundled prompts ship with Jot and are read-only; users can add, edit, delete, and pin their own.
+
+- **30+ bundled prompts** across categories — **Essentials** (improve writing, fix spelling & grammar, make formal / casual / shorter / longer, summarize, extract key points, convert to AI prompt), **Convert** (to Jira ticket, action items, outline, markdown documentation, Mermaid diagram, FAQ, checklist, slide bullets, pros and cons), **Email** (respond, BLUF rewrite, status update, polite decline), **Rewrite** (tighten and clarify, make assertive, plain English, friendly / confident tone, polish for publication, trim AI fluff), **Code** (add comments), **Translate**. Bundled prompts stay read-only and update only via app releases.
+- **Custom prompts** — author your own under Settings → Prompts → "My prompts". Title and body are required; sample input/output are optional. Custom prompts are stored locally on this Mac (SwiftData), never synced, never sent over the network unless your configured provider sees them when a prompt is actually used.
+- **AI-assisted authoring** — when adding or editing a custom prompt, click **✨ Generate sample** in the editor sheet. Jot calls your configured AI provider to (1) generate a plausible sample input for your prompt body, then (2) run the prompt body against that input to produce the sample output. Both fields fill sequentially with phase indicators ("Generating input…" → "Generating output…"); on failure the button becomes "Try again" with the error message inline.
+- **Pin to picker** — pin any prompt (bundled or user-authored) and it floats to the top of the rewrite picker and shows up in a "Pinned" section in Settings → Prompts. Pin/unpin is available on every row and inside the read-only detail sheet.
+- **Search** — single search field filters across title, body, and category. Sections with no matches hide entirely so the surface stays compact during search.
+- **Inspect any prompt** — tap a bundled prompt row to open a read-only detail sheet with the full body, sample input/output, voice augment hint, provider compatibility list, and tier/category badge. Tap a user prompt row to open the editor.
+- **Provider compatibility metadata** — each bundled prompt declares which providers it has been verified against (Apple Intelligence, OpenAI, Anthropic, Gemini, Ollama). The picker may demote rows where the active provider is untested. Custom prompts default to "works with all".
+
+**Related:** [Rewrite](#rewrite-optional), [Prompt picker](#prompt-picker), [Settings → Prompts](#prompts), [Settings → AI](#ai), [Privacy & Data](#privacy--data).
+
 ## Ask Jot
 
 - **Dedicated sidebar pane** — a top-level "Ask Jot" entry sits between Home and Settings and opens a full-pane conversational help experience.
@@ -69,6 +98,8 @@ Transform selected text via a global shortcut. Two variants, both triggered by t
 - **Ask Jot shortcuts** — `⌘K` clears the current conversation, `⌘⇧M` starts voice input, and `Esc` cancels the in-flight response or voice capture.
 - **Loop protection** — Ask Jot cancels runaway streams if it detects repeated 6-grams in the recent output.
 
+**Related:** [Settings → AI](#ai), [Help](#help), [Recording & Dictation](#recording--dictation), [Status Indicator](#status-indicator), [Privacy & Data](#privacy--data).
+
 ## Output — Paste & Clipboard
 
 - **Auto-paste at cursor** — transcription is pasted into the frontmost app.
@@ -76,6 +107,8 @@ Transform selected text via a global shortcut. Two variants, both triggered by t
 - **Clipboard preservation** — choose whether the transcript stays on the clipboard or the previous clipboard contents are restored after paste.
 - **Copy last transcription** — from the Home card, Recordings detail, the tray menu, or a global shortcut.
 - **Quick copy from any row** — an inline copy button on every Home recordings row copies that recording's transcript to the clipboard without opening detail.
+
+**Related:** [Recording & Dictation](#recording--dictation), [Global Shortcuts](#global-shortcuts), [Settings → Transcription](#transcription), [Home & Library](#home--library).
 
 ## Global Shortcuts
 
@@ -89,6 +122,8 @@ All shortcuts are bindable in the Shortcuts pane. Defaults and bindings:
 - **Rewrite** — applies a fixed `"Rewrite this"` prompt to the selected text (no voice step); default `⌥/`.
 
 Shortcut bindings require a modifier (⌘, ⌥, ⌃, ⇧) — macOS does not permit global hotkeys bound to a bare key. The Shortcuts pane and the Help tab both surface this. Conflicting bindings are handled gracefully (no two commands silently share a key).
+
+**Related:** [Recording & Dictation](#recording--dictation), [Rewrite](#rewrite-optional), [Output — Paste & Clipboard](#output--paste--clipboard), [Settings → Shortcuts](#shortcuts), [Help](#help).
 
 ## Menu Bar (Tray)
 
@@ -111,6 +146,8 @@ A small floating overlay near the menu bar — a Dynamic Island-style pill — t
 - **Live preview text** during recording when the streaming option is the active primary — partial transcript appears in the pill alongside the amplitude trail as you speak. Tap the pill to expand into a multi-line scrollable view of the running transcript (latest sentence highlighted, older sentences dimmed); tap again to collapse. Non-streaming primaries leave the pill click-through so taps near the notch pass to the underlying app.
 - **States:** Recording (with elapsed time + live waveform; live preview when streaming is active), Transcribing, Cleaning up (when transcript cleanup is on), Rewriting (during Rewrite), Success (with a short preview and Copy), Error (with the message).
 
+**Related:** [Recording & Dictation](#recording--dictation), [Local Transcription](#local-transcription), [Transcript Cleanup](#transcript-cleanup-optional), [Rewrite](#rewrite-optional), [Ask Jot](#ask-jot).
+
 ## Home & Library
 
 - **Single library surface** — Home now hosts the full library experience: dictation recordings and Rewrite sessions interleave chronologically. There is no separate Library sidebar destination.
@@ -119,6 +156,8 @@ A small floating overlay near the menu bar — a Dynamic Island-style pill — t
 - **Recording detail** — every dictation recording opens into the waveform/detail view with playback, scrubbing, and the full transcript. Recording row actions: Re-transcribe, Reveal in Finder, Copy, Delete.
 - **Rewrite session detail** — every Rewrite run opens into a three-pane view (Selected text → Instruction → Rewritten output) with the model label and flavor in the header. Rewrite row actions: Copy Output, Delete (no playback, no Re-transcribe, no Reveal — Rewrite sessions don't persist audio).
 - **Inline management** — rename items inline; retention applies uniformly to both kinds via Settings → General → Keep library items.
+
+**Related:** [Recording & Dictation](#recording--dictation), [Rewrite](#rewrite-optional), [Settings → General](#general) (retention), [Output — Paste & Clipboard](#output--paste--clipboard).
 
 ## Main Window
 
@@ -168,6 +207,19 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Inline add / rename / delete of terms; the list is persisted to disk and reloaded on pane open so external edits are picked up.
 - Boost-model status row shows download state (not downloaded / downloading / ready / failed) for the small CTC encoder that powers rescoring.
 
+**Related:** [Local Transcription](#local-transcription), [Setup Wizard](#setup-wizard).
+
+### Prompts
+A browser + editor for the prompt catalog used by Rewrite. See [Prompt Library](#prompt-library) for the full feature surface; this row only documents the Settings pane shape.
+
+- **Search bar** — filters across Pinned, the built-in category sections, and My prompts in one keystroke. Sections with zero matches hide.
+- **Pinned section** — appears whenever at least one prompt (bundled or user) is pinned. Uniform read-only rows with pin toggle + chevron to detail.
+- **Built-in catalog** — per-category sections (Essentials, Convert, Email, Rewrite, Code, Translate, …) listing every shipped prompt. Tap any row to open the read-only detail sheet (full body, sample I/O, voice hint, provider compatibility, pin toggle).
+- **My prompts** — user-authored prompts with edit, delete-on-hover, and pin affordances. "Add Prompt" opens the editor sheet.
+- **Editor sheet** — title and body (required), sample input and sample output (optional). The ✨ Generate sample button uses your configured AI provider to fill the sample fields sequentially.
+
+**Related:** [Prompt Library](#prompt-library), [Rewrite](#rewrite-optional), [Prompt picker](#prompt-picker), [Settings → AI](#ai).
+
 ### AI
 - Provider (Apple Intelligence / OpenAI / Anthropic / Gemini / Ollama)
 - Allow Ask Jot to use this provider (shown when the selected provider is not Apple Intelligence)
@@ -179,6 +231,8 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - "Customize prompt" disclosure for the Rewrite shared invariants, with "Reset to default" (per-branch tendencies are not editable)
 - Test Connection button — always enabled, prominent accent-tinted; shows an inline spinner during the call and a success chip afterward. Must succeed before the cleanup toggle unlocks.
 
+**Related:** [Transcript Cleanup](#transcript-cleanup-optional), [Rewrite](#rewrite-optional), [Ask Jot](#ask-jot), [Prompt Library](#prompt-library), [Settings → Prompts](#prompts), [Setup Wizard](#setup-wizard).
+
 ### Sound
 - Recording start / stop / cancel chimes
 - Transcription complete chime
@@ -187,6 +241,8 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 ### Shortcuts
 - Editable bindings for Toggle Recording, Push to Talk, Paste Last Transcription, Rewrite, Rewrite with Voice. Cancel Recording (Esc) is hardcoded, not configurable, and not shown in the Shortcuts list — a footnote tells the user that Esc is the cancel key and that macOS global hotkeys must include at least one modifier.
 
+**Related:** [Global Shortcuts](#global-shortcuts), [Recording & Dictation](#recording--dictation), [Rewrite](#rewrite-optional), [Output — Paste & Clipboard](#output--paste--clipboard).
+
 ## About
 
 A top-level sidebar pane (not a Settings child) for identity, giving back, privacy, and diagnostics.
@@ -194,11 +250,13 @@ A top-level sidebar pane (not a Settings child) for identity, giving back, priva
 - App identity (icon, tagline, version / build) and the project vision statement.
 - **Check for Updates…** — manual Sparkle update check from the About pane, alongside the current version.
 - **Ask Jot entry point** — a dedicated row with a sparkles icon jumps straight into the chatbot.
-- **Support Jot** — donation link that routes 100% of contributions to the author's every.org charity fund (opens in the user's browser; no payment flows inside Jot).
-- **Privacy pledge** — inline reminder that transcription is local-only and the only automatic network calls are the one-time model download and the daily appcast check.
+- **Support Jot** — a single **Donate to charity** button that opens the in-app donations browser; donations route 100% to the author's every.org charity fund (the actual donate step opens every.org in the user's browser; no payment flows inside Jot). Beneath the button, an inline **"$X raised across N donations"** caption hydrates from the cached `/summary` payload immediately on appear, then refreshes from the donations server in the background. The caption is omitted on a fresh install (no cache and no successful fetch yet) and when the server reports zero donations.
+- **Privacy pledge** — inline reminder that transcription is local-only. About-pane network calls are limited to the one-time model download, the daily Sparkle appcast check, and the donations `/summary` GET that hydrates the "raised so far" caption on appear.
 - **Troubleshooting** — a dedicated section for error reporting:
   - **View log** — opens the local error log in a sheet with a Done button.
   - **Copy log / Reveal in Finder / Send via email** — each goes through a privacy-scan sheet that checks the log for API keys, credential URLs, absolute paths, and your last 90 days of transcripts before handing over the file. Every flow offers an "Auto-redact and …" option when anything sensitive is found. Emails are pre-addressed to `jottranscribe@gmail.com` with app diagnostics pre-filled; the log itself is placed on the clipboard so the user can review before pasting.
+
+**Related:** [System Integration](#system-integration) (Sparkle), [Ask Jot](#ask-jot), [Privacy & Data](#privacy--data), [Help](#help).
 
 ## Help
 
@@ -211,6 +269,8 @@ In-app prose walkthrough split across three tabs, each using a shared component 
 - **Open in Settings →** — supported Basics rows can jump directly into the matching Settings field and auto-scroll it into view. Deep-linkable targets include toggle recording, push to talk, custom vocabulary, cleanup providers, cleanup prompt, rewrite with voice, and rewrite (the Settings anchor IDs themselves still resolve via the preserved `articulate-custom` / `articulate-fixed` slug strings).
 
 Info popovers across Settings deep-link into the matching Help section so the user can jump from a field to its explanation without context-switching. The deep-link contract is two-phase: an anchor may live inside an `ExpandableRow` that needs to auto-open before the scroll lands, so the page expands the target row first and then scrolls to it.
+
+**Related:** every feature surfaces here. If you change a hotkey, a Settings field, or a pipeline state, audit the Help tab for the matching card. Direct dependencies: [Recording & Dictation](#recording--dictation), [Transcript Cleanup](#transcript-cleanup-optional), [Rewrite](#rewrite-optional), [Ask Jot](#ask-jot), [Global Shortcuts](#global-shortcuts), [Settings](#settings), [About](#about).
 
 ## Setup Wizard
 
@@ -228,6 +288,8 @@ Shown on first launch and on demand from Settings → General. Eleven steps, in 
 10. **Cleanup** — introduces Auto-correct (LLM transcript cleanup). When the Test step produced a transcript, a "Preview cleanup" button runs the user's current provider against that transcript so the user sees the before/after inline. The Apple-Intelligence-specific quality disclaimer is only shown when the user actually picked Apple Intelligence — otherwise hidden. No toggle here — actually enabling Auto-correct still happens in Settings → AI.
 11. **Rewrite intro** — brief voice-driven-rewrite walkthrough: select → speak instruction → replace. Surfaced after the user has successfully dictated so they know what "Rewrite" means before they're asked to think about binding a shortcut.
 
+**Related:** [Recording & Dictation](#recording--dictation), [Local Transcription](#local-transcription), [Settings → AI](#ai), [Settings → Vocabulary](#vocabulary), [Transcript Cleanup](#transcript-cleanup-optional), [Rewrite](#rewrite-optional), [Help](#help).
+
 ## System Integration
 
 - **Launch at login** — auto-start with the Mac.
@@ -242,4 +304,8 @@ Shown on first launch and on demand from Settings → General. Eleven steps, in 
 - **Core transcription stays local** — audio and transcription never leave the device through the speech-to-text path.
 - **Optional AI can be local or cloud** — cleanup, Rewrite, and Ask Jot can run on Apple Intelligence, local Ollama, or a user-configured cloud provider. Jot never sends data to a cloud provider unless the user explicitly enables and configures one.
 - **No telemetry** — Jot does not send analytics or crash pings.
+- **Custom prompts stay local** — user-authored prompts in [Settings → Prompts](#prompts) are persisted to SwiftData on this Mac only. They cross the network only when *used* (sent to the configured provider as a system prompt at rewrite time) — same as any other prompt.
 - **Retention controls** — configurable via Settings.
+- **Automatic network calls (full enumeration)** — first-run transcription model download, daily Sparkle appcast check, About-pane donations `/summary` GET on appear. Every other network call requires explicit user configuration (an LLM provider with an API key, the rewrite/cleanup/Ask Jot flows that talk to it).
+
+**Related:** [Local Transcription](#local-transcription), [Transcript Cleanup](#transcript-cleanup-optional), [Rewrite](#rewrite-optional), [Ask Jot](#ask-jot), [Prompt Library](#prompt-library), [About](#about), [Settings → AI](#ai), [Settings → General](#general) (retention + reset).
