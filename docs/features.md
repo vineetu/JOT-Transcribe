@@ -24,6 +24,7 @@ User-facing features in the shipping build. This is the product surface — not 
 - **On-device only** — audio is transcribed locally on the Apple Neural Engine; it never leaves the Mac.
 - **Multiple model options** — pick the transcription engine in Settings → Transcription or the Setup Wizard. All run via FluidAudio on the ANE; switching is non-destructive (other models stay installed unless you delete them):
   - **Parakeet TDT 0.6B v3 (multilingual)** — default; broad language coverage. ≈1.25 GB.
+  - **Parakeet TDT 0.6B v3 (int4, lighter)** — same multilingual v3 vocabulary with a smaller, faster int4-quantized encoder. Slightly higher WER (<0.5%) for lower RAM and an ≈1.10 GB footprint.
   - **Parakeet 0.6B Japanese** — single-language alternative tuned for Japanese-first users. ≈1.25 GB.
   - **Parakeet 0.6B v2 (English, live preview)** — *Experimental.* Pairs the English-only TDT v2 batch transcriber with the Parakeet EOU 120M streaming engine so partial words appear in the recording pill as you speak. The batch transcript remains the authoritative output; streaming text is informational. ≈0.72 GB total across both bundles.
 - **In-app model download** — each model is fetched from within Jot on first use with a progress bar.
@@ -195,7 +196,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
   All three require a confirmation alert. Only "Erase all data" is tinted red — the other two are styled as normal interactive rows so they don't read as disabled.
 
 ### Transcription
-- Transcription model picker — choose between v3 (multilingual, default), Japanese, and v2 + EOU live-preview (experimental). Each row shows install state, footprint, primary radio, and (for the streaming option) an "Experimental" badge. Per-row download / delete affordances; the active primary is preserved across soft resets so a settings reset doesn't surprise the user with a fresh first-run model picker.
+- Transcription model picker — choose between v3 (multilingual, default), v3 int4 (lighter), Japanese, and v2 + EOU live-preview (experimental). Each row shows install state, footprint, primary radio, and variant badges such as "Lighter" or "Experimental" where relevant. Per-row download / delete affordances; the active primary is preserved across soft resets so a settings reset doesn't surprise the user with a fresh first-run model picker.
 - Auto-paste transcription
 - Auto-press Enter after paste
 - Keep transcription in clipboard
@@ -278,7 +279,7 @@ Shown on first launch and on demand from Settings → General. Eleven steps, in 
 
 1. **Welcome**
 2. **Permissions** — grant Microphone, Input Monitoring, and Accessibility. A "Restart Jot" button is offered after granting Input Monitoring or Accessibility (a running app can't detect those until it relaunches). The Input Monitoring row carries an inline instruction: if Jot doesn't auto-populate in the System Settings list, click + → Applications → Jot.
-3. **Model** — pick the transcription engine and download it on first run. Three options: Parakeet TDT 0.6B v3 (multilingual), Parakeet 0.6B Japanese, and Parakeet 0.6B v2 + EOU streaming bundle (English live preview) — badged **Recommended** *and* Experimental for new installs. Each row shows an inline Download button next to the size; cached rows show a green "Downloaded" chip. Already-downloaded models skip straight through.
+3. **Model** — pick the transcription engine and download it on first run. Four options: Parakeet TDT 0.6B v3 (multilingual), Parakeet TDT 0.6B v3 int4 (lighter), Parakeet 0.6B Japanese, and Parakeet 0.6B v2 + EOU streaming bundle (English live preview) — badged **Recommended** *and* Experimental for new installs. Each row shows an inline Download button next to the size; cached rows show a green "Downloaded" chip. Already-downloaded models skip straight through.
 4. **Microphone** — pick the input device for recording. A live input-level meter under the picker confirms the mic is hot before you continue. A disconnected preferred device stays visible as "Last used (not connected)".
 5. **Shortcuts** — preview of the default Toggle Recording shortcut.
 6. **Test dictation** — speak to verify the full pipeline end-to-end. The user controls the capture window (no hard 3-second cap) and can re-test as many times as they like.

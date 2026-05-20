@@ -51,7 +51,8 @@ public actor Transcriber: Transcribing {
         do {
             let models = try await AsrModels.load(
                 from: directory,
-                version: modelID.fluidAudioVersion
+                version: modelID.fluidAudioVersion,
+                encoderPrecision: modelID.encoderPrecision
             )
             let manager = AsrManager()
             try await manager.loadModels(models)

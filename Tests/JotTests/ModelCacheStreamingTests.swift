@@ -191,7 +191,34 @@ struct ModelCacheStreamingTests {
         defer { Self.cleanup(cache) }
 
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v3) == nil)
+        #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v3_int4) == nil)
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_ja) == nil)
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v2_en_streaming) != nil)
+    }
+
+    /// The int4 v3 option uses the same FluidAudio repo and `.v3`
+    /// architecture as default v3, but Jot must give it a separate parent
+    /// folder so the SDK-derived `parakeet-tdt-0.6b-v3` cache does not
+    /// overlap with the default v3 install.
+    @Test func int4V3UsesDedicatedBatchCacheParent() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        let int4URL = cache.cacheURL(for: .tdt_0_6b_v3_int4)
+        let defaultURL = cache.cacheURL(for: .tdt_0_6b_v3)
+
+        #expect(int4URL != defaultURL)
+        #expect(int4URL.path.contains("parakeet-tdt-0.6b-v3-coreml-int4"))
+        #expect(int4URL.lastPathComponent == "parakeet-tdt-0.6b-v3-coreml")
+
+        let paths = cache.batchCachePaths(for: .tdt_0_6b_v3_int4)
+        let int4Derived = cache.root
+            .appendingPathComponent("parakeet-tdt-0.6b-v3-coreml-int4", isDirectory: true)
+            .appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
+        let defaultDerived = cache.root
+            .appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
+
+        #expect(paths.contains(int4Derived))
+        #expect(!paths.contains(defaultDerived))
     }
 }

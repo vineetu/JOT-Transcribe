@@ -7,12 +7,15 @@ import Foundation
 /// Japanese-only TDT 0.6B (`.tdt_0_6b_ja`). v2.0 introduces
 /// `.tdt_0_6b_v2_en_streaming` — a dual-bundle option that pairs the
 /// English-only TDT v2 batch model with the Parakeet EOU 120M streaming
-/// encoder for live transcript preview. The case set is small enough
-/// that consumers exhaustively switch on it rather than carry generic
-/// capability bits; new variants slot in by adding a case and chasing
-/// the resulting compiler errors.
+/// encoder for live transcript preview. v2.x also exposes
+/// `.tdt_0_6b_v3_int4`, the same multilingual v3 model with FluidAudio's
+/// int4 encoder precision. The case set is small enough that consumers
+/// exhaustively switch on it rather than carry generic capability bits;
+/// new variants slot in by adding a case and chasing the resulting
+/// compiler errors.
 public enum ParakeetModelID: String, CaseIterable, Sendable {
     case tdt_0_6b_v3
+    case tdt_0_6b_v3_int4
     case tdt_0_6b_ja
     /// English-only batch + streaming combo. Internally dual-bundle:
     /// TDT v2 for the final transcript, EOU 120M (160 ms chunks) for
@@ -25,6 +28,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         switch self {
         case .tdt_0_6b_v3:
             return "Parakeet TDT 0.6B v3 (multilingual)"
+        case .tdt_0_6b_v3_int4:
+            return "Parakeet TDT 0.6B v3 (int4, lighter)"
         case .tdt_0_6b_ja:
             return "Parakeet 0.6B Japanese"
         case .tdt_0_6b_v2_en_streaming:
@@ -36,15 +41,19 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// size before the fetch starts. Value is approximate; the authoritative
     /// size comes from HuggingFace at fetch time.
     ///
-    /// Both v3 and JA CoreML bundles are ~0.6B parameters in float16/float32
-    /// mix → roughly 1.25 GB on disk each. The streaming option pairs TDT
-    /// v2 (~600 MB) with the EOU 120M streaming encoder (~120 MB), totaling
-    /// ~720 MB. CTC 110M for custom vocabulary is shared across all
-    /// options and is not counted here.
+    /// v3 and JA CoreML bundles are ~0.6B parameters in float16/float32
+    /// mix → roughly 1.25 GB on disk each. The int4 v3 option swaps only
+    /// the encoder for FluidAudio's quantized bundle, putting its total
+    /// around 1.1 GB. The streaming option pairs TDT v2 (~600 MB) with
+    /// the EOU 120M streaming encoder (~120 MB), totaling ~720 MB. CTC
+    /// 110M for custom vocabulary is shared across all options and is
+    /// not counted here.
     public var approxBytes: Int64 {
         switch self {
         case .tdt_0_6b_v3:
             return 1_250_000_000
+        case .tdt_0_6b_v3_int4:
+            return 1_100_000_000
         case .tdt_0_6b_ja:
             return 1_250_000_000
         case .tdt_0_6b_v2_en_streaming:
@@ -58,7 +67,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// has its own model loader.
     var fluidAudioVersion: AsrModelVersion {
         switch self {
-        case .tdt_0_6b_v3:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
             return .v3
         case .tdt_0_6b_ja:
             return .tdtJa
@@ -67,15 +76,28 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         }
     }
 
+    /// FluidAudio encoder precision for v3 split-frontend models. Int4 is
+    /// orthogonal to `AsrModelVersion`: both v3 options load `.v3`, and this
+    /// flag selects which encoder bundle FluidAudio fetches and loads.
+    var encoderPrecision: ParakeetEncoderPrecision {
+        switch self {
+        case .tdt_0_6b_v3_int4:
+            return .int4
+        case .tdt_0_6b_v3, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming:
+            return .int8
+        }
+    }
+
     /// Name of the subdirectory FluidAudio writes batch model files into,
     /// under whatever parent directory we hand to its downloader.
-    /// Conceptually a per-id placeholder — `ModelCache.cacheURL(for:)`
-    /// constructs `root/<repoFolderName>` and FluidAudio's
-    /// `AsrModels.download` strips the last component back to `root`
-    /// before re-appending its own `Repo.folderName`. The two values
-    /// don't have to be equal, but keeping them aligned with the SDK's
-    /// actual on-disk folder name makes the layout legible when
-    /// inspecting the cache directly.
+    /// Conceptually a per-id placeholder. For most options,
+    /// `ModelCache.cacheURL(for:)` constructs `root/<repoFolderName>` and
+    /// FluidAudio's `AsrModels.download` strips the last component back to
+    /// `root` before re-appending its own `Repo.folderName`. The int4 v3
+    /// option uses this as a dedicated parent folder so FluidAudio's v3 repo
+    /// folder can live under it without sharing the default v3 cache slot.
+    /// Keeping these names aligned with the SDK's model identity makes the
+    /// layout legible when inspecting the cache directly.
     ///
     /// For the streaming option this returns the batch (TDT v2) folder;
     /// the EOU streaming bundle has its own slot under
@@ -85,6 +107,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         switch self {
         case .tdt_0_6b_v3:
             return "parakeet-tdt-0.6b-v3-coreml"
+        case .tdt_0_6b_v3_int4:
+            return "parakeet-tdt-0.6b-v3-coreml-int4"
         case .tdt_0_6b_ja:
             // FluidAudio 0.13.7+ renamed `Repo.parakeetCtcJa` →
             // `Repo.parakeetJa` (the JA HF repo carries both CTC and TDT
@@ -110,7 +134,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// streaming sink in `VoiceInputPipeline`.
     public var supportsStreaming: Bool {
         switch self {
-        case .tdt_0_6b_v3, .tdt_0_6b_ja:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
             return false
         case .tdt_0_6b_v2_en_streaming:
             return true
@@ -127,10 +151,32 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// hasn't warmed yet.
     public var isExperimental: Bool {
         switch self {
-        case .tdt_0_6b_v3, .tdt_0_6b_ja:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
             return false
         case .tdt_0_6b_v2_en_streaming:
             return true
+        }
+    }
+
+    /// `true` when the option should be labelled as the lighter local
+    /// footprint variant instead of experimental or recommended.
+    public var isLighterVariant: Bool {
+        switch self {
+        case .tdt_0_6b_v3_int4:
+            return true
+        case .tdt_0_6b_v3, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming:
+            return false
+        }
+    }
+
+    /// Extra descriptive copy for model picker rows that need more context
+    /// than the install state and approximate footprint.
+    public var detailText: String? {
+        switch self {
+        case .tdt_0_6b_v3_int4:
+            return "Same multilingual v3 with smaller, faster int4-quantized encoder. Slightly higher WER (<0.5%) for ~11% smaller download and lower RAM."
+        case .tdt_0_6b_v3, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming:
+            return nil
         }
     }
 
@@ -142,7 +188,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// it's still labelled Experimental.
     public var isRecommended: Bool {
         switch self {
-        case .tdt_0_6b_v3, .tdt_0_6b_ja:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
             return false
         case .tdt_0_6b_v2_en_streaming:
             return true
@@ -160,6 +206,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// filter remains in place after Phase 3 as future infrastructure
     /// for hidden / experimental options.
     public static var visibleCases: [ParakeetModelID] {
-        [.tdt_0_6b_v3, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming]
+        [.tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming]
     }
 }
