@@ -40,6 +40,22 @@ struct VocabularyPane: View {
         transcriberHolder.primaryModelID == .tdt_0_6b_ja
     }
 
+    /// True when Nemotron-only is the active primary model. The
+    /// streaming Nemotron pipeline doesn't expose per-token timings
+    /// from `finish()`, so the CTC rescorer (which strictly requires
+    /// `[TokenTiming]`) can't align keyword spotter hits back to word
+    /// boundaries. The pane stays visible and editable — terms persist
+    /// — but the master toggle is disabled and the headline disclosure
+    /// tells the user why. Restoring boost happens automatically when
+    /// they swap primary to v3 / v3 int4 / v3 + Nemotron preview / v2.
+    private var lockedForNemotronPrimary: Bool {
+        transcriberHolder.primaryModelID == .nemotron_en
+    }
+
+    private var isLocked: Bool {
+        lockedForJAPrimary || lockedForNemotronPrimary
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             Form {
@@ -207,17 +223,20 @@ struct VocabularyPane: View {
         Section {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    // When JA is primary the toggle is visually disabled
-                    // but the stored preference is preserved — flipping
-                    // primary back to a European model restores the user's
-                    // prior on/off state without their having to retoggle.
-                    Toggle("Enable vocabulary boosting", isOn: $store.isEnabled)
-                        .toggleStyle(.switch)
-                        .font(.system(size: 13))
-                        .disabled(lockedForJAPrimary)
-                        .help(lockedForJAPrimary
-                              ? "Custom vocabulary isn't supported with the Japanese model. Switch your primary model to use vocabulary."
-                              : "")
+                    HStack(spacing: 8) {
+                        // When JA or Nemotron-only is primary the toggle is
+                        // visually disabled but the stored preference is
+                        // preserved — flipping primary to a vocab-capable
+                        // model (v3, v3 int4, v3 + Nemotron preview, v2)
+                        // restores the user's prior on/off state without
+                        // their having to retoggle.
+                        Toggle("Enable vocabulary boosting", isOn: $store.isEnabled)
+                            .toggleStyle(.switch)
+                            .font(.system(size: 13))
+                            .disabled(isLocked)
+                            .help(toggleHelpText)
+                        ExperimentalBadge()
+                    }
                     Text(headerSubtext)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -226,7 +245,7 @@ struct VocabularyPane: View {
                 Spacer()
                 InfoPopoverButton(
                     title: "Custom vocabulary",
-                    body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.",
+                    body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.\n\nExperimental: only the v3, v3 int4, v3 + Nemotron preview, and v2+EOU transcription models can apply your list. The Nemotron-only English model and the Japanese model don't expose the token timings the rescorer needs.",
                     helpAnchor: "custom-vocabulary"
                 )
             }
@@ -234,9 +253,22 @@ struct VocabularyPane: View {
         }
     }
 
+    private var toggleHelpText: String {
+        if lockedForJAPrimary {
+            return "Custom vocabulary isn't supported with the Japanese model. Switch your primary model to use vocabulary."
+        }
+        if lockedForNemotronPrimary {
+            return "Custom vocabulary isn't supported with the Nemotron (English) model. Switch your primary model to v3, v3 int4, v3 + Nemotron preview, or v2 to use vocabulary."
+        }
+        return ""
+    }
+
     private var headerSubtext: String {
         if lockedForJAPrimary {
             return "Custom vocabulary isn't supported with the Japanese model. Your saved terms are preserved — switch your primary model to a European one to use them again."
+        }
+        if lockedForNemotronPrimary {
+            return "Custom vocabulary isn't supported with the Nemotron (English) model — its streaming pipeline doesn't expose the token timings the rescorer needs. Your saved terms are preserved; switch your primary model to v3, v3 int4, v3 + Nemotron preview, or v2 to use them."
         }
         return store.isEnabled
             ? "Jot will prefer the terms below when transcribing. Add product names, proper nouns, and jargon you want spelled a specific way."

@@ -14,7 +14,7 @@ enum ResetKind {
     var clears: String {
         switch self {
         case .soft: return "AI provider, API key, prompts, keyboard shortcuts, Setup Wizard progress"
-        case .hard: return "Everything above + all library items (recordings + rewrites), transcripts, audio files, Parakeet model (~600 MB)"
+        case .hard: return "Everything above + all library items (recordings + rewrites), transcripts, audio files, downloaded transcription models"
         case .permissions: return "all of Jot's macOS privacy grants"
         }
     }

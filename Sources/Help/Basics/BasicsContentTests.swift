@@ -109,8 +109,10 @@ extension BasicsContent {
                 "cleanup-providers", "cleanup-prompt",
                 "cleanup-fallback", "cleanup-raw-preserved",
             ],
-            "articulate": [
-                "articulate-custom", "articulate-fixed",
+            "prompts": [
+                "prompt-library", "prompt-picker",
+                "articulate-fixed", "articulate-custom",
+                "prompt-author", "prompt-pin",
                 "articulate-intent-classifier",
             ],
         ]
@@ -125,7 +127,7 @@ extension BasicsContent {
     }
 
     static func test_heroSlugs_matchSpec14() {
-        let expected: Set<String> = ["dictation", "cleanup", "articulate"]
+        let expected: Set<String> = ["dictation", "cleanup", "prompts"]
         let actual = Set(heroes.map(\.id))
         assert(
             actual == expected,

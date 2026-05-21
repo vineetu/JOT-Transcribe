@@ -15,10 +15,8 @@
 //     directly.
 //   * Cleans up partial downloads on failure so the next retry starts from a
 //     known state. Resume is explicitly out of scope for v1.
-//   * For multi-bundle options (the streaming option's TDT v2 + EOU
-//     pair) sequences both downloads under one progress bar with
-//     all-or-nothing semantics — failure of either side cleans up
-//     both and propagates a single error.
+//   * For multi-bundle options, sequences both downloads under one progress
+//     bar. Nemotron-only downloads fetch just the streaming bundle.
 
 import FluidAudio
 import Foundation
@@ -75,7 +73,9 @@ public actor ModelDownloader {
             throw ModelDownloadError.classify(error)
         }
 
-        if id.supportsStreaming {
+        if id == .nemotron_en {
+            try await downloadStreamingOnly(id, progress: progress)
+        } else if id.supportsStreaming {
             try await downloadMultiBundle(id, progress: progress)
         } else {
             try await downloadSingleBundle(id, progress: progress)
@@ -121,29 +121,44 @@ public actor ModelDownloader {
         progress(1.0)
     }
 
-    // MARK: - Multi-bundle (streaming option: TDT v2 + EOU 120M)
+    // MARK: - Streaming options
+
+    private func downloadStreamingOnly(
+        _ id: ParakeetModelID,
+        progress: @Sendable @escaping (Double) -> Void
+    ) async throws {
+        do {
+            try await downloadNemotronStreamingSide(id, progress: progress)
+        } catch {
+            cache.removeCache(for: id)
+            throw error
+        }
+
+        guard cache.isCached(id) else {
+            cache.removeCache(for: id)
+            throw ModelDownloadError.corrupted
+        }
+
+        progress(1.0)
+    }
 
     /// Sequence the two underlying downloads under a single combined
-    /// progress bar. Apportionment is fixed by approximate bundle size —
-    /// TDT v2 ≈ 600 MB (83% of total), EOU 120M ≈ 120 MB (17%) — so the
+    /// progress bar. Apportionment is fixed by approximate bundle size so the
     /// progress bar's slope roughly tracks bytes-on-the-wire instead of
     /// jumping at bundle boundaries. The combined stream is forced
     /// **monotonic** via a high-water-mark wrapper: FluidAudio's
     /// per-component download (`AsrModels.download` runs one
     /// `DownloadUtils.loadModels` per CoreML file and resets `fractionCompleted`
     /// each time) would otherwise cause the bar to jump backwards
-    /// inside the batch phase. The all-or-nothing invariant from
-    /// §11 R2: a failure on either side calls `cache.removeCache(for:)`
-    /// (which clears both bundle directories) before the error
-    /// propagates, so the next retry starts from a clean slate and a
-    /// partial cache never deceives `isCached`.
+    /// inside the batch phase.
     private func downloadMultiBundle(
         _ id: ParakeetModelID,
         progress: @Sendable @escaping (Double) -> Void
     ) async throws {
-        // Apportion: TDT v2 batch is the larger bundle.
-        let batchShare = 0.83
+        let batchShare = batchProgressShare(for: id)
         let streamingShare = 1.0 - batchShare
+        let batchAlreadyCached = cache.batchBundleExists(for: id)
+        let streamingAlreadyCached = cache.streamingPartialBundleExists(for: id)
 
         let monotonic = MonotonicProgress()
         let report: @Sendable (Double) -> Void = { value in
@@ -151,23 +166,35 @@ public actor ModelDownloader {
         }
 
         do {
-            try await downloadBatchSide(
-                id,
-                progress: { fraction in
-                    report(fraction * batchShare)
-                }
-            )
-            // Pin the floor at the batch ceiling so any EOU progress jitter
-            // can't dip below where the batch phase ended.
+            if batchAlreadyCached {
+                report(batchShare)
+            } else {
+                try await downloadBatchSide(
+                    id,
+                    progress: { fraction in
+                        report(fraction * batchShare)
+                    }
+                )
+            }
+            // Pin the floor at the batch ceiling so any streaming progress
+            // jitter can't dip below where the batch phase ended.
             report(batchShare)
-            try await downloadStreamingSide(
-                id,
-                progress: { fraction in
-                    report(batchShare + fraction * streamingShare)
-                }
-            )
+            if streamingAlreadyCached {
+                report(1.0)
+            } else {
+                try await downloadStreamingSide(
+                    id,
+                    progress: { fraction in
+                        report(batchShare + fraction * streamingShare)
+                    }
+                )
+            }
         } catch {
-            cache.removeCache(for: id)
+            cache.removeCache(
+                for: id,
+                removeBatch: !batchAlreadyCached,
+                removeStreaming: !streamingAlreadyCached
+            )
             // `error` is already a `ModelDownloadError` — the helpers
             // classify before throwing.
             throw error
@@ -182,6 +209,19 @@ public actor ModelDownloader {
         // mark is updated; any stragglers from the underlying downloads
         // can't then publish a regression below 1.0.
         report(1.0)
+    }
+
+    private func batchProgressShare(for id: ParakeetModelID) -> Double {
+        switch id {
+        case .tdt_0_6b_v2_en_streaming:
+            // TDT v2 ≈ 600 MB, EOU 120M ≈ 120 MB.
+            return 0.83
+        case .tdt_0_6b_v3_nemotron_streaming:
+            // v3 int8 batch ≈ 1.25 GB, Nemotron 1120ms ≈ 600 MB.
+            return 1_250_000_000.0 / 1_850_000_000.0
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja, .nemotron_en:
+            return 1.0
+        }
     }
 
     private func downloadBatchSide(
@@ -209,6 +249,20 @@ public actor ModelDownloader {
     }
 
     private func downloadStreamingSide(
+        _ id: ParakeetModelID,
+        progress: @Sendable @escaping (Double) -> Void
+    ) async throws {
+        switch id {
+        case .tdt_0_6b_v2_en_streaming:
+            try await downloadEouStreamingSide(id, progress: progress)
+        case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
+            try await downloadNemotronStreamingSide(id, progress: progress)
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
+            throw ModelDownloadError.corrupted
+        }
+    }
+
+    private func downloadEouStreamingSide(
         _ id: ParakeetModelID,
         progress: @Sendable @escaping (Double) -> Void
     ) async throws {
@@ -241,6 +295,46 @@ public actor ModelDownloader {
                 progressHandler: progressHandler
             )
         } catch {
+            throw ModelDownloadError.classify(error)
+        }
+    }
+
+    private func downloadNemotronStreamingSide(
+        _ id: ParakeetModelID,
+        progress: @Sendable @escaping (Double) -> Void
+    ) async throws {
+        guard let streamingURL = cache.streamingPartialCacheURL(for: id),
+              let stagingRoot = cache.streamingNemotronStagingRoot(for: id),
+              let stagingURL = cache.streamingNemotronStagingURL(for: id)
+        else {
+            throw ModelDownloadError.corrupted
+        }
+
+        let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
+            progress(max(0.0, min(1.0, snapshot.fractionCompleted)))
+        }
+
+        do {
+            try? FileManager.default.removeItem(at: stagingRoot)
+            try await DownloadUtils.downloadRepo(
+                .nemotronStreaming1120,
+                to: stagingRoot,
+                variant: nil,
+                progressHandler: progressHandler
+            )
+
+            let fm = FileManager.default
+            try fm.createDirectory(
+                at: streamingURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if fm.fileExists(atPath: streamingURL.path) {
+                try fm.removeItem(at: streamingURL)
+            }
+            try fm.moveItem(at: stagingURL, to: streamingURL)
+            try? fm.removeItem(at: stagingRoot)
+        } catch {
+            try? FileManager.default.removeItem(at: stagingRoot)
             throw ModelDownloadError.classify(error)
         }
     }

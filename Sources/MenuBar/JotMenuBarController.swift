@@ -353,10 +353,10 @@ final class JotMenuBarController: NSObject {
         modelSwitchSubmenu.addItem(activeLabel)
         modelSwitchSubmenu.addItem(.separator())
 
-        // One "Switch to <name>" row per other installed model. Stable
-        // ordering via `ParakeetModelID.allCases` so the menu doesn't
-        // reshuffle between rebuilds.
-        for model in ParakeetModelID.allCases where model != primary && installed.contains(model) {
+        // One "Switch to <name>" row per other installed visible model.
+        // Stable ordering via `visibleCases` so the menu doesn't reshuffle
+        // between rebuilds.
+        for model in ParakeetModelID.visibleCases where model != primary && installed.contains(model) {
             let item = NSMenuItem(
                 title: String(localized: "Switch to \(model.displayName)"),
                 action: #selector(switchModel(_:)),

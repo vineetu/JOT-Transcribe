@@ -1,11 +1,12 @@
 import Foundation
 
-/// Text cleanup applied to every Parakeet transcript before it reaches the
+/// Text cleanup applied to every local transcript before it reaches the
 /// clipboard / the user.
 ///
 /// Kept intentionally tiny in v1 — trim, collapse repeated interior
-/// whitespace, and drop stray spaces before sentence punctuation. Custom
-/// vocabulary find/replace slots in here later (see
+/// whitespace inside each paragraph, preserve paragraph breaks, and drop
+/// stray spaces before sentence punctuation. Custom vocabulary find/replace
+/// slots in here later (see
 /// `docs/plans/swift-rewrite.md` → Future Plans).
 ///
 /// The English branch is the existing rule set. The Japanese branch is wired
@@ -17,7 +18,11 @@ public enum PostProcessing {
         guard !text.isEmpty else { return "" }
 
         switch language {
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .nemotron_en:
             return applyEnglish(text)
         case .tdt_0_6b_ja:
             return applyJapanese(text)
@@ -25,19 +30,15 @@ public enum PostProcessing {
     }
 
     private static func applyEnglish(_ text: String) -> String {
-        var working = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let working = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Collapse runs of internal whitespace (including tabs / newlines the
-        // decoder occasionally emits around punctuation) into single spaces.
-        working = collapseInternalWhitespace(working)
-
-        // Remove stray spaces that precede sentence punctuation — Parakeet
-        // sometimes emits " ." or " ,".
-        for punctuation in [",", ".", ";", ":", "!", "?"] {
-            working = working.replacingOccurrences(of: " \(punctuation)", with: punctuation)
-        }
-
-        return working
+        // ParagraphSegmenter inserts "\n\n" boundaries before this final pass.
+        // Preserve those boundaries while still applying the older whitespace
+        // and punctuation cleanup inside each paragraph.
+        let paragraphs = working.components(separatedBy: "\n\n")
+        return paragraphs
+            .map(cleanParagraph)
+            .joined(separator: "\n\n")
     }
 
     private static func applyJapanese(_ text: String) -> String {
@@ -62,5 +63,22 @@ public enum PostProcessing {
             }
         }
         return output
+    }
+
+    private static func cleanParagraph(_ paragraph: String) -> String {
+        var working = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Collapse runs of internal whitespace (including tabs / single
+        // newlines the decoder occasionally emits around punctuation) into
+        // single spaces.
+        working = collapseInternalWhitespace(working)
+
+        // Remove stray spaces that precede sentence punctuation — Parakeet
+        // sometimes emits " ." or " ,".
+        for punctuation in [",", ".", ";", ":", "!", "?"] {
+            working = working.replacingOccurrences(of: " \(punctuation)", with: punctuation)
+        }
+
+        return working
     }
 }

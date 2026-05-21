@@ -138,8 +138,8 @@ struct TranscriptionPane: View {
                         if model.isExperimental {
                             ExperimentalBadge()
                         }
-                        if model.isLighterVariant {
-                            LighterBadge()
+                        if model.isDeprecated {
+                            DeprecatedBadge()
                         }
                     }
                     Text(rowSubtitle(for: model, installed: installed, state: state))
@@ -193,7 +193,7 @@ struct TranscriptionPane: View {
                 .disabled(!canDelete(model))
                 .help(canDelete(model)
                       ? "Remove the model files from disk."
-                      : "Install another model first; the primary cannot be removed.")
+                      : deleteDisabledHelp(for: model))
         } else {
             Button("Download") { startDownload(model) }
                 .controlSize(.small)
@@ -213,16 +213,34 @@ struct TranscriptionPane: View {
     }
 
     private func footprintLabel(for id: ParakeetModelID) -> String {
+        if id.approxBytes < 1_000_000_000 {
+            let mb = Double(id.approxBytes) / 1_000_000
+            return String(format: "~%.0f MB", mb)
+        }
         let gb = Double(id.approxBytes) / 1_000_000_000
         return String(format: "~%.2f GB", gb)
     }
 
     /// The currently-primary model can be deleted only if at least one
     /// other model is installed (so Jot still has something to fall back
-    /// to as primary). Non-primary models are always deletable.
+    /// to as primary). The Nemotron-only row is also protected while the
+    /// composite v3 + Nemotron option is primary because they share the same
+    /// streaming bundle on disk.
     private func canDelete(_ model: ParakeetModelID) -> Bool {
+        if holder.primaryModelID == .tdt_0_6b_v3_nemotron_streaming,
+           model == .nemotron_en {
+            return false
+        }
         if holder.primaryModelID != model { return true }
-        return holder.installedModelIDs.contains(where: { $0 != model })
+        return holder.installedModelIDs.contains(where: { $0 != model && $0.isUserSelectable })
+    }
+
+    private func deleteDisabledHelp(for model: ParakeetModelID) -> String {
+        if holder.primaryModelID == .tdt_0_6b_v3_nemotron_streaming,
+           model == .nemotron_en {
+            return "The primary model uses this live-preview bundle."
+        }
+        return "Install another model first; the primary cannot be removed."
     }
 
     private func startDownload(_ model: ParakeetModelID) {
@@ -272,7 +290,7 @@ struct TranscriptionPane: View {
             Task {
                 await holder.setPrimary(fallback)
                 await MainActor.run {
-                    ModelCache.shared.removeCache(for: model)
+                    removeCacheForUserDelete(model)
                     rowState[model] = RowState()
                     holder.refreshInstalled()
                 }
@@ -283,9 +301,17 @@ struct TranscriptionPane: View {
         // Reuse the shared cache so the on-disk path matches the
         // downloader's. A `ModelCache(root:)` minted ad-hoc would point
         // at a different directory and silently no-op.
-        ModelCache.shared.removeCache(for: model)
+        removeCacheForUserDelete(model)
         rowState[model] = RowState()
         holder.refreshInstalled()
+    }
+
+    private func removeCacheForUserDelete(_ model: ParakeetModelID) {
+        if model == .tdt_0_6b_v3_nemotron_streaming {
+            ModelCache.shared.removeCache(for: model, removeBatch: true, removeStreaming: false)
+        } else {
+            ModelCache.shared.removeCache(for: model)
+        }
     }
 
     private func pickFallback(excluding: ParakeetModelID) -> ParakeetModelID? {
@@ -296,8 +322,8 @@ struct TranscriptionPane: View {
     }
 
     /// Pick a deterministic fallback primary when the active model is
-    /// deleted. Prefer v3 if installed; otherwise the first remaining
-    /// `ParakeetModelID.allCases` element. Returns nil only when no
+    /// deleted. Prefer the current default if installed; otherwise the
+    /// first remaining visible model. Returns nil only when no
     /// other model is installed (caller's `canDelete` already gates this).
     /// Static + internal so regression tests can exercise the algorithm
     /// without a SwiftUI environment.
@@ -306,7 +332,9 @@ struct TranscriptionPane: View {
         installed: Set<ParakeetModelID>
     ) -> ParakeetModelID? {
         let candidates = installed.subtracting([excluding])
-        if candidates.contains(.tdt_0_6b_v3) { return .tdt_0_6b_v3 }
-        return ParakeetModelID.allCases.first(where: { candidates.contains($0) })
+        if candidates.contains(.tdt_0_6b_v3_nemotron_streaming) {
+            return .tdt_0_6b_v3_nemotron_streaming
+        }
+        return ParakeetModelID.visibleCases.first(where: { candidates.contains($0) })
     }
 }

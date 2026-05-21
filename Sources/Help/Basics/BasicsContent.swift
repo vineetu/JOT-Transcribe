@@ -228,7 +228,7 @@ struct BasicsContent {
                     shortcutChip: ["ANE"],
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Parakeet TDT 0.6B v3 runs on the Apple Neural Engine via FluidAudio. Audio never leaves the Mac. The model downloads on first use, about 600 MB."
+                        prose: "Jot's local transcription models run on the Apple Neural Engine via FluidAudio. Audio never leaves the Mac. The default multilingual + live-preview bundle downloads on first use, about 1.85 GB."
                     )
                 ),
                 SubRow(
@@ -247,7 +247,7 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Two transcription models. English (Parakeet v3) auto-detects 25 European languages — installed by default. Japanese (Parakeet 0.6B JA) is a separate ~1.25 GB download. Pick one as primary at Settings → Transcription; only the primary is hot in memory.",
+                        prose: "Four transcription options. The default pairs multilingual Parakeet v3 final transcripts with English Nemotron live preview. Japanese (Parakeet 0.6B JA) is a separate ~1.25 GB download, v2 + EOU remains available as a deprecated legacy option, and Nemotron (English, lighter) is a smaller English-only option. Pick one as primary at Settings → Transcription; only the primary is hot in memory.",
                         warning: "Custom Vocabulary applies only to European-language transcription. The Japanese model uses a different tokenizer, so vocabulary boosts are not applied when Japanese is primary.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
@@ -258,11 +258,11 @@ struct BasicsContent {
                 ),
                 SubRow(
                     id: "custom-vocabulary",
-                    name: "Custom vocabulary",
+                    name: "Custom vocabulary (experimental)",
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'.",
+                        prose: "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'. Marked experimental because the rescoring pipeline only applies to a subset of transcription models — boost works on v3, v3 int4, v3 + Nemotron preview, and v2+EOU. It does NOT apply when primary is Nemotron-only (English) or Japanese, because those paths don't expose per-token timings to the rescorer; your saved terms persist and re-engage when you switch primary to a vocab-capable model.",
                         warning: "Vocabulary entries override similar-sounding words. Adding many entries that sound alike causes unpredictable preference among them. Keep the list focused.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
@@ -333,19 +333,56 @@ struct BasicsContent {
         // ---------------- Rewrite ----------------
 
         Hero(
-            id: "articulate",
-            title: "Rewrite",
-            subtitle: "Optional. Select text, press a shortcut, speak an instruction or take a fixed pass — Jot rewrites in place.",
+            id: "prompts",
+            title: "Prompts",
+            subtitle: "Optional. Pick a prompt from a library of 30+ instructions, apply it to selected text. Rewrite is the default prompt.",
             isOptional: true,
             illustrationKind: .rewrite,
             subRows: [
+                SubRow(
+                    id: "prompt-library",
+                    name: "Browse the library",
+                    shortcutChip: nil,
+                    isExpandable: true,
+                    detail: SubRowDetailContent(
+                        prose: "30+ bundled prompts ship with Jot, grouped into Essentials, Convert, Email, Rewrite, Code, and Translate. Tap a row to read the full prompt, see sample input/output, and check provider compatibility. Bundled prompts are read-only; the library lives in Settings → Prompts.",
+                        settingsLink: SettingsLink(
+                            label: "Open in Settings",
+                            pane: .prompts,
+                            anchor: "prompt-library"
+                        )
+                    )
+                ),
+                SubRow(
+                    id: "prompt-picker",
+                    name: "Use a prompt",
+                    shortcutChip: nil,
+                    isExpandable: true,
+                    detail: SubRowDetailContent(
+                        prose: "Select text, then open the prompt picker via the Rewrite hotkey path that's configured for picker mode. Pinned and recently-used prompts float to the top; search by title or category. Picking a row applies that prompt's instructions to your selection instead of the default Rewrite behavior."
+                    )
+                ),
+                SubRow(
+                    id: "articulate-fixed",
+                    name: "Default Rewrite",
+                    shortcutChip: ["⌥", "/"],
+                    isExpandable: true,
+                    detail: SubRowDetailContent(
+                        prose: "The default prompt: select text, press ⌥/, and Jot applies a fixed 'Rewrite this' instruction. No voice step, no picker — useful when you just want a quick polish pass without choosing anything.",
+                        settingsLink: SettingsLink(
+                            label: "Open in Settings",
+                            pane: .shortcuts,
+                            anchor: "articulate-fixed"
+                        )
+                    )
+                ),
                 SubRow(
                     id: "articulate-custom",
                     name: "Rewrite with Voice",
                     shortcutChip: ["⌥", "."],
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Select any text, press the shortcut, speak an instruction like 'make this formal' or 'translate to Japanese' — the rewritten text replaces your selection.",
+                        prose: "Select text, press ⌥., speak an instruction like 'make this formal' or 'translate to Japanese'. A deterministic intent classifier routes your instruction into one of four branches (voice-preserving, structural, translation, code) and picks a minimal tendency on top of the shared prompt — your spoken instruction stays the primary signal.",
                         inlineTip: InlineTip(
                             chip: ["⌥", "."],
                             description: "Default chord — rebind in Settings → Shortcuts"
@@ -358,17 +395,26 @@ struct BasicsContent {
                     )
                 ),
                 SubRow(
-                    id: "articulate-fixed",
-                    name: "Rewrite",
-                    shortcutChip: ["⌥", "/"],
+                    id: "prompt-author",
+                    name: "Author your own",
+                    shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Select text, press the shortcut, and Jot rewrites it with a fixed 'Rewrite this' instruction. No voice step — useful when you just want a quick cleanup pass.",
+                        prose: "Add your own prompts under Settings → Prompts → 'My prompts'. Title and body are required; sample input/output are optional. ✨ Generate sample asks your configured AI provider to fill the samples — first a plausible input, then run the prompt against it for the output. User prompts stay local (SwiftData on this Mac).",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
-                            pane: .shortcuts,
-                            anchor: "articulate-fixed"
+                            pane: .prompts,
+                            anchor: "user-prompts"
                         )
+                    )
+                ),
+                SubRow(
+                    id: "prompt-pin",
+                    name: "Pin to picker",
+                    shortcutChip: nil,
+                    isExpandable: true,
+                    detail: SubRowDetailContent(
+                        prose: "Pin any prompt — bundled or user-authored — and it floats to the top of the picker plus a Pinned section in Settings → Prompts. Pin/unpin is available on every row and inside each prompt's detail sheet."
                     )
                 ),
                 SubRow(
@@ -377,7 +423,7 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "A deterministic classifier routes each spoken instruction into one of four branches (voice-preserving, structural, translation, code) and picks a minimal tendency for the model. Your instruction stays the primary signal — the classifier just nudges the default."
+                        prose: "Used only by Rewrite with Voice. A deterministic regex classifier routes each spoken instruction into voice-preserving, structural, translation, or code branches and picks a minimal tendency for the model. Your instruction stays the primary signal — the classifier just nudges the default."
                     )
                 ),
             ],

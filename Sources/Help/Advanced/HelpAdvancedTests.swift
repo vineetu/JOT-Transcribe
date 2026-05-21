@@ -28,8 +28,12 @@ enum HelpRuntimeTests {
         let sections = AdvancedContent.sections
         assert(sections.count == 4, "Expected 4 Advanced sections; got \(sections.count)")
 
+        // AI providers section grew from 6 → 7 with ai-prompt-library
+        // added alongside the existing ai-editable-prompts (the two
+        // cover different concerns: shared system prompts vs. the
+        // catalog of named prompts).
         let expected: [(String, Int)] = [
-            ("AI providers", 6),
+            ("AI providers", 7),
             ("System", 4),
             ("Input", 4),
             ("Sounds", 3),

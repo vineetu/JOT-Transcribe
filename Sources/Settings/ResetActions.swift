@@ -32,6 +32,10 @@ enum ResetActions {
                 && UserDefaults.standard.bool(forKey: ModelChoiceMigration.v2DefaultStampedKey)
             let preservedPinChecked: Bool = preserveModelChoice
                 && UserDefaults.standard.bool(forKey: ModelChoiceMigration.pinCheckedKey)
+            let preservedFourOptionMigrated: Bool = preserveModelChoice
+                && UserDefaults.standard.bool(forKey: ModelChoiceMigration.fourOptionMigratedKey)
+            let preservedFourOptionDownloadPending: Bool = preserveModelChoice
+                && UserDefaults.standard.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey)
 
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
             // Relaunch captures setupComplete=false, so single-or-chord migration stays gated off.
@@ -45,6 +49,12 @@ enum ResetActions {
                 }
                 if preservedPinChecked {
                     UserDefaults.standard.set(true, forKey: ModelChoiceMigration.pinCheckedKey)
+                }
+                if preservedFourOptionMigrated {
+                    UserDefaults.standard.set(true, forKey: ModelChoiceMigration.fourOptionMigratedKey)
+                }
+                if preservedFourOptionDownloadPending {
+                    UserDefaults.standard.set(true, forKey: ModelChoiceMigration.fourOptionDownloadPendingKey)
                 }
             }
         }

@@ -154,14 +154,7 @@ struct AIProviderStep: View {
     @ViewBuilder
     private var appleIntelligenceFootnote: some View {
         if isAppleIntelligenceAvailable {
-            HStack(spacing: 6) {
-                Image(systemName: "brain.head.profile")
-                    .foregroundStyle(.secondary)
-                Text("Runs on-device via Apple Foundation Models. No API key required.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
+            AppleIntelligenceQualityBanner()
         } else {
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")

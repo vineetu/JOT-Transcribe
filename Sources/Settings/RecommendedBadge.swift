@@ -2,9 +2,7 @@ import SwiftUI
 
 /// Compact "Recommended" badge used next to model display names in
 /// Settings → Transcription and the Setup Wizard model step. Marks the
-/// option as Jot's default first-try pick. Pairs with `ExperimentalBadge`
-/// when both apply — the streaming model is currently both recommended
-/// and experimental.
+/// option as Jot's default first-try pick.
 struct RecommendedBadge: View {
     var body: some View {
         Text("Recommended")

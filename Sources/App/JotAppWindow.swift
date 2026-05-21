@@ -148,8 +148,12 @@ struct JotAppWindow: View {
         }
         .environment(\.helpNavigator, helpNavigator)
         .environmentObject(llmConfiguration)
+        .safeAreaInset(edge: .top) {
+            migrationDownloadBanner
+        }
         .onAppear {
             navHistory.bind(selection: $selection)
+            transcriberHolder.startPendingMigrationDownloadIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .jotWindowSetSidebarSelection)) { note in
             if let newSelection = note.userInfo?["selection"] as? AppSidebarSelection {
@@ -170,25 +174,55 @@ struct JotAppWindow: View {
             selection = newValue
             helpNavigator.sidebarSelection = nil
         }
-        // `docs/plans/japanese-support.md` §C: when primary swaps to
-        // JA, drop the live CTC rescorer so no idle CoreML resources
-        // hang around for a feature that can't apply (the master
-        // toggle UI is locked + the sidebar entry is hidden, so the
-        // user has no way to re-enable it while JA is primary). When
-        // primary swaps back, re-prepare iff the user's saved master
-        // toggle was on — preserves their pre-JA preference without
-        // making them retoggle.
+        // Drop the live CTC rescorer when primary swaps to a model
+        // that can't apply it: JA (different tokenizer,
+        // `docs/plans/japanese-support.md` §C) or Nemotron-only (the
+        // streaming pipeline doesn't expose per-token timings, which
+        // the rescorer strictly requires). No idle CoreML resources
+        // for a feature that can't apply on the active path. When
+        // primary swaps back to a vocab-capable model, re-prepare iff
+        // the user's saved master toggle was on — preserves their
+        // prior preference without making them retoggle.
         .onChange(of: transcriberHolder.primaryModelID) { _, newValue in
             handlePrimaryModelChange(to: newValue)
         }
     }
 
     private func handlePrimaryModelChange(to newID: ParakeetModelID) {
-        if newID == .tdt_0_6b_ja {
+        if newID == .tdt_0_6b_ja || newID == .nemotron_en {
             Task { await VocabularyRescorerHolder.shared.unload() }
         } else if VocabularyStore.shared.isEnabled,
                   let url = VocabularyStore.shared.fileURL {
             Task { try? await VocabularyRescorerHolder.shared.prepare(vocabularyFileURL: url) }
+        }
+    }
+
+    @ViewBuilder
+    private var migrationDownloadBanner: some View {
+        if let progress = transcriberHolder.migrationDownloadProgress {
+            HStack(spacing: 10) {
+                ProgressView(value: progress)
+                    .frame(width: 120)
+                Text("Downloading transcription model \(Int(progress * 100))%")
+                    .font(.system(size: 12, weight: .medium))
+                    .monospacedDigit()
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.regularMaterial)
+        } else if let error = transcriberHolder.migrationDownloadError {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("Model download failed: \(error)")
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(2)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.regularMaterial)
         }
     }
 

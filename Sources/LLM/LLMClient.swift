@@ -758,15 +758,22 @@ actor LLMClient {
             // Homophone rule appends only for cloud providers. Apple
             // Intelligence's on-device model regresses with it (reverts
             // correct fixes, over-edits). See TransformPrompt.homophoneRule.
+            let sanitizedTransformPrompt = CleanupPromptHardening.stripControlCharacters(
+                from: c.transformPrompt
+            )
             let systemPrompt = p == .appleIntelligence
-                ? c.transformPrompt
-                : c.transformPrompt + "\n\n" + TransformPrompt.homophoneRule
+                ? sanitizedTransformPrompt
+                : sanitizedTransformPrompt + "\n\n" + TransformPrompt.homophoneRule
+            let hardenedSystemPrompt =
+                CleanupPromptHardening.immutablePreamble
+                + CleanupPromptHardening.preferencesHeader
+                + systemPrompt
             return (
                 provider: p,
                 apiKey: c.apiKey(for: p),
                 baseURL: c.effectiveBaseURL(for: p),
                 model: c.effectiveModel(for: p),
-                systemPrompt: systemPrompt
+                systemPrompt: hardenedSystemPrompt
             )
         }
 
