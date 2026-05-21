@@ -1,27 +1,35 @@
 import FluidAudio
 import Foundation
 
-/// Identifiers for Parakeet ASR model variants used by Jot.
+/// Identifiers for ASR model choices Jot knows how to migrate, cache,
+/// download, and render.
 ///
-/// v1 shipped only the multilingual TDT 0.6B v3. v1.4 added the
-/// Japanese-only TDT 0.6B (`.tdt_0_6b_ja`). v2.0 introduces
-/// `.tdt_0_6b_v2_en_streaming` — a dual-bundle option that pairs the
-/// English-only TDT v2 batch model with the Parakeet EOU 120M streaming
-/// encoder for live transcript preview. v2.x also exposes
-/// `.tdt_0_6b_v3_int4`, the same multilingual v3 model with FluidAudio's
-/// int4 encoder precision. The case set is small enough that consumers
-/// exhaustively switch on it rather than carry generic capability bits;
-/// new variants slot in by adding a case and chasing the resulting
-/// compiler errors.
+/// The original v3 cases stay in the enum so stored `jot.defaultModelID`
+/// values can be migrated and rollback builds can still read their caches,
+/// but they are no longer user-selectable. The visible picker is now four
+/// choices:
+/// - multilingual Parakeet v3 batch with Nemotron English live preview,
+/// - Japanese Parakeet,
+/// - legacy English Parakeet v2 batch with EOU live preview,
+/// - English-only Nemotron streaming.
+///
+/// Nemotron is not an `AsrManager` model. It is loaded through
+/// `StreamingNemotronAsrManager`, so callers that need FluidAudio's batch
+/// `AsrModelVersion` must switch explicitly instead of assuming every case
+/// has a batch backend.
 public enum ParakeetModelID: String, CaseIterable, Sendable {
     case tdt_0_6b_v3
     case tdt_0_6b_v3_int4
     case tdt_0_6b_ja
-    /// English-only batch + streaming combo. Internally dual-bundle:
-    /// TDT v2 for the final transcript, EOU 120M (160 ms chunks) for
-    /// the live partial preview shown in the recording pill. The two
-    /// bundles are cached and downloaded as a unit (§9 / §11 R2).
+    /// Legacy English-only batch + EOU streaming combo. Kept selectable for
+    /// existing users, but marked deprecated in current UI.
     case tdt_0_6b_v2_en_streaming
+    /// Current default: multilingual final transcript via Parakeet v3 int8,
+    /// with English-only Nemotron live preview in the recording pill.
+    case tdt_0_6b_v3_nemotron_streaming
+    /// English-only Nemotron option. One streaming model powers both live
+    /// preview and the final transcript.
+    case nemotron_en
 
     /// Human-readable name for Setup Wizard / Settings UI.
     public var displayName: String {
@@ -33,21 +41,19 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         case .tdt_0_6b_ja:
             return "Parakeet 0.6B Japanese"
         case .tdt_0_6b_v2_en_streaming:
-            return "Parakeet 0.6B v2 (English, live preview)"
+            return "Parakeet v2 + EOU live preview (deprecated)"
+        case .tdt_0_6b_v3_nemotron_streaming:
+            return "Parakeet v3 (multilingual) + Nemotron live preview"
+        case .nemotron_en:
+            return "Nemotron (English, lighter)"
         }
     }
 
     /// Best-effort on-disk footprint in bytes. Used by UI to display download
     /// size before the fetch starts. Value is approximate; the authoritative
-    /// size comes from HuggingFace at fetch time.
-    ///
-    /// v3 and JA CoreML bundles are ~0.6B parameters in float16/float32
-    /// mix → roughly 1.25 GB on disk each. The int4 v3 option swaps only
-    /// the encoder for FluidAudio's quantized bundle, putting its total
-    /// around 1.1 GB. The streaming option pairs TDT v2 (~600 MB) with
-    /// the EOU 120M streaming encoder (~120 MB), totaling ~720 MB. CTC
-    /// 110M for custom vocabulary is shared across all options and is
-    /// not counted here.
+    /// size comes from HuggingFace at fetch time. CTC 110M for custom
+    /// vocabulary is shared across compatible Parakeet options and is not
+    /// counted here.
     public var approxBytes: Int64 {
         switch self {
         case .tdt_0_6b_v3:
@@ -58,115 +64,138 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return 1_250_000_000
         case .tdt_0_6b_v2_en_streaming:
             return 720_000_000
+        case .tdt_0_6b_v3_nemotron_streaming:
+            return 1_850_000_000
+        case .nemotron_en:
+            return 600_000_000
         }
     }
 
     /// The FluidAudio SDK's batch ASR version this identifier maps to.
-    /// For the streaming option, the value points at the *batch* TDT v2;
-    /// the streaming side runs through `StreamingEouAsrManager`, which
-    /// has its own model loader.
+    /// Do not call for `.nemotron_en`: Nemotron is loaded outside
+    /// `AsrManager`.
     var fluidAudioVersion: AsrModelVersion {
         switch self {
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_v3_nemotron_streaming:
             return .v3
         case .tdt_0_6b_ja:
             return .tdtJa
         case .tdt_0_6b_v2_en_streaming:
             return .v2
+        case .nemotron_en:
+            preconditionFailure("Nemotron is not an AsrManager model")
         }
     }
 
-    /// FluidAudio encoder precision for v3 split-frontend models. Int4 is
-    /// orthogonal to `AsrModelVersion`: both v3 options load `.v3`, and this
-    /// flag selects which encoder bundle FluidAudio fetches and loads.
+    /// FluidAudio encoder precision for batch Parakeet models. Nemotron has
+    /// its own int8 encoder under `encoder/encoder_int8.mlmodelc`, so this
+    /// property is irrelevant for `.nemotron_en`.
     var encoderPrecision: ParakeetEncoderPrecision {
         switch self {
         case .tdt_0_6b_v3_int4:
             return .int4
-        case .tdt_0_6b_v3, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming:
             return .int8
+        case .nemotron_en:
+            preconditionFailure("Nemotron is not an AsrManager model")
         }
     }
 
-    /// Name of the subdirectory FluidAudio writes batch model files into,
-    /// under whatever parent directory we hand to its downloader.
-    /// Conceptually a per-id placeholder. For most options,
-    /// `ModelCache.cacheURL(for:)` constructs `root/<repoFolderName>` and
-    /// FluidAudio's `AsrModels.download` strips the last component back to
-    /// `root` before re-appending its own `Repo.folderName`. The int4 v3
-    /// option uses this as a dedicated parent folder so FluidAudio's v3 repo
-    /// folder can live under it without sharing the default v3 cache slot.
-    /// Keeping these names aligned with the SDK's model identity makes the
-    /// layout legible when inspecting the cache directly.
+    /// Name of the Jot-managed subdirectory under
+    /// `~/Library/Application Support/Jot/Models/Parakeet/`.
     ///
-    /// For the streaming option this returns the batch (TDT v2) folder;
-    /// the EOU streaming bundle has its own slot under
-    /// `root/parakeet-eou-streaming/160ms/` reached via
-    /// `ModelCache.streamingPartialCacheURL(for:)`.
+    /// For batch Parakeet options this is the directory handed to
+    /// FluidAudio's downloader/loader. The visible multilingual option
+    /// deliberately reuses the default v3 cache so users who already
+    /// downloaded v3 do not fetch that batch encoder again. For
+    /// `.nemotron_en`, this is the dedicated Nemotron streaming bundle
+    /// directory.
     var repoFolderName: String {
         switch self {
-        case .tdt_0_6b_v3:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_nemotron_streaming:
             return "parakeet-tdt-0.6b-v3-coreml"
         case .tdt_0_6b_v3_int4:
             return "parakeet-tdt-0.6b-v3-coreml-int4"
         case .tdt_0_6b_ja:
             // FluidAudio 0.13.7+ renamed `Repo.parakeetCtcJa` →
             // `Repo.parakeetJa` (the JA HF repo carries both CTC and TDT
-            // weights; the old name was misleading). The SDK now writes
-            // JA model files under `<parent>/parakeet-ja/` per
-            // `Repo.parakeetJa.folderName`. Strictly speaking the value
-            // returned here is cosmetic — every SDK call recomputes the
-            // path as `parent + version.repo.folderName` and ignores
-            // whatever subdirectory we pass in — but keeping it aligned
+            // weights; the old name was misleading). Keeping this aligned
             // with the SDK's actual on-disk folder name makes the cache
-            // layout legible when inspecting `~/Library/Application
-            // Support/Jot/Models/Parakeet/` directly.
+            // layout legible.
             return "parakeet-ja"
         case .tdt_0_6b_v2_en_streaming:
             return "parakeet-tdt-0.6b-v2-coreml"
+        case .nemotron_en:
+            return "nemotron-streaming-en-1120ms"
         }
     }
 
-    /// `true` when this option pairs a streaming engine with the batch
-    /// transcriber. Today only the `.tdt_0_6b_v2_en_streaming` option
-    /// returns true. Consumers use this to decide whether to mint a
-    /// `DualPipelineTranscriber` (Phase 2) and to wire the audio
-    /// streaming sink in `VoiceInputPipeline`.
+    /// `true` when FluidAudio's batch `AsrManager` provides the final
+    /// transcript for this model choice.
+    var usesBatchAsrManager: Bool {
+        switch self {
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming:
+            return true
+        case .nemotron_en:
+            return false
+        }
+    }
+
+    /// `true` when the option pairs a streaming engine with recording.
+    /// Legacy EOU remains supported for migration/rollback. The current
+    /// visible streaming options use Nemotron.
     public var supportsStreaming: Bool {
         switch self {
         case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
             return false
-        case .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             return true
         }
     }
 
-    /// `true` when the option is shipped under an experimental label.
-    /// UI surfaces (Settings → Transcription, Setup Wizard model step)
-    /// render an "Experimental" badge next to the display name so the
-    /// user knows the option is opt-in / best-effort. Currently only
-    /// the dual-bundle streaming option carries this flag — the live-
-    /// preview path still has known flakiness on cold ANE state and
-    /// degrades gracefully to batch-only when the streaming engine
-    /// hasn't warmed yet.
+    /// `true` when this case should appear in current user-facing pickers.
+    public var isUserSelectable: Bool {
+        switch self {
+        case .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .nemotron_en:
+            return true
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
+            return false
+        }
+    }
+
+    /// `true` when the option remains available only for compatibility.
+    public var isDeprecated: Bool {
+        switch self {
+        case .tdt_0_6b_v2_en_streaming:
+            return true
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .nemotron_en:
+            return false
+        }
+    }
+
+    /// `true` when the option should be labelled as experimental.
     public var isExperimental: Bool {
-        switch self {
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
-            return false
-        case .tdt_0_6b_v2_en_streaming:
-            return true
-        }
+        false
     }
 
-    /// `true` when the option should be labelled as the lighter local
-    /// footprint variant instead of experimental or recommended.
+    /// `true` when the option should be labelled as a smaller-footprint
+    /// variant. No currently visible option uses the legacy "Lighter" badge.
     public var isLighterVariant: Bool {
-        switch self {
-        case .tdt_0_6b_v3_int4:
-            return true
-        case .tdt_0_6b_v3, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming:
-            return false
-        }
+        false
     }
 
     /// Extra descriptive copy for model picker rows that need more context
@@ -175,37 +204,49 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         switch self {
         case .tdt_0_6b_v3_int4:
             return "Same multilingual v3 with smaller, faster int4-quantized encoder. Slightly higher WER (<0.5%) for ~11% smaller download and lower RAM."
-        case .tdt_0_6b_v3, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v3_nemotron_streaming:
+            return "Multilingual batch transcript with English live preview in the recording pill. Best general-purpose option."
+        case .tdt_0_6b_v2_en_streaming:
+            return "Legacy option. Available for existing users; will be removed in a future release."
+        case .nemotron_en:
+            return "English-only. Single model handles both the final transcript and the live preview in the pill. Smaller and faster than option 1; best on read-style English; v2/v3 batch is more accurate on noisy/conversational audio."
+        case .tdt_0_6b_v3, .tdt_0_6b_ja:
             return nil
         }
     }
 
     /// `true` when the option should be visually surfaced as the
-    /// recommended pick. UI renders a "Recommended" badge alongside
-    /// the display name (and the Experimental badge when both apply).
-    /// The streaming option carries this flag — its live preview is
-    /// the headline experience we want users to try first, even though
-    /// it's still labelled Experimental.
+    /// recommended pick in the wizard and Settings → Transcription.
+    ///
+    /// Note the asymmetry with the technical fresh-install default
+    /// (`TranscriberHolder` boots new users on `tdt_0_6b_v3_nemotron_streaming`
+    /// for safe multilingual coverage). The recommended badge sits on
+    /// the Nemotron-only English option because for the majority of
+    /// English-speaking users — which is most of Jot's audience — the
+    /// lighter, faster single-model Nemotron path is what we'd actually
+    /// recommend they pick. Users who need multilingual or Japanese
+    /// still see those options and can switch without losing anything.
+    /// Order in `visibleCases` is unchanged; only the badge moved.
     public var isRecommended: Bool {
         switch self {
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
-            return false
-        case .tdt_0_6b_v2_en_streaming:
+        case .nemotron_en:
             return true
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming:
+            return false
         }
     }
 
-    /// Subset of `allCases` that should be rendered in user-facing UI
-    /// (Settings → Transcription, Setup Wizard's Model step). Lets a
-    /// case land on the enum before its UI is wired without forcing
-    /// every iteration site behind `#if DEBUG`.
-    ///
-    /// Phase 1 of the streaming option excludes the streaming case
-    /// from this list so the plumbing can ship hidden. Phase 3 adds it
-    /// alongside Settings/Wizard polish + classifier wiring. The
-    /// filter remains in place after Phase 3 as future infrastructure
-    /// for hidden / experimental options.
+    /// Subset of `allCases` rendered in user-facing model pickers.
     public static var visibleCases: [ParakeetModelID] {
-        [.tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming]
+        [
+            .tdt_0_6b_v3_nemotron_streaming,
+            .tdt_0_6b_ja,
+            .tdt_0_6b_v2_en_streaming,
+            .nemotron_en,
+        ]
     }
 }

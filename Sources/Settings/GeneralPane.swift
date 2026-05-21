@@ -194,7 +194,7 @@ struct GeneralPane: View {
                 resetRow(
                     kind: .hard,
                     title: "Erase all data…",
-                    caption: "Removes all library items, the transcription model, and all settings.",
+                    caption: "Removes all library items, downloaded transcription models, and all settings.",
                     popover: $hardPopover,
                     pendingAlert: $pendingAlert,
                     alertKind: .hard
@@ -258,9 +258,9 @@ struct GeneralPane: View {
         } message: { kind in
             switch kind {
             case .soft:
-                Text("Clears your preferences, API keys, and shortcuts. Your library items and downloaded model stay. Jot will relaunch into setup.")
+                Text("Clears your preferences, API keys, and shortcuts. Your library items and downloaded models stay. Jot will relaunch into setup.")
             case .hard:
-                Text("Deletes every library item, the transcription model (≈600 MB, re-downloads on next launch), and all settings. macOS permissions are untouched. Jot will relaunch into setup.")
+                Text("Deletes every library item, downloaded transcription models, and all settings. macOS permissions are untouched. Jot will relaunch into setup.")
             case .permissions:
                 Text("Revokes all of Jot's macOS privacy grants so macOS re-asks on next launch. Your library items and settings stay. Jot will relaunch.")
             case .restart:

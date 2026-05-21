@@ -309,7 +309,7 @@ final class VoiceInputPipeline {
     /// - Sets the partial store's session token so late callbacks
     ///   from a prior session can't bleed into this one.
     /// - Wires the audio capture's streaming sink so each converted
-    ///   16 kHz mono Float32 chunk reaches `StreamingTranscriber.enqueue`.
+    ///   16 kHz mono Float32 chunk reaches the active streaming engine.
     /// - Starts the streaming transcriber with a closure that
     ///   forwards partials into the store with the same token.
     /// Best-effort — failures degrade silently to batch-only delivery
@@ -326,7 +326,6 @@ final class VoiceInputPipeline {
     /// the previous build.
     private func beginStreamingSession(token: Token, dual: DualPipelineTranscriber) async {
         let store = StreamingPartialStore.shared
-        let streaming = dual.streaming
 
         store.beginSession(token: token.generation)
         activeStreamingDual = dual
@@ -341,14 +340,14 @@ final class VoiceInputPipeline {
         // completes accumulate in the unbounded AsyncStream and drain
         // once warm. No throwing path — load failures are logged and
         // the consumer task simply exits without firing partials.
-        await streaming.start(generation: token.generation, onPartial: publish)
+        await dual.startStreaming(generation: token.generation, onPartial: publish)
 
         // Wire sink BEFORE the caller starts capture so the very first
         // audio chunk flows through. `setStreamingSink` writes the
         // property synchronously; `configureAUHALWithTimeout` reads it
         // when AUHAL comes up.
         let sink: @Sendable ([Float]) -> Void = { samples in
-            streaming.enqueue(samples: samples)
+            dual.enqueueStreaming(samples: samples)
         }
         await capture.setStreamingSink(sink)
     }
@@ -374,9 +373,9 @@ final class VoiceInputPipeline {
         defer { activeStreamingDual = nil }
         await capture.setStreamingSink(nil)
         if graceful {
-            _ = await dual.streaming.finish()
+            _ = await dual.finishStreaming()
         } else {
-            await dual.streaming.cancel()
+            await dual.cancelStreaming()
         }
         StreamingPartialStore.shared.endSession()
     }

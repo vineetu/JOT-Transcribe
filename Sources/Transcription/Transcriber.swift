@@ -12,24 +12,20 @@ import os.log
 /// - Enforce **single in-flight** transcription: overlapping calls throw
 ///   `.busy`. This matches the plan (`docs/plans/swift-rewrite.md` →
 ///   Transcription layer).
-/// - Apply `PostProcessing` to the decoded text and expose both raw and
-///   cleaned strings on `TranscriptionResult`.
+/// - Apply deterministic cleanup + `PostProcessing` to the decoded text and
+///   expose both raw and cleaned strings on `TranscriptionResult`.
 ///
 /// Actor-isolated. Safe to hold one instance for the lifetime of the app.
 public actor Transcriber: Transcribing {
     private let log = Logger(subsystem: "com.jot.Jot", category: "Transcriber")
 
     private let cache: ModelCache
-    /// Bound at init and never observed afterward. Safe today because only
-    /// one `ParakeetModelID` variant exists, so no picker can actually
-    /// change the effective value at runtime. Will become a silent
-    /// wrong-model bug the moment a second variant ships — see
-    /// `docs/research/future-model-switching.md` for the full failure
-    /// modes and the two options for fixing it. Read that doc before
-    /// adding a second case to `ParakeetModelID`.
+    /// Bound at init and never observed afterward. `TranscriberHolder`
+    /// creates a fresh conformer whenever the primary model changes.
     private let modelID: ParakeetModelID
 
     private var manager: AsrManager?
+    private var nemotronBatch: NemotronStreamingTranscriber?
     private var isTranscribing: Bool = false
 
     public init(cache: ModelCache = .shared, modelID: ParakeetModelID = .tdt_0_6b_v3) {
@@ -41,6 +37,36 @@ public actor Transcriber: Transcribing {
     /// call from the UI layer speculatively (e.g. right after the model
     /// download finishes) to front-load the ANE warm-up.
     public func ensureLoaded() async throws {
+        switch modelID {
+        case .nemotron_en:
+            if nemotronBatch != nil { return }
+
+            guard cache.isCached(modelID) else {
+                throw TranscriberError.modelMissing
+            }
+            guard let directory = cache.streamingPartialCacheURL(for: modelID) else {
+                throw TranscriberError.modelMissing
+            }
+
+            do {
+                let transcriber = NemotronStreamingTranscriber(bundleDirectory: directory)
+                try await transcriber.ensureLoaded()
+                nemotronBatch = transcriber
+                log.info("Nemotron loaded")
+            } catch {
+                await ErrorLog.shared.error(component: "Transcriber", message: "Nemotron load failed", context: ["modelID": modelID.rawValue, "error": ErrorLog.redactedAppleError(error)])
+                throw TranscriberError.fluidAudio(error)
+            }
+            return
+
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming:
+            break
+        }
+
         if manager != nil { return }
 
         let directory = cache.cacheURL(for: modelID)
@@ -72,6 +98,7 @@ public actor Transcriber: Transcribing {
     /// long idle periods to free ANE memory).
     public func unload() {
         manager = nil
+        nemotronBatch = nil
     }
 
     /// Transcribe a 16 kHz mono Float32 buffer (the exact shape
@@ -83,7 +110,6 @@ public actor Transcriber: Transcribing {
     /// than forwarded, since the SDK error for that case is less specific.
     public func transcribe(_ samples: [Float]) async throws -> TranscriptionResult {
         guard !isTranscribing else { throw TranscriberError.busy }
-        guard let manager else { throw TranscriberError.modelNotLoaded }
         guard samples.count >= Int(AudioFormat.sampleRate) else {
             throw TranscriberError.audioTooShort
         }
@@ -91,6 +117,25 @@ public actor Transcriber: Transcribing {
         isTranscribing = true
         defer { isTranscribing = false }
 
+        switch modelID {
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming:
+            guard let manager else { throw TranscriberError.modelNotLoaded }
+            return try await transcribeWithAsrManager(samples, manager: manager)
+
+        case .nemotron_en:
+            guard let nemotronBatch else { throw TranscriberError.modelNotLoaded }
+            return try await transcribeWithNemotron(samples, nemotronBatch: nemotronBatch)
+        }
+    }
+
+    private func transcribeWithAsrManager(
+        _ samples: [Float],
+        manager: AsrManager
+    ) async throws -> TranscriptionResult {
         let result: ASRResult
         do {
             // FluidAudio 0.13.7+ exposes the TDT decoder state explicitly
@@ -135,13 +180,66 @@ public actor Transcriber: Transcribing {
             }
         }
 
-        let cleaned = PostProcessing.apply(transcriptText, language: modelID)
+        // Post-transcription cleanup chain (ParagraphSegmenter →
+        // FillerWordCleaner → NumberNormalizer) is gated to Parakeet v2
+        // only. v3 and newer models (v3 default, v3 int4, v3+Nemotron,
+        // Japanese, Nemotron-only) already produce well-cased,
+        // filler-trimmed, paragraph-aware transcripts natively from
+        // their RNN-T/TDT heads — running the regex chain on top
+        // double-edits and occasionally regresses correct casing.
+        // v2 still benefits because its training is older and emits
+        // rawer text.
+        let processedText: String
+        if modelID == .tdt_0_6b_v2_en_streaming {
+            let segmented: String
+            if let timings = result.tokenTimings {
+                segmented = ParagraphSegmenter.segment(
+                    rescoredText: transcriptText,
+                    tokenTimings: timings
+                )
+            } else {
+                segmented = transcriptText
+            }
+            let dedupped = FillerWordCleaner.clean(segmented)
+            processedText = NumberNormalizer.normalize(dedupped)
+        } else {
+            processedText = transcriptText
+        }
+        let cleaned = PostProcessing.apply(processedText, language: modelID)
         return TranscriptionResult(
             text: cleaned,
             rawText: result.text,
             duration: result.duration,
             processingTime: result.processingTime,
             confidence: result.confidence
+        )
+    }
+
+    private func transcribeWithNemotron(
+        _ samples: [Float],
+        nemotronBatch: NemotronStreamingTranscriber
+    ) async throws -> TranscriptionResult {
+        let started = Date()
+        let raw: String
+        do {
+            raw = try await nemotronBatch.transcribeOneShot(samples)
+        } catch {
+            await ErrorLog.shared.error(component: "Transcriber", message: "Nemotron transcribe failed", context: ["sampleCount": String(samples.count), "error": ErrorLog.redactedAppleError(error)])
+            throw TranscriberError.fluidAudio(error)
+        }
+
+        // Nemotron emits native punctuation + capitalization and is
+        // trained on cleaner text — the regex cleanup chain (filler
+        // strip + number normalization) is redundant here and can hurt
+        // proper casing. Only PostProcessing's language-specific rules
+        // run.
+        let cleaned = PostProcessing.apply(raw, language: modelID)
+        return TranscriptionResult(
+            text: cleaned,
+            rawText: raw,
+            duration: TimeInterval(samples.count) / AudioFormat.sampleRate,
+            processingTime: Date().timeIntervalSince(started),
+            confidence: 1.0
         )
     }
 
@@ -157,7 +255,18 @@ public actor Transcriber: Transcribing {
     /// (`AppDelegate.applicationDidFinishLaunching`) is what keeps this true
     /// during steady-state; a hotkey pressed before pre-warm finishes falls
     /// through to a fast user-visible "model still loading" error.
-    public var isReady: Bool { manager != nil }
+    public var isReady: Bool {
+        switch modelID {
+        case .nemotron_en:
+            return nemotronBatch != nil
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming:
+            return manager != nil
+        }
+    }
 
     /// Decode a WAV file at `url` (assumed already in the canonical
     /// 16 kHz mono Float32 format Jot's `AudioCapture` writes) and run it

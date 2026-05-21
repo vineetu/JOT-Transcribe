@@ -259,17 +259,12 @@ enum JotComposition {
             installedModelIDs: installedModelIDs,
             recordingsDirectoryEmpty: recordingsDirectoryEmpty
         )
-        // TODO(streaming-migration): `runV20DefaultStampIfNeeded` is
-        // deliberately NOT wired right now. Streaming is shipped as
-        // an "Experimental" opt-in; the v3 (multilingual) default for
-        // fresh installs is intentional. Revisit when streaming is
-        // ready to graduate from experimental — at that point this
-        // migration would stamp `jot.defaultModelID =
-        // "tdt_0_6b_v2_en_streaming"` for fresh English-speaking
-        // installs on macOS 26+. Until then, fresh installs land on
-        // v3 and users opt in to streaming explicitly via Settings →
-        // Transcription. See `Sources/Transcription/ModelChoiceMigration.swift`
-        // for the migration helper itself.
+        ModelChoiceMigration.runFourOptionMigrationIfNeeded(
+            defaults: systemServices.userDefaults
+        )
+        // `runV20DefaultStampIfNeeded` is retained for old tests/rollback
+        // history, but the active release boundary is the four-option
+        // Nemotron migration above.
 
         // Phase 3 F4: TranscriberHolder is the single source of truth for
         // the active model. Production: factory builds a fresh
@@ -284,14 +279,33 @@ enum JotComposition {
                 if let override = overrides?.transcriber {
                     return override
                 }
-                if modelID.supportsStreaming,
-                   let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) {
+                switch modelID {
+                case .tdt_0_6b_v2_en_streaming:
+                    guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
+                        return Transcriber(modelID: modelID)
+                    }
                     return DualPipelineTranscriber(
                         batch: Transcriber(modelID: modelID),
                         streaming: StreamingTranscriber(bundleDirectory: streamingURL)
                     )
+                case .tdt_0_6b_v3_nemotron_streaming:
+                    guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
+                        return Transcriber(modelID: modelID)
+                    }
+                    return DualPipelineTranscriber(
+                        batch: Transcriber(modelID: modelID),
+                        nemotronStreaming: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
+                    )
+                case .nemotron_en:
+                    guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
+                        return Transcriber(modelID: modelID)
+                    }
+                    return DualPipelineTranscriber(
+                        nemotron: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
+                    )
+                case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
+                    return Transcriber(modelID: modelID)
                 }
-                return Transcriber(modelID: modelID)
             },
             installedModelIDs: installedModelIDs
         )

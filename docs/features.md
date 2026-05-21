@@ -23,10 +23,15 @@ User-facing features in the shipping build. This is the product surface — not 
 
 - **On-device only** — audio is transcribed locally on the Apple Neural Engine; it never leaves the Mac.
 - **Multiple model options** — pick the transcription engine in Settings → Transcription or the Setup Wizard. All run via FluidAudio on the ANE; switching is non-destructive (other models stay installed unless you delete them):
-  - **Parakeet TDT 0.6B v3 (multilingual)** — default; broad language coverage. ≈1.25 GB.
-  - **Parakeet TDT 0.6B v3 (int4, lighter)** — same multilingual v3 vocabulary with a smaller, faster int4-quantized encoder. Slightly higher WER (<0.5%) for lower RAM and an ≈1.10 GB footprint.
+  - **Parakeet v3 (multilingual) + Nemotron live preview** — default; multilingual batch transcript with English live preview in the recording pill. Best general-purpose option. ≈1.85 GB.
   - **Parakeet 0.6B Japanese** — single-language alternative tuned for Japanese-first users. ≈1.25 GB.
-  - **Parakeet 0.6B v2 (English, live preview)** — *Experimental.* Pairs the English-only TDT v2 batch transcriber with the Parakeet EOU 120M streaming engine so partial words appear in the recording pill as you speak. The batch transcript remains the authoritative output; streaming text is informational. ≈0.72 GB total across both bundles.
+  - **Parakeet v2 + EOU live preview (deprecated)** — legacy option. Available for existing users; will be removed in a future release. ≈720 MB.
+  - **Nemotron (English, lighter)** — English-only. A single model handles both the final transcript and the live preview in the pill. Smaller and faster than option 1; best on read-style English; v2/v3 batch is more accurate on noisy/conversational audio. ≈600 MB.
+- **Post-processing (Parakeet v2 only)** — v2 transcripts run through a deterministic cleanup chain before delivery, since v2 emits rawer text than v3 / Nemotron:
+  - **Filler-word removal** — regex strip of `um/uh/er/uhm/erm` + recapitalization, no LLM.
+  - **Number normalization** — deterministic spoken-number → digit conversion (handles money, percent, year, time-of-day, address, cardinals; preserves idioms and phone-shaped sequences).
+  - **Paragraph segmentation** — pause-based `\n\n` breaks when FluidAudio returns token timings.
+  - v3 (default + int4 + Nemotron-paired), Japanese, and Nemotron-only deliberately skip this chain — they already emit clean, cased, punctuated text natively, and running the regex pass on top can regress correct casing.
 - **In-app model download** — each model is fetched from within Jot on first use with a progress bar.
 
 **Related:** [Recording & Dictation](#recording--dictation), [Settings → Transcription](#transcription), [Settings → Vocabulary](#vocabulary), [Setup Wizard](#setup-wizard), [Status Indicator](#status-indicator).
@@ -41,8 +46,9 @@ Off by default. When enabled and an LLM provider is configured, Jot runs a light
 - **Graceful fallback** — if the LLM call fails or times out (10 s budget), Jot delivers the raw transcript instead.
 - **Cleaning-up indicator** — the status pill shows a "Cleaning up…" state during the transform.
 - **Raw + cleaned are both stored** — the Recordings detail view offers a "Show original" toggle.
-- **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, or Ollama (fully local).
+- **Provider options** — Apple Intelligence (on-device, default on macOS 26+; today's on-device model is capacity-limited and Settings → AI shows a quality-caveat banner recommending OpenAI / Anthropic / Gemini / Ollama for stronger results until Apple ships an upgrade), OpenAI, Anthropic, Gemini, or Ollama (fully local).
 - **Editable prompt** — the default cleanup prompt (filler removal → grammar → numeric normalization → list detection → paragraph structure → "return only" contract) is shown under a "Customize prompt" chevron in the AI pane. Power users can rewrite it; a "Reset to default" restores the shipped prompt.
+- **Prompt safety framing** — LLM cleanup prepends an immutable safety preamble before the editable prompt, treating the transcript as data and preventing embedded transcript instructions from overriding cleanup behavior.
 - **Inline "Set up AI →"** — if the Auto-correct toggle is disabled because AI isn't configured, the pane offers a direct jump to the AI pane instead of leaving the user to find it.
 
 **Related:** [Rewrite](#rewrite-optional), [Settings → AI](#ai), [Status Indicator](#status-indicator), [Privacy & Data](#privacy--data).
@@ -190,13 +196,13 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Run setup wizard again (preloads current selections)
 - **Restart Jot** — a Troubleshooting row that quits and relaunches the app after a confirmation prompt, re-registering global shortcuts from scratch. Use when a hotkey suddenly produces a Unicode character (≤, ÷, …) instead of triggering its action, which happens when another app grabs the same shortcut while Jot is off.
 - **Reset group** — a dedicated section at the bottom of General with three tiered actions:
-  - **Reset settings** — clears preferences, API keys, and shortcut bindings; keeps recordings and the downloaded model. Relaunches Jot.
-  - **Erase all data** — destructive; wipes recordings, the transcription model (≈600 MB), and all settings. macOS permissions are untouched. Relaunches Jot.
+  - **Reset settings** — clears preferences, API keys, and shortcut bindings; keeps recordings and downloaded models. Relaunches Jot.
+  - **Erase all data** — destructive; wipes recordings, downloaded transcription models, and all settings. macOS permissions are untouched. Relaunches Jot.
   - **Reset permissions** — runs `tccutil reset All` for Jot so macOS re-asks for Microphone, Input Monitoring, and Accessibility. Relaunches Jot.
   All three require a confirmation alert. Only "Erase all data" is tinted red — the other two are styled as normal interactive rows so they don't read as disabled.
 
 ### Transcription
-- Transcription model picker — choose between v3 (multilingual, default), v3 int4 (lighter), Japanese, and v2 + EOU live-preview (experimental). Each row shows install state, footprint, primary radio, and variant badges such as "Lighter" or "Experimental" where relevant. Per-row download / delete affordances; the active primary is preserved across soft resets so a settings reset doesn't surprise the user with a fresh first-run model picker.
+- Transcription model picker — choose between four local options: Parakeet v3 (multilingual) + Nemotron live preview (default), Parakeet 0.6B Japanese, Parakeet v2 + EOU live preview (deprecated), and Nemotron (English, lighter). Each row shows install state, footprint, primary radio, and relevant badges. Per-row download / delete affordances; the active primary is preserved across soft resets so a settings reset doesn't surprise the user with a fresh first-run model picker.
 - Auto-paste transcription
 - Auto-press Enter after paste
 - Keep transcription in clipboard
@@ -204,9 +210,12 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Footer note clarifying that AI-powered transcription features are configured in Settings → AI
 
 ### Vocabulary
+**Experimental.** Marked with an inline "Experimental" badge in the Settings pane. The CTC rescoring pipeline is a best-effort boost layered on top of the primary transcription model — it never gates correctness, and the underlying FluidAudio API surface that exposes per-token timings is only available on a subset of models.
+
 - **Custom vocabulary list** — a short list of user-supplied terms (product names, proper nouns, jargon) that Jot should prefer when transcribing, so names and domain words don't get misheard as their common-word neighbors.
 - Inline add / rename / delete of terms; the list is persisted to disk and reloaded on pane open so external edits are picked up.
 - Boost-model status row shows download state (not downloaded / downloading / ready / failed) for the small CTC encoder that powers rescoring.
+- **Model compatibility** — boost applies only when the primary transcription model exposes token timings to the rescorer: v3, v3 int4, v3 + Nemotron preview (the v3 batch run is what's rescored), and v2+EOU. It does NOT apply when the primary is the **Nemotron-only English** model — the streaming Nemotron pipeline returns text without per-token timings, and the rescorer strictly requires `[TokenTiming]` to align keyword spotter hits to word boundaries. Nor does it apply when primary is Japanese. In both unsupported cases the master toggle is disabled in Settings → Vocabulary, your saved terms persist, and boost re-engages automatically when you switch primary to a vocab-capable model.
 
 **Related:** [Local Transcription](#local-transcription), [Setup Wizard](#setup-wizard).
 
@@ -263,9 +272,9 @@ A top-level sidebar pane (not a Settings child) for identity, giving back, priva
 
 In-app prose walkthrough split across three tabs, each using a shared component library (HelpSection / HelpSubsection / Callout / ExpandableRow / ShortcutChip / AnchorRail) and hand-drawn flow diagrams so concepts are discoverable at a glance, not buried in wall-of-text.
 
-- **Basics** — Dictation, Auto-correct (transcript cleanup), Rewrite (both variants), copying the last transcription, the status pill. Includes visual diagrams of the end-to-end recording → transcription → paste flow.
-- **Ask Jot shortcuts from Help** — the three Basics hero cards (Dictation, Cleanup, Rewrite) include a sparkles affordance and right-click "Ask Jot about this" action that opens Ask Jot with a contextual starter prompt.
-- **Advanced** — LLM provider setup (Apple Intelligence default on macOS 26+; OpenAI, Anthropic, Gemini, Ollama available as alternates); editable prompts; Sparkle auto-update.
+- **Basics** — Dictation, Cleanup (transcript cleanup), **Prompts** (the hero — covers the 30+ bundled library, the rewrite picker, authoring your own prompts with ✨ Generate sample, pin-to-picker, plus the two Rewrite hotkeys framed as ways to invoke a prompt: Default Rewrite ⌥/ applies the fixed "Rewrite this" prompt, Rewrite with Voice ⌥. speaks a one-off instruction routed through the intent classifier). Includes visual diagrams of the end-to-end recording → transcription → paste flow.
+- **Ask Jot shortcuts from Help** — the three Basics hero cards (Dictation, Cleanup, Prompts) include a sparkles affordance and right-click "Ask Jot about this" action that opens Ask Jot with a contextual starter prompt.
+- **Advanced** — LLM provider setup (Apple Intelligence default on macOS 26+; OpenAI, Anthropic, Gemini, Ollama available as alternates); editable shared system prompts (Cleanup + Rewrite); the prompt library card (30+ bundled, custom prompts, AI-assisted authoring, pinning, provider compatibility); Sparkle auto-update.
 - **Troubleshooting** — permissions (Microphone / Input Monitoring / Accessibility), the macOS "modifier required" hotkey constraint, Bluetooth-redirect capture failures, resetting state, and pointers to the About tab's log-sharing flow for reporting bugs. High-impact cards offer inline action buttons (Open Privacy & Security, Restart Jot, Open AI settings, View log, Copy log) so common recoveries don't require leaving the Help tab.
 - **Open in Settings →** — supported Basics rows can jump directly into the matching Settings field and auto-scroll it into view. Deep-linkable targets include toggle recording, push to talk, custom vocabulary, cleanup providers, cleanup prompt, rewrite with voice, and rewrite (the Settings anchor IDs themselves still resolve via the preserved `articulate-custom` / `articulate-fixed` slug strings).
 
@@ -275,19 +284,18 @@ Info popovers across Settings deep-link into the matching Help section so the us
 
 ## Setup Wizard
 
-Shown on first launch and on demand from Settings → General. Eleven steps, in order; each can be skipped. Done is the "you're set up for the basics" checkpoint — most first-run users stop there, and Continue reveals the advanced steps (Vocabulary, AI Provider, Cleanup, Rewrite intro) for power users who want to configure them inline.
+Shown on first launch and on demand from Settings → General. Ten steps, in order; each can be skipped. Done is the "you're set up for the basics" checkpoint — most first-run users stop there, and Continue reveals the advanced steps (AI Provider, Cleanup, Rewrite intro) for power users who want to configure them inline. Vocabulary used to live here as an eighth step; it was moved out of the wizard once the rescoring pipeline was marked experimental, and now lives only in Settings → Vocabulary.
 
 1. **Welcome**
 2. **Permissions** — grant Microphone, Input Monitoring, and Accessibility. A "Restart Jot" button is offered after granting Input Monitoring or Accessibility (a running app can't detect those until it relaunches). The Input Monitoring row carries an inline instruction: if Jot doesn't auto-populate in the System Settings list, click + → Applications → Jot.
-3. **Model** — pick the transcription engine and download it on first run. Four options: Parakeet TDT 0.6B v3 (multilingual), Parakeet TDT 0.6B v3 int4 (lighter), Parakeet 0.6B Japanese, and Parakeet 0.6B v2 + EOU streaming bundle (English live preview) — badged **Recommended** *and* Experimental for new installs. Each row shows an inline Download button next to the size; cached rows show a green "Downloaded" chip. Already-downloaded models skip straight through.
+3. **Model** — pick the transcription engine and download it on first run. Four options: Parakeet v3 (multilingual) + Nemotron live preview (default), Parakeet 0.6B Japanese, Parakeet v2 + EOU live preview (deprecated), and Nemotron (English, lighter). Each row shows an inline Download button next to the size; cached rows show a green "Downloaded" chip. Already-downloaded models skip straight through.
 4. **Microphone** — pick the input device for recording. A live input-level meter under the picker confirms the mic is hot before you continue. A disconnected preferred device stays visible as "Last used (not connected)".
 5. **Shortcuts** — preview of the default Toggle Recording shortcut.
 6. **Test dictation** — speak to verify the full pipeline end-to-end. The user controls the capture window (no hard 3-second cap) and can re-test as many times as they like.
 7. **Done** — terminal "you're set up for the basics" card shown right after Test succeeds. Skip here to start using Jot; Continue advances into the advanced steps below.
-8. **Vocabulary** (optional) — add custom terms Jot should prefer when transcribing (product names, proper nouns, jargon). Inline Add/Delete with hover affordances, a 100 MB boost-model download row, and a Japanese-primary warning. On a fresh install, adding the first term auto-enables vocabulary boosting and prepares the live rescorer; returning users keep whatever isEnabled state they had.
-9. **AI Provider** (optional) — picker for Cleanup / Rewrite provider. Starts at "Choose…" with **no default pre-selected** so users actively pick. Options: Apple Intelligence, OpenAI, Anthropic, Gemini, Ollama. Provider-specific fields (base URL, model, API key) plus Test Connection appear only after a pick. Hides the API-key field for providers that don't use one (Apple Intelligence, Ollama, Flavor-1 JWT). The picker remembers the user's choice across Back/Continue and subsequent wizard reruns.
-10. **Cleanup** — introduces Auto-correct (LLM transcript cleanup). When the Test step produced a transcript, a "Preview cleanup" button runs the user's current provider against that transcript so the user sees the before/after inline. The Apple-Intelligence-specific quality disclaimer is only shown when the user actually picked Apple Intelligence — otherwise hidden. No toggle here — actually enabling Auto-correct still happens in Settings → AI.
-11. **Rewrite intro** — brief voice-driven-rewrite walkthrough: select → speak instruction → replace. Surfaced after the user has successfully dictated so they know what "Rewrite" means before they're asked to think about binding a shortcut.
+8. **AI Provider** (optional) — picker for Cleanup / Rewrite provider. Starts at "Choose…" with **no default pre-selected** so users actively pick. Options: Apple Intelligence, OpenAI, Anthropic, Gemini, Ollama. Provider-specific fields (base URL, model, API key) plus Test Connection appear only after a pick. Hides the API-key field for providers that don't use one (Apple Intelligence, Ollama, Flavor-1 JWT). The picker remembers the user's choice across Back/Continue and subsequent wizard reruns.
+9. **Cleanup** — introduces Auto-correct (LLM transcript cleanup). When the Test step produced a transcript, a "Preview cleanup" button runs the user's current provider against that transcript so the user sees the before/after inline. The Apple-Intelligence-specific quality disclaimer is only shown when the user actually picked Apple Intelligence — otherwise hidden. No toggle here — actually enabling Auto-correct still happens in Settings → AI.
+10. **Rewrite intro** — brief voice-driven-rewrite walkthrough: select → speak instruction → replace. Surfaced after the user has successfully dictated so they know what "Rewrite" means before they're asked to think about binding a shortcut.
 
 **Related:** [Recording & Dictation](#recording--dictation), [Local Transcription](#local-transcription), [Settings → AI](#ai), [Settings → Vocabulary](#vocabulary), [Transcript Cleanup](#transcript-cleanup-optional), [Rewrite](#rewrite-optional), [Help](#help).
 

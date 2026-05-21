@@ -180,22 +180,32 @@ extension Feature {
         features.append(cleanupSubRow(id: "cleanup-fallback", title: "Graceful fallback on failure", plain: true))
         features.append(cleanupSubRow(id: "cleanup-raw-preserved", title: "Raw + cleaned both saved", plain: true))
 
-        // Hero: Rewrite (legacy slug `articulate` preserved as opaque ID by
-        // the rename migration — slug is internal-only, not user-visible)
+        // Hero: Prompts. Replaces the legacy `articulate` hero now that
+        // the prompt library is the top-level concept and the two
+        // Rewrite hotkeys are framed as ways to invoke a prompt (the
+        // default fixed-pass prompt, or a voice-instruction one-off).
+        // Old `articulate-custom` / `articulate-fixed` / `articulate-
+        // intent-classifier` subrow slugs are preserved as opaque IDs
+        // for Settings → Help deep-links and AskJot grounding.
         features.append(Feature(
-            id: "articulate",
-            title: "Rewrite",
+            id: "prompts",
+            title: "Prompts",
             tab: .basics,
             surface: .hero,
-            expandableRowId: "articulate"
+            expandableRowId: "prompts"
         ))
 
-        // Rewrite sub-rows (3, all expandable). `articulate-shared-prompt`
-        // was removed — the shared invariants block is an implementation
-        // detail visible when the user opens the prompt editor, not a
-        // user-facing surface that warrants its own Help row.
+        // Prompts sub-rows (7, all expandable). The two legacy
+        // articulate-* subrow IDs are kept verbatim so Settings →
+        // Shortcuts popovers and AskJot grounding deep-links continue
+        // to resolve; the new prompt-* slugs cover the library, picker,
+        // authoring, and pinning surfaces.
+        features.append(rewriteSubRow(id: "prompt-library", title: "Browse the library"))
+        features.append(rewriteSubRow(id: "prompt-picker", title: "Use a prompt"))
+        features.append(rewriteSubRow(id: "articulate-fixed", title: "Default Rewrite"))
         features.append(rewriteSubRow(id: "articulate-custom", title: "Rewrite with Voice"))
-        features.append(rewriteSubRow(id: "articulate-fixed", title: "Rewrite"))
+        features.append(rewriteSubRow(id: "prompt-author", title: "Author your own"))
+        features.append(rewriteSubRow(id: "prompt-pin", title: "Pin to picker"))
         features.append(rewriteSubRow(id: "articulate-intent-classifier", title: "Intent classifier"))
 
         // ---------------- Advanced ----------------
@@ -205,7 +215,8 @@ extension Feature {
         features.append(advancedCard(id: "ai-cloud-providers", title: "OpenAI · Anthropic · Gemini"))
         features.append(advancedCard(id: "ai-ollama", title: "Ollama"))
         features.append(advancedCard(id: "ai-custom-base-url", title: "Custom base URL"))
-        features.append(advancedCard(id: "ai-editable-prompts", title: "Editable prompts"))
+        features.append(advancedCard(id: "ai-editable-prompts", title: "Editable system prompts"))
+        features.append(advancedCard(id: "ai-prompt-library", title: "Prompt library"))
         features.append(advancedCard(id: "ai-test-connection", title: "Test Connection"))
 
         // System (4)
@@ -371,7 +382,7 @@ extension Feature {
     /// asserting catalog completeness.
     static let expectedSlugs: Set<String> = [
         // Heroes
-        "dictation", "cleanup", "articulate",
+        "dictation", "cleanup", "prompts",
         // Dictation sub-rows (8 — removed: auto-transcribe, re-transcribe;
         // added: languages for the JA / multi-model picker explainer).
         "toggle-recording", "push-to-talk", "cancel-recording", "any-length",
@@ -380,11 +391,16 @@ extension Feature {
         // Cleanup sub-rows
         "cleanup-providers", "cleanup-prompt", "cleanup-fallback",
         "cleanup-raw-preserved",
-        // Rewrite sub-rows (3 — removed: articulate-shared-prompt)
+        // Prompts sub-rows (7). The articulate-* slugs are preserved
+        // verbatim so Settings → Help deep-links and AskJot grounding
+        // continue to resolve after the hero was reframed.
+        "prompt-library", "prompt-picker",
         "articulate-custom", "articulate-fixed", "articulate-intent-classifier",
+        "prompt-author", "prompt-pin",
         // Advanced cards
         "ai-apple-intelligence", "ai-cloud-providers", "ai-ollama",
-        "ai-custom-base-url", "ai-editable-prompts", "ai-test-connection",
+        "ai-custom-base-url", "ai-editable-prompts", "ai-prompt-library",
+        "ai-test-connection",
         "sys-launch-at-login", "sys-retention", "sys-hide-to-tray",
         "sys-reset-scopes",
         "input-device", "input-vocabulary", "input-bluetooth",

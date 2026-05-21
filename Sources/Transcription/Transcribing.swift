@@ -1,7 +1,7 @@
 import Foundation
 
-/// OS-boundary seam for ASR. The live conformer is `Transcriber`
-/// (FluidAudio AsrManager + Parakeet TDT 0.6B v3 on the ANE);
+/// OS-boundary seam for ASR. Live conformers wrap FluidAudio's
+/// AsrManager/streaming managers on the ANE;
 /// the harness conformer in `Tests/JotHarness/` returns canned
 /// `TranscriptionResult` values without touching CoreML.
 ///

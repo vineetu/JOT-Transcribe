@@ -31,10 +31,13 @@ final class TranscriberHolder: ObservableObject {
     @Published private(set) var primaryModelID: ParakeetModelID
     @Published private(set) var transcriber: any Transcribing
     @Published private(set) var installedModelIDs: Set<ParakeetModelID>
+    @Published private(set) var migrationDownloadProgress: Double?
+    @Published private(set) var migrationDownloadError: String?
 
     private let cache: ModelCache
     private let defaults: UserDefaults
     private let transcriberFactory: (ParakeetModelID) -> any Transcribing
+    private var migrationDownloadStarted = false
 
     static let defaultsKey = "jot.defaultModelID"
 
@@ -50,7 +53,7 @@ final class TranscriberHolder: ObservableObject {
 
         let stored = defaults.string(forKey: Self.defaultsKey)
             .flatMap(ParakeetModelID.init(rawValue:))
-            ?? .tdt_0_6b_v3
+            ?? .tdt_0_6b_v3_nemotron_streaming
         self.primaryModelID = stored
         self.transcriber = transcriberFactory(stored)
         // Phase 4 hermetic-harness fix: callers (the harness) can seed
@@ -79,6 +82,65 @@ final class TranscriberHolder: ObservableObject {
     /// indicator reflects the disk state.
     func refreshInstalled() {
         installedModelIDs = Self.scan(cache: cache)
+    }
+
+    /// Consumes the post-migration one-shot download marker and downloads the
+    /// selected model with progress that the main window can render as a
+    /// banner. Failure clears the marker so the app does not retry on every
+    /// launch; Settings and the Setup Wizard remain the manual retry paths.
+    func startPendingMigrationDownloadIfNeeded() {
+        guard !migrationDownloadStarted else { return }
+        guard defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey) else {
+            return
+        }
+
+        migrationDownloadStarted = true
+        migrationDownloadError = nil
+
+        if cache.isCached(primaryModelID) {
+            defaults.set(false, forKey: ModelChoiceMigration.fourOptionDownloadPendingKey)
+            migrationDownloadProgress = nil
+            refreshInstalled()
+            return
+        }
+
+        migrationDownloadProgress = 0
+        let modelID = primaryModelID
+        let cache = self.cache
+        // Capture the @Sendable progress closure outside the outer Task so its
+        // own `[weak self]` is independent of the surrounding closure's var-self.
+        // The previous nested `Task { @MainActor [weak self] in ... }` tripped
+        // Swift 6's "reference to captured var 'self' in concurrently-executing
+        // code" diagnostic — the inner `[weak self]` was capturing the outer
+        // optional `self` var rather than a fresh weak reference.
+        let progressBinding: @Sendable (Double) -> Void = { [weak self] fraction in
+            Task { @MainActor in
+                self?.migrationDownloadProgress = fraction
+            }
+        }
+        Task { @MainActor [weak self] in
+            let downloader = ModelDownloader(cache: cache)
+            do {
+                try await downloader.downloadIfMissing(modelID, progress: progressBinding)
+                guard let self else { return }
+                self.defaults.set(false, forKey: ModelChoiceMigration.fourOptionDownloadPendingKey)
+                self.migrationDownloadProgress = nil
+                self.migrationDownloadError = nil
+                self.refreshInstalled()
+                try? await self.transcriber.ensureLoaded()
+            } catch {
+                guard let self else { return }
+                self.defaults.set(false, forKey: ModelChoiceMigration.fourOptionDownloadPendingKey)
+                self.migrationDownloadProgress = nil
+                self.migrationDownloadError = error.localizedDescription
+                self.refreshInstalled()
+                await ErrorLog.shared.error(
+                    component: "TranscriberHolder",
+                    message: "Post-migration model download failed",
+                    context: ["modelID": modelID.rawValue, "error": ErrorLog.redactedAppleError(error)]
+                )
+            }
+        }
     }
 
     private static func scan(cache: ModelCache) -> Set<ParakeetModelID> {

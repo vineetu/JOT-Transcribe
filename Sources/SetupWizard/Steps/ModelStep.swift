@@ -64,7 +64,7 @@ struct ModelStep: View {
                 }
             }
 
-            Text("Need Japanese? Add it from Settings → Transcription after setup.")
+            Text("Four options. You can switch or add downloads later from Settings → Transcription.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -262,8 +262,8 @@ private struct ModelOptionRow: View {
                                 if model.isExperimental {
                                     ExperimentalBadge()
                                 }
-                                if model.isLighterVariant {
-                                    LighterBadge()
+                                if model.isDeprecated {
+                                    DeprecatedBadge()
                                 }
                             }
                             Text(sizeText)
@@ -333,6 +333,10 @@ private struct ModelOptionRow: View {
     }
 
     private var sizeText: String {
+        if model.approxBytes < 1_000_000_000 {
+            let mb = Double(model.approxBytes) / 1_000_000
+            return String(format: "~%.0f MB", mb)
+        }
         let gb = Double(model.approxBytes) / 1_000_000_000
         return String(format: "~%.2f GB", gb)
     }

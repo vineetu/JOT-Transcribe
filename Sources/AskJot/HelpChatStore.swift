@@ -830,7 +830,12 @@ final class HelpChatStore {
         "toggle": "toggle-recording",
         "recording": "toggle-recording",
         "cleanup-auto": "cleanup",
-        "articulate-shared-prompt": "articulate",
+        "articulate-shared-prompt": "prompts",
+        "articulate": "prompts",
+        "rewrite": "prompts",
+        "prompt": "prompts",
+        "prompts-library": "prompt-library",
+        "prompt-picker-open": "prompt-picker",
         "auto-transcribe": "dictation",
         "re-transcribe": "dictation",
         "custom-vocab": "custom-vocabulary",
@@ -1087,18 +1092,37 @@ final class HelpChatStore {
 
     Editable prompt [cleanup-prompt]: customize in Settings → AI.
 
-    ## Rewrite (optional)
+    ## Prompts (optional)
 
-    Rewrite selected text via a global shortcut.
+    Apply a prompt to selected text via a global shortcut. The library
+    ships with 30+ bundled prompts; users can author their own.
 
-    Rewrite with Voice [articulate-custom]: select → hotkey → speak an
-    instruction → result replaces selection.
+    Library [prompt-library]: 30+ bundled prompts across Essentials,
+    Convert, Email, Rewrite, Code, Translate. Read-only. Browse and
+    inspect at Settings → Prompts.
 
-    Rewrite [articulate-fixed]: select → hotkey → fixed
-    "Rewrite this" instruction, no voice step.
+    Picker [prompt-picker]: open during Rewrite to pick a prompt
+    instead of the default. Pinned and recently-used float to top;
+    searchable by title or category.
 
-    Intent classifier [articulate-intent-classifier]: routes instructions
-    into voice-preserving, structural, translation, or code branches.
+    Default Rewrite [articulate-fixed]: ⌥/ applies the fixed "Rewrite
+    this" prompt with no voice step or picker — the quickest polish.
+
+    Rewrite with Voice [articulate-custom]: ⌥. select → hotkey → speak
+    an instruction → result replaces selection. Voice instructions are
+    one-off prompts.
+
+    Author your own [prompt-author]: add custom prompts under Settings
+    → Prompts → My prompts. ✨ Generate sample uses your AI provider to
+    fill sample input/output. Local SwiftData; never synced.
+
+    Pin to picker [prompt-pin]: pin any prompt — bundled or your own —
+    and it floats to the top of the picker plus a Pinned section in
+    Settings → Prompts.
+
+    Intent classifier [articulate-intent-classifier]: used only by
+    Rewrite with Voice. Routes spoken instructions into voice-
+    preserving, structural, translation, or code branches.
 
     ## Shortcuts
 

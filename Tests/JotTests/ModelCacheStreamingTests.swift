@@ -2,14 +2,12 @@ import Foundation
 import Testing
 @testable import Jot
 
-/// All-or-nothing cache invariant tests for the streaming option per
-/// `docs/plans/streaming-option.md` §11 R2.
+/// All-or-nothing cache invariant tests for streaming model options.
 ///
-/// The streaming option pairs TDT v2 (batch) with EOU 120M (streaming).
-/// `ModelCache.isCached(.tdt_0_6b_v2_en_streaming)` must return `true`
-/// only when *both* bundles are fully present — partial caches
-/// (batch-only or streaming-only) must report `false` so Settings
-/// renders "Not installed" with a Retry affordance.
+/// The legacy streaming option pairs TDT v2 (batch) with EOU 120M
+/// (streaming). The default streaming option pairs TDT v3 (batch) with
+/// Nemotron. Each composite cache must return `true` only when both bundles
+/// are fully present.
 ///
 /// Tests stage filesystem layouts under a temp `ModelCache` root so
 /// the dev/CI machine's real `~/Library/Application Support/Jot/`
@@ -58,6 +56,16 @@ struct ModelCacheStreamingTests {
         cache.root.appendingPathComponent("parakeet-tdt-0.6b-v2", isDirectory: true)
     }
 
+    private static func batchV3Int4StagingURL(_ cache: ModelCache) -> URL {
+        cache.root
+            .appendingPathComponent("parakeet-tdt-0.6b-v3-coreml-int4", isDirectory: true)
+            .appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
+    }
+
+    private static func batchV3DefaultStagingURL(_ cache: ModelCache) -> URL {
+        cache.root.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
+    }
+
     private static func stageBatchV2(_ cache: ModelCache, id: ParakeetModelID) {
         let dir = batchStagingURL(cache)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -92,6 +100,71 @@ struct ModelCacheStreamingTests {
             if name.hasSuffix(".mlmodelc") {
                 try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
             } else {
+                FileManager.default.createFile(atPath: path.path, contents: Data("{}".utf8))
+            }
+        }
+    }
+
+    private static func stageBatchV3Int4(_ cache: ModelCache) {
+        let dir = batchV3Int4StagingURL(cache)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let files = [
+            "Preprocessor.mlmodelc",
+            "EncoderInt4.mlmodelc",
+            "Decoder.mlmodelc",
+            "JointDecisionv3.mlmodelc",
+            "parakeet_vocab.json",
+        ]
+        for name in files {
+            let path = dir.appendingPathComponent(name)
+            if name.hasSuffix(".mlmodelc") {
+                try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
+            } else {
+                FileManager.default.createFile(atPath: path.path, contents: Data("{}".utf8))
+            }
+        }
+    }
+
+    private static func stageBatchV3Default(_ cache: ModelCache) {
+        let dir = batchV3DefaultStagingURL(cache)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let files = [
+            "Preprocessor.mlmodelc",
+            "Encoder.mlmodelc",
+            "Decoder.mlmodelc",
+            "JointDecisionv3.mlmodelc",
+            "parakeet_vocab.json",
+        ]
+        for name in files {
+            let path = dir.appendingPathComponent(name)
+            if name.hasSuffix(".mlmodelc") {
+                try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
+            } else {
+                FileManager.default.createFile(atPath: path.path, contents: Data("{}".utf8))
+            }
+        }
+    }
+
+    private static func stageStreamingNemotron(_ cache: ModelCache, id: ParakeetModelID) {
+        guard let dir = cache.streamingPartialCacheURL(for: id) else { return }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let files = [
+            "preprocessor.mlmodelc",
+            "encoder/encoder_int8.mlmodelc",
+            "decoder.mlmodelc",
+            "joint.mlmodelc",
+            "tokenizer.json",
+            "metadata.json",
+        ]
+        for name in files {
+            let path = dir.appendingPathComponent(name)
+            if name.hasSuffix(".mlmodelc") {
+                try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
+            } else {
+                try? FileManager.default.createDirectory(
+                    at: path.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
                 FileManager.default.createFile(atPath: path.path, contents: Data("{}".utf8))
             }
         }
@@ -194,20 +267,25 @@ struct ModelCacheStreamingTests {
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v3_int4) == nil)
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_ja) == nil)
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v2_en_streaming) != nil)
+        #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v3_nemotron_streaming) != nil)
+        #expect(cache.streamingPartialCacheURL(for: .nemotron_en) != nil)
     }
 
     /// The int4 v3 option uses the same FluidAudio repo and `.v3`
     /// architecture as default v3, but Jot must give it a separate parent
     /// folder so the SDK-derived `parakeet-tdt-0.6b-v3` cache does not
     /// overlap with the default v3 install.
-    @Test func int4V3UsesDedicatedBatchCacheParent() throws {
+    @Test func v3CompositeUsesDefaultBatchCacheAndInt4KeepsDedicatedParent() throws {
         let cache = try Self.freshTempCache()
         defer { Self.cleanup(cache) }
 
         let int4URL = cache.cacheURL(for: .tdt_0_6b_v3_int4)
+        let option1URL = cache.cacheURL(for: .tdt_0_6b_v3_nemotron_streaming)
         let defaultURL = cache.cacheURL(for: .tdt_0_6b_v3)
 
         #expect(int4URL != defaultURL)
+        #expect(option1URL == defaultURL)
+        #expect(option1URL != int4URL)
         #expect(int4URL.path.contains("parakeet-tdt-0.6b-v3-coreml-int4"))
         #expect(int4URL.lastPathComponent == "parakeet-tdt-0.6b-v3-coreml")
 
@@ -220,5 +298,54 @@ struct ModelCacheStreamingTests {
 
         #expect(paths.contains(int4Derived))
         #expect(!paths.contains(defaultDerived))
+    }
+
+    @Test func nemotronOptionsShareDedicatedStreamingCache() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        let option1 = cache.streamingPartialCacheURL(for: .tdt_0_6b_v3_nemotron_streaming)
+        let option3 = cache.streamingPartialCacheURL(for: .nemotron_en)
+
+        #expect(option1 == option3)
+        #expect(option1?.lastPathComponent == "nemotron-streaming-en-1120ms")
+    }
+
+    @Test func nemotronOnlyRequiresOnlyNemotronBundle() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        #expect(cache.isCached(.nemotron_en) == false)
+
+        Self.stageStreamingNemotron(cache, id: .nemotron_en)
+
+        #expect(cache.isCached(.nemotron_en) == true)
+    }
+
+    @Test func nemotronOnlyRemoveCacheDoesNotDeleteDefaultV3Batch() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        Self.stageBatchV3Default(cache)
+        Self.stageStreamingNemotron(cache, id: .nemotron_en)
+        #expect(cache.isCached(.tdt_0_6b_v3) == true)
+        #expect(cache.isCached(.nemotron_en) == true)
+
+        cache.removeCache(for: .nemotron_en)
+
+        #expect(cache.isCached(.tdt_0_6b_v3) == true)
+        #expect(cache.isCached(.nemotron_en) == false)
+    }
+
+    @Test func multilingualNemotronRequiresDefaultV3BatchAndNemotronBundle() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        Self.stageBatchV3Default(cache)
+        #expect(cache.isCached(.tdt_0_6b_v3_nemotron_streaming) == false)
+
+        Self.stageStreamingNemotron(cache, id: .tdt_0_6b_v3_nemotron_streaming)
+
+        #expect(cache.isCached(.tdt_0_6b_v3_nemotron_streaming) == true)
     }
 }

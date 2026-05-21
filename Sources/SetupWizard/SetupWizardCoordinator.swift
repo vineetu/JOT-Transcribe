@@ -120,7 +120,7 @@ final class SetupWizardCoordinator: ObservableObject {
             // is in flight — that's chrome-level state, not a
             // precondition.
             return true
-        case .done, .vocabulary, .aiProvider, .cleanup, .rewriteIntro,
+        case .done, .aiProvider, .cleanup, .rewriteIntro,
              .rewriteWithVoiceBullets, .rewriteWithVoiceSpanish:
             // Post-basics walkthrough steps. No persistent precondition.
             return true

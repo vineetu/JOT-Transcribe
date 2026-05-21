@@ -22,17 +22,11 @@ enum WizardStepID: Int, CaseIterable, Identifiable, Sendable {
     // users who want to set those up inline. Either way the user can
     // return to Settings → General → Run Setup Wizard later.
     case done
-    /// Optional custom-vocabulary primer. First step of the advanced
-    /// flow because it's the lightest-weight: no API keys, no network
-    /// (except the optional boost-model download), no LLM dependency.
-    /// Users who only want vocabulary can finish here and Skip the AI
-    /// steps entirely.
-    case vocabulary
     /// AI provider configuration (provider picker, key / URL / model
-    /// fields, Test Connection). Lives between `.vocabulary` and
-    /// `.cleanup` so users entering the advanced flow actively pick
-    /// and verify a provider before they see the Cleanup / Rewrite
-    /// demos run against it.
+    /// fields, Test Connection). First step of the advanced flow now
+    /// that vocabulary has moved out of the wizard — the rescoring
+    /// pipeline is experimental and intentionally surfaced only in
+    /// Settings → Vocabulary, not in onboarding.
     case aiProvider
     case cleanup
     case rewriteIntro

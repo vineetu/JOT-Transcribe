@@ -44,6 +44,54 @@ enum ModelChoiceMigration {
     /// (fresh → returning) — see §3.4.3.
     static let v2DefaultStampedKey = "jot.modelChoice.v2DefaultStamped"
 
+    /// UserDefaults key marking that the four-option Nemotron picker
+    /// migration has run. This migration intentionally does not delete old
+    /// cache directories; shared/orphan cache cleanup is a future explicit
+    /// storage-management task.
+    static let fourOptionMigratedKey = "jot.modelChoice.fourOptionMigrated"
+
+    /// One-shot marker consumed by `TranscriberHolder`/`JotAppWindow` to
+    /// download the newly selected post-migration model with visible progress.
+    static let fourOptionDownloadPendingKey = "jot.modelChoice.fourOptionDownloadPending"
+
+    /// Collapse legacy persisted model choices into the current four-option
+    /// picker. Fresh installs with no stored key land on the new default:
+    /// multilingual Parakeet v3 final transcript with Nemotron English
+    /// live preview.
+    ///
+    /// - Returns: `true` when this call wrote `jot.defaultModelID`.
+    @discardableResult
+    static func runFourOptionMigrationIfNeeded(defaults: UserDefaults) -> Bool {
+        if defaults.bool(forKey: fourOptionMigratedKey) {
+            return false
+        }
+        defer { defaults.set(true, forKey: fourOptionMigratedKey) }
+
+        let stored = defaults.string(forKey: TranscriberHolder.defaultsKey)
+            .flatMap(ParakeetModelID.init(rawValue:))
+
+        let target: ParakeetModelID
+        switch stored {
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, nil:
+            target = .tdt_0_6b_v3_nemotron_streaming
+        case .tdt_0_6b_v2_en_streaming:
+            target = .tdt_0_6b_v2_en_streaming
+        case .tdt_0_6b_ja:
+            target = .tdt_0_6b_ja
+        case .tdt_0_6b_v3_nemotron_streaming:
+            target = .tdt_0_6b_v3_nemotron_streaming
+        case .nemotron_en:
+            target = .nemotron_en
+        }
+
+        if stored == target {
+            return false
+        }
+        defaults.set(target.rawValue, forKey: TranscriberHolder.defaultsKey)
+        defaults.set(true, forKey: fourOptionDownloadPendingKey)
+        return true
+    }
+
     /// v1.7 pin. Idempotent: records `pinChecked = true` on every run, even
     /// when the body short-circuits on an existing explicit key, so a second
     /// launch never re-classifies the user.
@@ -76,24 +124,20 @@ enum ModelChoiceMigration {
         return true
     }
 
-    /// v2.0 first-launch classifier (§3.4.3). Stamps `jot.defaultModelID`
-    /// once per install with one of three outcomes:
+    /// Legacy v2.0 first-launch classifier (§3.4.3). Retained for tests and
+    /// rollback history; current launch code uses the four-option migration
+    /// above.
     ///
     /// 1. `v2DefaultStamped == true` → no-op (already classified).
     /// 2. Explicit `jot.defaultModelID` already set → set the marker
     ///    and exit, leaving the user's choice intact (covers v1.7
     ///    pinned users, JA users, and post-v2.0 manual changes).
-    /// 3. Returning user with no key (v1.7-skipper grandfather path)
-    ///    → write `tdt_0_6b_v3`.
-    /// 4. Genuine fresh install → write `tdt_0_6b_v2_en_streaming`.
+    /// 3. No explicit key → write the current default
+    ///    `tdt_0_6b_v3_nemotron_streaming`.
     ///
     /// Persisting the classification is what prevents drift: a naive
     /// read-only fallback on `nil` would re-evaluate every launch and
     /// silently swap the user's primary as recordings accumulate.
-    ///
-    /// Phase 3 wires this into `JotComposition.build`. Phase 1 lands
-    /// the helper unwired so the streaming case (which is hidden from
-    /// `visibleCases`) doesn't get stamped before the UI can render it.
     ///
     /// - Returns: `true` when this call wrote `jot.defaultModelID`.
     @discardableResult
@@ -110,13 +154,7 @@ enum ModelChoiceMigration {
         if defaults.string(forKey: TranscriberHolder.defaultsKey) != nil {
             return false
         }
-        let target: ParakeetModelID = isFreshInstall(
-            defaults: defaults,
-            installedModelIDs: installedModelIDs,
-            recordingsDirectoryEmpty: recordingsDirectoryEmpty
-        )
-            ? .tdt_0_6b_v2_en_streaming
-            : .tdt_0_6b_v3
+        let target: ParakeetModelID = .tdt_0_6b_v3_nemotron_streaming
         defaults.set(target.rawValue, forKey: TranscriberHolder.defaultsKey)
         return true
     }

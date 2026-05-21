@@ -7,16 +7,14 @@ import Foundation
 /// does NOT auto-send (spec §9 rule 5).
 ///
 /// Keys are the hero slugs from `Feature.swift` (`"dictation"`,
-/// `"cleanup"`, `"articulate"`). Any other slug returns `nil`; the
+/// `"cleanup"`, `"prompts"`). Any other slug returns `nil`; the
 /// sparkle affordance only exists on the three heroes so callers
-/// shouldn't pass sub-row slugs here. The `"articulate"` slug is kept
-/// verbatim as an internal identifier (see preservation list); only
-/// the user-visible question text refers to "Rewrite".
+/// shouldn't pass sub-row slugs here.
 enum FeatureQuestionMap {
     private static let prefills: [String: String] = [
         "dictation":  "How does Jot's dictation work end-to-end?",
         "cleanup":    "What does Cleanup do, and which provider should I pick?",
-        "articulate": "What's the difference between Rewrite and Rewrite with Voice?"
+        "prompts":    "How do prompts work, and how do I pick or add one?"
     ]
 
     static func prefill(for heroSlug: String) -> String? {

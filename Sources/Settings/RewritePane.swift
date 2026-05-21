@@ -96,14 +96,7 @@ struct RewritePane: View {
 
                     if isAppleIntelligenceSelected {
                         if isAppleIntelligenceAvailable {
-                            HStack(spacing: 6) {
-                                Image(systemName: "brain.head.profile")
-                                    .foregroundStyle(.secondary)
-                                Text("On-device via Apple Foundation Models. No API key required.")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
-                            }
+                            AppleIntelligenceQualityBanner()
                         } else {
                             HStack(alignment: .top, spacing: 6) {
                                 Image(systemName: "exclamationmark.triangle.fill")
