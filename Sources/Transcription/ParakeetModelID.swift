@@ -4,11 +4,11 @@ import Foundation
 /// Identifiers for ASR model choices Jot knows how to migrate, cache,
 /// download, and render.
 ///
-/// The original v3 cases stay in the enum so stored `jot.defaultModelID`
-/// values can be migrated and rollback builds can still read their caches,
-/// but they are no longer user-selectable. The visible picker is now four
-/// choices:
-/// - multilingual Parakeet v3 batch with Nemotron English live preview,
+/// The original v3 cases (and v1.10-vintage v3 + Nemotron pairing) stay
+/// in the enum so stored `jot.defaultModelID` values can be migrated and
+/// rollback builds can still read their caches, but they are no longer
+/// user-selectable. The visible picker is now four choices:
+/// - multilingual Parakeet v3 batch with English EOU live preview,
 /// - Japanese Parakeet,
 /// - legacy English Parakeet v2 batch with EOU live preview,
 /// - English-only Nemotron streaming.
@@ -24,9 +24,22 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// Legacy English-only batch + EOU streaming combo. Kept selectable for
     /// existing users, but marked deprecated in current UI.
     case tdt_0_6b_v2_en_streaming
-    /// Current default: multilingual final transcript via Parakeet v3 int8,
-    /// with English-only Nemotron live preview in the recording pill.
+    /// Pre-v1.12 default. Multilingual Parakeet v3 batch paired with
+    /// Nemotron English live preview. Retired in v1.12: the Nemotron live
+    /// preview was producing more accurate English than the v3 batch
+    /// finalized to, so users saw a visible regression at recording stop.
+    /// Kept here only so stored `jot.defaultModelID` values can be migrated
+    /// to `.tdt_0_6b_v3_eou_streaming` on first launch of v1.12. Not user-
+    /// selectable.
     case tdt_0_6b_v3_nemotron_streaming
+    /// Current default for multilingual users. Parakeet v3 batch final
+    /// transcript with English EOU live preview in the recording pill.
+    /// EOU is intentionally a lighter, less accurate streaming model so
+    /// the live preview reads as a rough draft that gets replaced by the
+    /// more accurate batch final at stop — no "transcript got worse"
+    /// surprise. Users who want a higher-quality streaming model as the
+    /// primary use `.nemotron_en` directly.
+    case tdt_0_6b_v3_eou_streaming
     /// English-only Nemotron option. One streaming model powers both live
     /// preview and the final transcript.
     case nemotron_en
@@ -44,6 +57,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return "Parakeet v2 + EOU live preview (deprecated)"
         case .tdt_0_6b_v3_nemotron_streaming:
             return "Parakeet v3 (multilingual) + Nemotron live preview"
+        case .tdt_0_6b_v3_eou_streaming:
+            return "Parakeet v3 (multilingual) + EOU live preview"
         case .nemotron_en:
             return "Nemotron (English, lighter)"
         }
@@ -66,6 +81,9 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return 720_000_000
         case .tdt_0_6b_v3_nemotron_streaming:
             return 1_850_000_000
+        case .tdt_0_6b_v3_eou_streaming:
+            // v3 batch ≈ 461 MB on disk + EOU 120M ≈ 428 MB on disk.
+            return 890_000_000
         case .nemotron_en:
             return 600_000_000
         }
@@ -76,7 +94,10 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// `AsrManager`.
     var fluidAudioVersion: AsrModelVersion {
         switch self {
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_v3_nemotron_streaming:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             return .v3
         case .tdt_0_6b_ja:
             return .tdtJa
@@ -96,6 +117,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return .int4
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming:
             return .int8
@@ -115,7 +137,9 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// directory.
     var repoFolderName: String {
         switch self {
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_nemotron_streaming:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             return "parakeet-tdt-0.6b-v3-coreml"
         case .tdt_0_6b_v3_int4:
             return "parakeet-tdt-0.6b-v3-coreml-int4"
@@ -141,7 +165,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_nemotron_streaming:
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             return true
         case .nemotron_en:
             return false
@@ -149,26 +174,32 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     }
 
     /// `true` when the option pairs a streaming engine with recording.
-    /// Legacy EOU remains supported for migration/rollback. The current
-    /// visible streaming options use Nemotron.
+    /// Current visible streaming options use EOU (v2 legacy, v3 default)
+    /// and Nemotron (English-only standalone). The retired v3+Nemotron
+    /// pairing is kept here for migration anchors only.
     public var supportsStreaming: Bool {
         switch self {
         case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
             return false
-        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
+        case .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming,
+             .nemotron_en:
             return true
         }
     }
 
     /// `true` when this case should appear in current user-facing pickers.
+    /// `tdt_0_6b_v3_nemotron_streaming` was demoted in v1.12 — kept as a
+    /// migration anchor only.
     public var isUserSelectable: Bool {
         switch self {
-        case .tdt_0_6b_v3_nemotron_streaming,
+        case .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
              .nemotron_en:
             return true
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_v3_nemotron_streaming:
             return false
         }
     }
@@ -182,6 +213,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming,
              .nemotron_en:
             return false
         }
@@ -204,13 +236,13 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         switch self {
         case .tdt_0_6b_v3_int4:
             return "Same multilingual v3 with smaller, faster int4-quantized encoder. Slightly higher WER (<0.5%) for ~11% smaller download and lower RAM."
-        case .tdt_0_6b_v3_nemotron_streaming:
-            return "Multilingual batch transcript with English live preview in the recording pill. Best general-purpose option."
+        case .tdt_0_6b_v3_eou_streaming:
+            return "Multilingual batch transcript with English live preview in the recording pill. The live preview is a rough draft that gets replaced by the more accurate final transcript at stop. Best general-purpose option."
         case .tdt_0_6b_v2_en_streaming:
             return "Legacy option. Available for existing users; will be removed in a future release."
         case .nemotron_en:
-            return "English-only. Single model handles both the final transcript and the live preview in the pill. Smaller and faster than option 1; best on read-style English; v2/v3 batch is more accurate on noisy/conversational audio."
-        case .tdt_0_6b_v3, .tdt_0_6b_ja:
+            return "English-only. Single model handles both the final transcript and the live preview in the pill. Smaller and faster than option 1; best on read-style English; v2/v3 batch is more accurate on noisy/conversational audio. Doesn't support custom vocabulary — switch to Parakeet v3 + EOU if you rely on boosted terms."
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_nemotron_streaming, .tdt_0_6b_ja:
             return nil
         }
     }
@@ -219,7 +251,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// recommended pick in the wizard and Settings → Transcription.
     ///
     /// Note the asymmetry with the technical fresh-install default
-    /// (`TranscriberHolder` boots new users on `tdt_0_6b_v3_nemotron_streaming`
+    /// (`TranscriberHolder` boots new users on `tdt_0_6b_v3_eou_streaming`
     /// for safe multilingual coverage). The recommended badge sits on
     /// the Nemotron-only English option because for the majority of
     /// English-speaking users — which is most of Jot's audience — the
@@ -235,7 +267,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_nemotron_streaming:
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             return false
         }
     }
@@ -243,7 +276,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// Subset of `allCases` rendered in user-facing model pickers.
     public static var visibleCases: [ParakeetModelID] {
         [
-            .tdt_0_6b_v3_nemotron_streaming,
+            .tdt_0_6b_v3_eou_streaming,
             .tdt_0_6b_ja,
             .tdt_0_6b_v2_en_streaming,
             .nemotron_en,

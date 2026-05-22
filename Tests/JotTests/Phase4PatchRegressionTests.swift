@@ -453,7 +453,8 @@ struct Phase4PatchRegressionTests {
             keychain: harness.stubKeychain,
             urlSession: harness.services.urlSession,
             appleIntelligence: harness.services.appleIntelligence,
-            llmConfiguration: harness.services.llmConfiguration
+            llmConfiguration: harness.services.llmConfiguration,
+            hotkeyRouter: harness.services.hotkeyRouter
         )
 
         let mirror = Mirror(reflecting: pane)

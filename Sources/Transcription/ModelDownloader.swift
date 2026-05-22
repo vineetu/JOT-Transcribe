@@ -219,6 +219,9 @@ public actor ModelDownloader {
         case .tdt_0_6b_v3_nemotron_streaming:
             // v3 int8 batch ≈ 1.25 GB, Nemotron 1120ms ≈ 600 MB.
             return 1_250_000_000.0 / 1_850_000_000.0
+        case .tdt_0_6b_v3_eou_streaming:
+            // v3 int8 batch ≈ 461 MB on disk, EOU 160ms ≈ 428 MB on disk.
+            return 461_000_000.0 / 890_000_000.0
         case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja, .nemotron_en:
             return 1.0
         }
@@ -253,7 +256,7 @@ public actor ModelDownloader {
         progress: @Sendable @escaping (Double) -> Void
     ) async throws {
         switch id {
-        case .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
             try await downloadEouStreamingSide(id, progress: progress)
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             try await downloadNemotronStreamingSide(id, progress: progress)

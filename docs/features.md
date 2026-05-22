@@ -318,3 +318,28 @@ Shown on first launch and on demand from Settings → General. Ten steps, in ord
 - **Automatic network calls (full enumeration)** — first-run transcription model download, daily Sparkle appcast check, About-pane donations `/summary` GET on appear. Every other network call requires explicit user configuration (an LLM provider with an API key, the rewrite/cleanup/Ask Jot flows that talk to it).
 
 **Related:** [Local Transcription](#local-transcription), [Transcript Cleanup](#transcript-cleanup-optional), [Rewrite](#rewrite-optional), [Ask Jot](#ask-jot), [Prompt Library](#prompt-library), [About](#about), [Settings → AI](#ai), [Settings → General](#general) (retention + reset).
+
+---
+
+## Backlog · Planned improvements
+
+Items queued for upcoming releases — UX gaps, bug-shaped product issues, and feature ideas with a clear scope. Each entry links to a plan doc (under `docs/plans/`, internal-only during design) when one exists. This is the user-visible roadmap; for the full design rationale on any item, open the linked plan.
+
+**Convention:** all design / plan docs live under `docs/plans/`. Build a new plan when an entry needs more than a paragraph of detail; the plan path goes into the bullet here.
+
+### UX & polish
+
+- **Shortcuts pane redesign** *(targets v1.13)* — the current Settings → Shortcuts pane shows three rows per action (a trigger-type picker, a recorder, and a footer description) for each of five user-bindable actions. ~16+ control rows of vertical scroll; almost no comparable app uses this multi-row pattern. The redesign collapses to a single binding per action with the trigger type inferred from input, groups actions by purpose (Recording / Rewrite / Capture), adds visible "when this fires" badges, and introduces a search field that scales as shortcuts grow. Internal plan: `docs/plans/shortcuts-pane-redesign.md`. HTML mockup comparing four options lives at `/tmp/jot-shortcuts-mockups/index.html` during the design phase.
+- **Ollama detection + local model picker** *(targets v1.13)* — when Ollama is the selected AI provider, replace the freeform "Model" text field with a probe that detects Ollama's state and populates a picker. Four states surface distinct copy: running with models (auto-populated picker by model name + size + parameter family), running with no models (link to `ollama.com/library`), installed but not running ("Open Ollama" button), not installed (link to `ollama.com/download`). Probe is a 2s timeout `GET 127.0.0.1:11434/api/tags`; result cached in `@AppStorage` for warm-boot picker. Internal plan: `docs/plans/ollama-detection.md`.
+
+### Bugs
+
+*(none currently logged)*
+
+### Done in the unreleased dev tree
+
+These have landed in code but haven't shipped yet — listed here so the backlog stays current.
+
+- **Parakeet v3 + EOU pairing** *(v1.12)* — retires the v3+Nemotron pairing in favor of v3+EOU as the multilingual primary. v3 batch's English output was visibly worse than Nemotron's live preview, creating a "transcript got worse at stop" UX bug. EOU is intentionally lighter so the live preview reads as a rough draft. Migration shim auto-rewrites existing v3+Nemotron users. Internal plan: `docs/plans/v3-eou-pairing.md`.
+- **JA alias-based vocabulary** *(v1.12)* — unlocks custom vocabulary on the Japanese primary via text-layer alias substitution. Real acoustic CTC rescoring is blocked on two upstream FluidAudio gaps (no `CtcJaKeywordSpotter`, no token timings on `TdtJaManager.transcribe`). Internal plan: `docs/plans/custom-vocabulary-mvp.md` §8–§10.
+- **Nemotron-vocab UI guidance** *(v1.12)* — one-click "Switch to Parakeet v3 + EOU" button in Settings → Vocabulary when Nemotron is the active primary, plus a "Doesn't support custom vocabulary" caveat on the Nemotron picker row. Reflects that Nemotron's streaming pipeline can't supply the token timings the rescorer needs.

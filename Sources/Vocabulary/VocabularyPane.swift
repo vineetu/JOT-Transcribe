@@ -31,12 +31,14 @@ struct VocabularyPane: View {
     @Environment(\.helpNavigator) private var navigator
     @State private var boostModelStatus: BoostModelStatus = .notDownloaded
 
-    /// True when the active primary model can't apply this list.
-    /// `docs/plans/japanese-support.md` §C: when JA is primary, the
-    /// master toggle is force-disabled and the sidebar entry is hidden
-    /// (the hide happens in `AppSidebar`; this pane can still mount via
-    /// a stale deep-link, so it must lock itself down too).
-    private var lockedForJAPrimary: Bool {
+    /// True when JA is the active primary. JA is no longer locked
+    /// (v1.12 ships alias-based substitution via
+    /// `JapaneseVocabularySubstituter`), but the pane still surfaces a
+    /// JA-specific note so users know the experience differs from the
+    /// acoustic CTC path: aliases drive the substitution, and aliases
+    /// must be written via the file directly until the inline alias
+    /// UI returns.
+    private var isJAPrimary: Bool {
         transcriberHolder.primaryModelID == .tdt_0_6b_ja
     }
 
@@ -47,13 +49,13 @@ struct VocabularyPane: View {
     /// boundaries. The pane stays visible and editable — terms persist
     /// — but the master toggle is disabled and the headline disclosure
     /// tells the user why. Restoring boost happens automatically when
-    /// they swap primary to v3 / v3 int4 / v3 + Nemotron preview / v2.
+    /// they swap primary to v3+EOU or v2+EOU.
     private var lockedForNemotronPrimary: Bool {
         transcriberHolder.primaryModelID == .nemotron_en
     }
 
     private var isLocked: Bool {
-        lockedForJAPrimary || lockedForNemotronPrimary
+        lockedForNemotronPrimary
     }
 
     var body: some View {
@@ -221,54 +223,91 @@ struct VocabularyPane: View {
 
     private var headerSection: some View {
         Section {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        // When JA or Nemotron-only is primary the toggle is
-                        // visually disabled but the stored preference is
-                        // preserved — flipping primary to a vocab-capable
-                        // model (v3, v3 int4, v3 + Nemotron preview, v2)
-                        // restores the user's prior on/off state without
-                        // their having to retoggle.
-                        Toggle("Enable vocabulary boosting", isOn: $store.isEnabled)
-                            .toggleStyle(.switch)
-                            .font(.system(size: 13))
-                            .disabled(isLocked)
-                            .help(toggleHelpText)
-                        ExperimentalBadge()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 8) {
+                            // When JA or Nemotron-only is primary the toggle is
+                            // visually disabled but the stored preference is
+                            // preserved — flipping primary to a vocab-capable
+                            // model (v3+EOU, v2+EOU) restores the user's prior
+                            // on/off state without their having to retoggle.
+                            Toggle("Enable vocabulary boosting", isOn: $store.isEnabled)
+                                .toggleStyle(.switch)
+                                .font(.system(size: 13))
+                                .disabled(isLocked)
+                                .help(toggleHelpText)
+                            ExperimentalBadge()
+                        }
+                        Text(headerSubtext)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(headerSubtext)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    InfoPopoverButton(
+                        title: "Custom vocabulary",
+                        body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.\n\nExperimental — two paths depending on your primary model:\n\n• Parakeet v3 + EOU and v2 + EOU: acoustic CTC rescoring. Catches phonetic neighbors automatically.\n\n• Japanese: alias-based text substitution. Write your canonical spelling as a term, then add the writing systems the model might output as aliases (hiragana / katakana / romaji). Aliases drive the substitution. The inline alias UI was removed for MVP; for now, add aliases by editing the vocabulary file directly (one line per term: `Term: alias1, alias2`).\n\n• Nemotron-only English: not supported. Nemotron's streaming pipeline doesn't expose the token timings the rescorer needs.",
+                        helpAnchor: "custom-vocabulary"
+                    )
                 }
-                Spacer()
-                InfoPopoverButton(
-                    title: "Custom vocabulary",
-                    body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.\n\nExperimental: only the v3, v3 int4, v3 + Nemotron preview, and v2+EOU transcription models can apply your list. The Nemotron-only English model and the Japanese model don't expose the token timings the rescorer needs.",
-                    helpAnchor: "custom-vocabulary"
-                )
+                if isLocked {
+                    switchPrimaryButton
+                }
+                if isJAPrimary {
+                    revealVocabularyFileButton
+                }
             }
             .padding(.vertical, 2)
         }
     }
 
-    private var toggleHelpText: String {
-        if lockedForJAPrimary {
-            return "Custom vocabulary isn't supported with the Japanese model. Switch your primary model to use vocabulary."
+    /// One-click affordance when the active primary doesn't support vocab.
+    /// Swaps the holder to `tdt_0_6b_v3_eou_streaming` (the vocab-capable
+    /// multilingual primary added in v1.12). User's saved terms come right
+    /// back the moment the swap completes.
+    private var switchPrimaryButton: some View {
+        Button {
+            Task {
+                await transcriberHolder.setPrimary(.tdt_0_6b_v3_eou_streaming)
+            }
+        } label: {
+            Label("Switch to Parakeet v3 + EOU", systemImage: "arrow.triangle.2.circlepath")
+                .font(.system(size: 12))
         }
+        .controlSize(.small)
+    }
+
+    /// JA-only affordance: open the vocabulary file in Finder. Aliases
+    /// drive the JA substitution path and the inline alias UI is
+    /// dormant; users edit the file directly until the UI returns.
+    private var revealVocabularyFileButton: some View {
+        Button {
+            if let url = VocabularyStore.shared.fileURL {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+        } label: {
+            Label("Reveal vocabulary file in Finder", systemImage: "doc.text.magnifyingglass")
+                .font(.system(size: 12))
+        }
+        .controlSize(.small)
+    }
+
+    private var toggleHelpText: String {
         if lockedForNemotronPrimary {
-            return "Custom vocabulary isn't supported with the Nemotron (English) model. Switch your primary model to v3, v3 int4, v3 + Nemotron preview, or v2 to use vocabulary."
+            return "Custom vocabulary isn't supported with the Nemotron (English) model. Switch your primary model to Parakeet v3 + EOU to use vocabulary."
         }
         return ""
     }
 
     private var headerSubtext: String {
-        if lockedForJAPrimary {
-            return "Custom vocabulary isn't supported with the Japanese model. Your saved terms are preserved — switch your primary model to a European one to use them again."
-        }
         if lockedForNemotronPrimary {
-            return "Custom vocabulary isn't supported with the Nemotron (English) model — its streaming pipeline doesn't expose the token timings the rescorer needs. Your saved terms are preserved; switch your primary model to v3, v3 int4, v3 + Nemotron preview, or v2 to use them."
+            return "Custom vocabulary isn't supported with the Nemotron (English) model — its streaming pipeline doesn't expose the token timings the rescorer needs. Your saved terms are preserved; switch your primary model to Parakeet v3 + EOU to use them."
+        }
+        if isJAPrimary {
+            return store.isEnabled
+                ? "Japanese support uses alias substitution. Write your canonical spelling as a term, then add the writing systems the model might output (hiragana, katakana, romaji) as aliases by editing the vocabulary file."
+                : "When on, Jot substitutes alias spellings for the canonical term in Japanese transcripts. Add your canonical spelling as a term, then add aliases (hiragana, katakana, romaji variants) by editing the vocabulary file."
         }
         return store.isEnabled
             ? "Jot will prefer the terms below when transcribing. Add product names, proper nouns, and jargon you want spelled a specific way."

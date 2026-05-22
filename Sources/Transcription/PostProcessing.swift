@@ -22,6 +22,7 @@ public enum PostProcessing {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming,
              .nemotron_en:
             return applyEnglish(text)
         case .tdt_0_6b_ja:

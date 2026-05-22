@@ -262,9 +262,17 @@ enum JotComposition {
         ModelChoiceMigration.runFourOptionMigrationIfNeeded(
             defaults: systemServices.userDefaults
         )
+        // v1.12: rewrites stored `tdt_0_6b_v3_nemotron_streaming` →
+        // `tdt_0_6b_v3_eou_streaming`. Runs after the four-option migration
+        // so any user whose primary was just rewritten to the legacy
+        // pairing by that migration also gets moved to the new EOU primary
+        // in a single launch. Idempotent (one-shot key).
+        ModelChoiceMigration.runV12EouRenameIfNeeded(
+            defaults: systemServices.userDefaults
+        )
         // `runV20DefaultStampIfNeeded` is retained for old tests/rollback
         // history, but the active release boundary is the four-option
-        // Nemotron migration above.
+        // Nemotron migration above plus v1.12's EOU rename.
 
         // Phase 3 F4: TranscriberHolder is the single source of truth for
         // the active model. Production: factory builds a fresh
@@ -280,7 +288,10 @@ enum JotComposition {
                     return override
                 }
                 switch modelID {
-                case .tdt_0_6b_v2_en_streaming:
+                case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
+                    // Both pair their batch model with the shared EOU
+                    // streaming bundle. v1.12 introduces v3+EOU; v2+EOU
+                    // remains as a deprecated migration anchor.
                     guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
                         return Transcriber(modelID: modelID)
                     }
@@ -289,6 +300,12 @@ enum JotComposition {
                         streaming: StreamingTranscriber(bundleDirectory: streamingURL)
                     )
                 case .tdt_0_6b_v3_nemotron_streaming:
+                    // Pre-v1.12 pairing kept for users who land here briefly
+                    // before `runV12EouRenameIfNeeded` rewrites their
+                    // stored default. Defensive — the migration runs first
+                    // in `JotComposition.build`, so this branch is
+                    // effectively dead in production but preserved for
+                    // rollback / debug paths.
                     guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
                         return Transcriber(modelID: modelID)
                     }

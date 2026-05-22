@@ -40,6 +40,7 @@ public struct ModelCache: Sendable {
             return base.appendingPathComponent("parakeet-tdt-0.6b-v3-coreml", isDirectory: true)
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
              .nemotron_en:
@@ -49,11 +50,15 @@ public struct ModelCache: Sendable {
 
     /// Directory where the streaming-side model bundle for a streaming-
     /// enabled option lives:
-    /// - EOU legacy: `root/parakeet-eou-streaming/160ms/`
+    /// - EOU (v2 legacy + v3 default): `root/parakeet-eou-streaming/160ms/`
     /// - Nemotron: `root/nemotron-streaming-en-1120ms/`
+    ///
+    /// The v3+EOU and v2+EOU options share the same on-disk EOU streaming
+    /// bundle; UI must protect against deletion of one while the other is
+    /// the active primary.
     public func streamingPartialCacheURL(for id: ParakeetModelID) -> URL? {
         switch id {
-        case .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
             return root
                 .appendingPathComponent("parakeet-eou-streaming", isDirectory: true)
                 .appendingPathComponent("160ms", isDirectory: true)
@@ -72,7 +77,11 @@ public struct ModelCache: Sendable {
         switch id {
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             return root.appendingPathComponent("nemotron-streaming-en-1120ms-staging", isDirectory: true)
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja, .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_v3_eou_streaming,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming:
             return nil
         }
     }
@@ -110,7 +119,8 @@ public struct ModelCache: Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_nemotron_streaming:
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             return AsrModels.modelsExist(
                 at: cacheURL(for: id),
                 version: id.fluidAudioVersion,
@@ -128,7 +138,7 @@ public struct ModelCache: Sendable {
         let fm = FileManager.default
         let requiredModels: Set<String>
         switch id {
-        case .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
             requiredModels = ModelNames.ParakeetEOU.requiredModels
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             requiredModels = ModelNames.NemotronStreaming.requiredModels
@@ -196,7 +206,10 @@ private extension ParakeetModelID {
         switch self {
         case .tdt_0_6b_v3_int4:
             return "parakeet-tdt-0.6b-v3"
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_nemotron_streaming, .tdt_0_6b_v2_en_streaming:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming,
+             .tdt_0_6b_v2_en_streaming:
             return repoFolderName.replacingOccurrences(of: "-coreml", with: "")
         case .tdt_0_6b_ja, .nemotron_en:
             return repoFolderName

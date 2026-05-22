@@ -53,7 +53,7 @@ final class TranscriberHolder: ObservableObject {
 
         let stored = defaults.string(forKey: Self.defaultsKey)
             .flatMap(ParakeetModelID.init(rawValue:))
-            ?? .tdt_0_6b_v3_nemotron_streaming
+            ?? .tdt_0_6b_v3_eou_streaming
         self.primaryModelID = stored
         self.transcriber = transcriberFactory(stored)
         // Phase 4 hermetic-harness fix: callers (the harness) can seed
