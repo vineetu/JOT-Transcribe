@@ -294,12 +294,19 @@ extension Feature {
     }
 
     private static func rewriteSubRow(id: String, title: String, plain: Bool = false) -> Feature {
+        // Hero was renamed `articulate` → `prompts` in v1.11. The
+        // parent pointer here was left stale; HelpInfraTests asserts
+        // "Sub-row has no parent hero" at app launch in Debug because
+        // no hero with id `articulate` exists. Sub-row IDs themselves
+        // (`articulate-fixed`, `articulate-custom`, etc.) stay verbatim
+        // for Settings → Help deep-link and AskJot grounding stability;
+        // only the parent reference moves.
         Feature(
             id: id,
             title: title,
             tab: .basics,
             surface: .subRow,
-            parentHeroId: "articulate",
+            parentHeroId: "prompts",
             expandableRowId: plain ? nil : id,
             isDeepLinkable: !plain
         )

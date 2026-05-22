@@ -223,12 +223,13 @@ struct TranscriptionPane: View {
 
     /// The currently-primary model can be deleted only if at least one
     /// other model is installed (so Jot still has something to fall back
-    /// to as primary). The Nemotron-only row is also protected while the
-    /// composite v3 + Nemotron option is primary because they share the same
-    /// streaming bundle on disk.
+    /// to as primary). Rows that share a streaming bundle with the active
+    /// primary are also protected:
+    /// - v3 + EOU primary protects the v2 + EOU row (shared EOU bundle).
+    /// - v3 + Nemotron primary (legacy, post-migration this should not be
+    ///   the active primary) protects the Nemotron-only row.
     private func canDelete(_ model: ParakeetModelID) -> Bool {
-        if holder.primaryModelID == .tdt_0_6b_v3_nemotron_streaming,
-           model == .nemotron_en {
+        if sharedStreamingBundleProtection(primary: holder.primaryModelID, target: model) {
             return false
         }
         if holder.primaryModelID != model { return true }
@@ -236,11 +237,23 @@ struct TranscriptionPane: View {
     }
 
     private func deleteDisabledHelp(for model: ParakeetModelID) -> String {
-        if holder.primaryModelID == .tdt_0_6b_v3_nemotron_streaming,
-           model == .nemotron_en {
+        if sharedStreamingBundleProtection(primary: holder.primaryModelID, target: model) {
             return "The primary model uses this live-preview bundle."
         }
         return "Install another model first; the primary cannot be removed."
+    }
+
+    private func sharedStreamingBundleProtection(
+        primary: ParakeetModelID,
+        target: ParakeetModelID
+    ) -> Bool {
+        switch (primary, target) {
+        case (.tdt_0_6b_v3_eou_streaming, .tdt_0_6b_v2_en_streaming),
+             (.tdt_0_6b_v3_nemotron_streaming, .nemotron_en):
+            return true
+        default:
+            return false
+        }
     }
 
     private func startDownload(_ model: ParakeetModelID) {
@@ -307,9 +320,20 @@ struct TranscriptionPane: View {
     }
 
     private func removeCacheForUserDelete(_ model: ParakeetModelID) {
-        if model == .tdt_0_6b_v3_nemotron_streaming {
+        // Composite primaries share their streaming bundle with another row:
+        // - v3 + Nemotron shares the Nemotron streaming bundle with the
+        //   Nemotron-only row.
+        // - v3 + EOU shares the EOU streaming bundle with the legacy v2+EOU row.
+        // When deleting one of these composite primaries, preserve the
+        // streaming side on disk so the sibling row keeps working.
+        switch model {
+        case .tdt_0_6b_v3_nemotron_streaming, .tdt_0_6b_v3_eou_streaming:
             ModelCache.shared.removeCache(for: model, removeBatch: true, removeStreaming: false)
-        } else {
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .nemotron_en:
             ModelCache.shared.removeCache(for: model)
         }
     }
@@ -332,8 +356,8 @@ struct TranscriptionPane: View {
         installed: Set<ParakeetModelID>
     ) -> ParakeetModelID? {
         let candidates = installed.subtracting([excluding])
-        if candidates.contains(.tdt_0_6b_v3_nemotron_streaming) {
-            return .tdt_0_6b_v3_nemotron_streaming
+        if candidates.contains(.tdt_0_6b_v3_eou_streaming) {
+            return .tdt_0_6b_v3_eou_streaming
         }
         return ParakeetModelID.visibleCases.first(where: { candidates.contains($0) })
     }

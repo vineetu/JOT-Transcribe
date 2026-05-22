@@ -70,7 +70,7 @@ actor StubAppleIntelligence: AppleIntelligenceClienting {
 
     func rewrite(
         selectedText: String,
-        instruction: String,
+        instruction: String?,
         branchPrompt: String
     ) async throws -> String {
         guard isAvailable else { throw LLMError.appleIntelligenceUnavailable }

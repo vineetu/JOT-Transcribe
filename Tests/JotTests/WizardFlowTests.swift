@@ -28,7 +28,7 @@ struct WizardFlowTests {
         #expect(outcome.stepsVisited.contains(.permissions))
         #expect(outcome.stepsVisited.contains(.model))
         #expect(outcome.stepsVisited.contains(.microphone))
-        #expect(outcome.stepsVisited.contains(.shortcuts))
+        // `.shortcuts` was merged into `.test` in v1.10's wizard refactor.
         #expect(outcome.stepsVisited.contains(.test))
         #expect(outcome.setupComplete == true)
     }

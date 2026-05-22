@@ -63,7 +63,8 @@ public actor Transcriber: Transcribing {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_nemotron_streaming:
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             break
         }
 
@@ -122,7 +123,8 @@ public actor Transcriber: Transcribing {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_nemotron_streaming:
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             guard let manager else { throw TranscriberError.modelNotLoaded }
             return try await transcribeWithAsrManager(samples, manager: manager)
 
@@ -158,14 +160,34 @@ public actor Transcriber: Transcribing {
             throw TranscriberError.fluidAudio(error)
         }
 
-        // Vocabulary boosting pass — best-effort. Any failure (rescorer
-        // not ready, CTC bundle missing, model throws) falls through to
-        // the raw TDT transcript so a broken rescorer can never regress
-        // the user-visible result. tokenTimings is required by the
-        // rescorer's public API; if FluidAudio ever returns nil here
-        // the rescorer is skipped.
+        // Vocabulary boosting pass — best-effort. Any failure falls
+        // through to the raw TDT transcript so a broken rescorer can
+        // never regress the user-visible result.
+        //
+        // Two paths today:
+        // - Japanese primary: alias-based substitution at the text
+        //   layer. FluidAudio doesn't expose a `CtcJaKeywordSpotter` or
+        //   token timings from `TdtJaManager.transcribe`, so the
+        //   English-style acoustic CTC rescoring isn't reproducible on
+        //   JA without an upstream change. See
+        //   `JapaneseVocabularySubstituter` for the trade.
+        // - Everything else (v3+EOU, v3+Nemotron legacy, v2+EOU,
+        //   Nemotron-only): acoustic CTC rescoring via FluidAudio.
+        //   Requires token timings from the primary; the rescorer
+        //   holder itself declines when the bundle isn't loaded
+        //   (e.g. Nemotron-only).
         var transcriptText = result.text
-        if let timings = result.tokenTimings {
+        if modelID == .tdt_0_6b_ja {
+            let snapshot: (enabled: Bool, terms: [VocabTerm]) = await MainActor.run {
+                (VocabularyStore.shared.isEnabled, VocabularyStore.shared.terms)
+            }
+            if snapshot.enabled, !snapshot.terms.isEmpty {
+                transcriptText = JapaneseVocabularySubstituter.substitute(
+                    transcript: transcriptText,
+                    terms: snapshot.terms
+                )
+            }
+        } else if let timings = result.tokenTimings {
             do {
                 if let rescored = try await VocabularyRescorerHolder.shared.rescore(
                     transcript: result.text,
@@ -263,7 +285,8 @@ public actor Transcriber: Transcribing {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_nemotron_streaming:
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             return manager != nil
         }
     }

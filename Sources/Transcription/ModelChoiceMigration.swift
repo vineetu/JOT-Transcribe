@@ -54,10 +54,16 @@ enum ModelChoiceMigration {
     /// download the newly selected post-migration model with visible progress.
     static let fourOptionDownloadPendingKey = "jot.modelChoice.fourOptionDownloadPending"
 
+    /// UserDefaults key marking that v1.12's EOU rename migration has run.
+    /// One-shot — once set, future launches do not re-rewrite the stored
+    /// default, so a user who manually picks `.tdt_0_6b_v3_nemotron_streaming`
+    /// after the migration (rollback scenario) is not forced back to EOU.
+    static let eouRenameMigratedKey = "jot.modelChoice.eouRenameMigrated"
+
     /// Collapse legacy persisted model choices into the current four-option
     /// picker. Fresh installs with no stored key land on the new default:
-    /// multilingual Parakeet v3 final transcript with Nemotron English
-    /// live preview.
+    /// multilingual Parakeet v3 final transcript with English EOU live
+    /// preview.
     ///
     /// - Returns: `true` when this call wrote `jot.defaultModelID`.
     @discardableResult
@@ -73,13 +79,16 @@ enum ModelChoiceMigration {
         let target: ParakeetModelID
         switch stored {
         case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, nil:
-            target = .tdt_0_6b_v3_nemotron_streaming
+            target = .tdt_0_6b_v3_eou_streaming
         case .tdt_0_6b_v2_en_streaming:
             target = .tdt_0_6b_v2_en_streaming
         case .tdt_0_6b_ja:
             target = .tdt_0_6b_ja
         case .tdt_0_6b_v3_nemotron_streaming:
-            target = .tdt_0_6b_v3_nemotron_streaming
+            // v1.12 collapses the retired pairing here too.
+            target = .tdt_0_6b_v3_eou_streaming
+        case .tdt_0_6b_v3_eou_streaming:
+            target = .tdt_0_6b_v3_eou_streaming
         case .nemotron_en:
             target = .nemotron_en
         }
@@ -88,6 +97,45 @@ enum ModelChoiceMigration {
             return false
         }
         defaults.set(target.rawValue, forKey: TranscriberHolder.defaultsKey)
+        defaults.set(true, forKey: fourOptionDownloadPendingKey)
+        return true
+    }
+
+    /// v1.12 EOU rename. Rewrites stored `jot.defaultModelID` value
+    /// `"tdt_0_6b_v3_nemotron_streaming"` to `"tdt_0_6b_v3_eou_streaming"`
+    /// on first launch of v1.12+.
+    ///
+    /// One-shot: records `eouRenameMigratedKey = true` after the first run.
+    /// Subsequent launches do not re-rewrite, so a user who manually selects
+    /// the legacy pairing (e.g. via a debug build or rollback) is left alone.
+    ///
+    /// Existing users mid-stream on `.tdt_0_6b_v3_nemotron_streaming` get
+    /// auto-moved to the new `.tdt_0_6b_v3_eou_streaming` primary. The new
+    /// primary shares the v3 batch cache on disk (no re-download of the batch
+    /// side); the EOU streaming bundle downloads on first use after the
+    /// rename, surfaced by the standard download UI path. The Nemotron
+    /// streaming bundle on disk is left in place — it may still be in use by
+    /// `.nemotron_en` if the user has that downloaded.
+    ///
+    /// - Returns: `true` when this call wrote `jot.defaultModelID`.
+    @discardableResult
+    static func runV12EouRenameIfNeeded(defaults: UserDefaults) -> Bool {
+        if defaults.bool(forKey: eouRenameMigratedKey) {
+            return false
+        }
+        defer { defaults.set(true, forKey: eouRenameMigratedKey) }
+
+        let stored = defaults.string(forKey: TranscriberHolder.defaultsKey)
+            .flatMap(ParakeetModelID.init(rawValue:))
+
+        guard stored == .tdt_0_6b_v3_nemotron_streaming else {
+            return false
+        }
+
+        let target: ParakeetModelID = .tdt_0_6b_v3_eou_streaming
+        defaults.set(target.rawValue, forKey: TranscriberHolder.defaultsKey)
+        // Mark a pending download so the standard download UI fetches the
+        // EOU streaming bundle (the v3 batch bundle is already cached).
         defaults.set(true, forKey: fourOptionDownloadPendingKey)
         return true
     }
@@ -133,7 +181,7 @@ enum ModelChoiceMigration {
     ///    and exit, leaving the user's choice intact (covers v1.7
     ///    pinned users, JA users, and post-v2.0 manual changes).
     /// 3. No explicit key → write the current default
-    ///    `tdt_0_6b_v3_nemotron_streaming`.
+    ///    `tdt_0_6b_v3_eou_streaming` (v1.12+).
     ///
     /// Persisting the classification is what prevents drift: a naive
     /// read-only fallback on `nil` would re-evaluate every launch and
@@ -154,7 +202,7 @@ enum ModelChoiceMigration {
         if defaults.string(forKey: TranscriberHolder.defaultsKey) != nil {
             return false
         }
-        let target: ParakeetModelID = .tdt_0_6b_v3_nemotron_streaming
+        let target: ParakeetModelID = .tdt_0_6b_v3_eou_streaming
         defaults.set(target.rawValue, forKey: TranscriberHolder.defaultsKey)
         return true
     }

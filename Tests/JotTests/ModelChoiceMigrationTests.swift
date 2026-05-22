@@ -166,7 +166,7 @@ struct ModelChoiceMigrationV20Tests {
         )
 
         #expect(wrote == true)
-        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
         #expect(defaults.bool(forKey: ModelChoiceMigration.v2DefaultStampedKey) == true)
     }
 
@@ -183,7 +183,7 @@ struct ModelChoiceMigrationV20Tests {
         )
 
         #expect(wrote == true)
-        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
         #expect(defaults.bool(forKey: ModelChoiceMigration.v2DefaultStampedKey) == true)
     }
 
@@ -218,7 +218,7 @@ struct ModelChoiceMigrationV20Tests {
         )
 
         #expect(wrote == true)
-        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
         #expect(defaults.bool(forKey: ModelChoiceMigration.v2DefaultStampedKey) == true)
     }
 
@@ -251,18 +251,18 @@ struct ModelChoiceMigrationV20Tests {
             installedModelIDs: [],
             recordingsDirectoryEmpty: true
         )
-        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
 
         // Second launch: recordings now exist (user dictated something),
         // but the marker prevents reclassification.
         let wrote = ModelChoiceMigration.runV20DefaultStampIfNeeded(
             defaults: defaults,
-            installedModelIDs: [.tdt_0_6b_v3_nemotron_streaming],
+            installedModelIDs: [.tdt_0_6b_v3_eou_streaming],
             recordingsDirectoryEmpty: false
         )
 
         #expect(wrote == false)
-        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
     }
 
     /// Soft-reset preservation (§11 R15) — when reset code preserves
@@ -300,7 +300,7 @@ struct ModelChoiceMigrationFourOptionTests {
 
     @Test func visibleCasesAreTheFourUserSelectableOptions() {
         let visible: [ParakeetModelID] = [
-            .tdt_0_6b_v3_nemotron_streaming,
+            .tdt_0_6b_v3_eou_streaming,
             .tdt_0_6b_ja,
             .tdt_0_6b_v2_en_streaming,
             .nemotron_en,
@@ -311,21 +311,25 @@ struct ModelChoiceMigrationFourOptionTests {
             #expect(id.isUserSelectable == visible.contains(id))
         }
         #expect(ParakeetModelID.tdt_0_6b_v2_en_streaming.isDeprecated == true)
+        // v3+Nemotron was demoted to migration-anchor (not user-selectable)
+        // in v1.12 but it is not classified as deprecated — deprecation is
+        // reserved for legacy options the user can still pick from the UI.
+        #expect(ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.isUserSelectable == false)
         #expect(ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.isDeprecated == false)
     }
 
-    @Test func freshInstallDefaultsToMultilingualNemotron() {
+    @Test func freshInstallDefaultsToV3EouStreaming() {
         let defaults = Self.freshDefaults()
 
         let wrote = ModelChoiceMigration.runFourOptionMigrationIfNeeded(defaults: defaults)
 
         #expect(wrote == true)
-        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
         #expect(defaults.bool(forKey: ModelChoiceMigration.fourOptionMigratedKey) == true)
         #expect(defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey) == true)
     }
 
-    @Test func legacyV3VariantsMapToMultilingualNemotron() {
+    @Test func legacyV3VariantsMapToV3EouStreaming() {
         for legacy in [ParakeetModelID.tdt_0_6b_v3, .tdt_0_6b_v3_int4] {
             let defaults = Self.freshDefaults()
             defaults.set(legacy.rawValue, forKey: TranscriberHolder.defaultsKey)
@@ -333,9 +337,20 @@ struct ModelChoiceMigrationFourOptionTests {
             let wrote = ModelChoiceMigration.runFourOptionMigrationIfNeeded(defaults: defaults)
 
             #expect(wrote == true)
-            #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue)
+            #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
             #expect(defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey) == true)
         }
+    }
+
+    @Test func legacyV3PlusNemotronMapsToV3EouStreaming() {
+        let defaults = Self.freshDefaults()
+        defaults.set(ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue, forKey: TranscriberHolder.defaultsKey)
+
+        let wrote = ModelChoiceMigration.runFourOptionMigrationIfNeeded(defaults: defaults)
+
+        #expect(wrote == true)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
+        #expect(defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey) == true)
     }
 
     @Test func legacyEouIsPreservedAsDeprecatedSelectableOption() {
@@ -349,11 +364,11 @@ struct ModelChoiceMigrationFourOptionTests {
         #expect(defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey) == false)
     }
 
-    @Test func japaneseAndNewCasesArePreserved() {
+    @Test func japaneseAndCurrentCasesArePreserved() {
         for current in [
             ParakeetModelID.tdt_0_6b_ja,
             .tdt_0_6b_v2_en_streaming,
-            .tdt_0_6b_v3_nemotron_streaming,
+            .tdt_0_6b_v3_eou_streaming,
             .nemotron_en,
         ] {
             let defaults = Self.freshDefaults()
@@ -365,5 +380,75 @@ struct ModelChoiceMigrationFourOptionTests {
             #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == current.rawValue)
             #expect(defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey) == false)
         }
+    }
+}
+
+@MainActor
+@Suite(.serialized)
+struct ModelChoiceMigrationEouRenameTests {
+
+    private static func freshDefaults() -> UserDefaults {
+        let name = "jot.tests.modelchoice.eou.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defaults.removePersistentDomain(forName: name)
+        return defaults
+    }
+
+    @Test func rewritesNemotronStreamingToEouStreaming() {
+        let defaults = Self.freshDefaults()
+        defaults.set(ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue, forKey: TranscriberHolder.defaultsKey)
+
+        let wrote = ModelChoiceMigration.runV12EouRenameIfNeeded(defaults: defaults)
+
+        #expect(wrote == true)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
+        #expect(defaults.bool(forKey: ModelChoiceMigration.eouRenameMigratedKey) == true)
+        #expect(defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey) == true)
+    }
+
+    @Test func leavesOtherCasesAlone() {
+        for unchanged in [
+            ParakeetModelID.tdt_0_6b_ja,
+            .tdt_0_6b_v2_en_streaming,
+            .tdt_0_6b_v3_eou_streaming,
+            .nemotron_en,
+        ] {
+            let defaults = Self.freshDefaults()
+            defaults.set(unchanged.rawValue, forKey: TranscriberHolder.defaultsKey)
+
+            let wrote = ModelChoiceMigration.runV12EouRenameIfNeeded(defaults: defaults)
+
+            #expect(wrote == false)
+            #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == unchanged.rawValue)
+            #expect(defaults.bool(forKey: ModelChoiceMigration.eouRenameMigratedKey) == true)
+        }
+    }
+
+    @Test func secondLaunchIsNoOp() {
+        let defaults = Self.freshDefaults()
+        defaults.set(ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue, forKey: TranscriberHolder.defaultsKey)
+
+        // First launch: rewrites the value and sets the marker.
+        _ = ModelChoiceMigration.runV12EouRenameIfNeeded(defaults: defaults)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue)
+
+        // Hypothetically the user manually flipped back to the legacy
+        // pairing (e.g. through a debug build). The migration must NOT
+        // rewrite again, because the marker is set.
+        defaults.set(ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue, forKey: TranscriberHolder.defaultsKey)
+        let wrote = ModelChoiceMigration.runV12EouRenameIfNeeded(defaults: defaults)
+
+        #expect(wrote == false)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == ParakeetModelID.tdt_0_6b_v3_nemotron_streaming.rawValue)
+    }
+
+    @Test func noStoredKeyIsNoOp() {
+        let defaults = Self.freshDefaults()
+
+        let wrote = ModelChoiceMigration.runV12EouRenameIfNeeded(defaults: defaults)
+
+        #expect(wrote == false)
+        #expect(defaults.string(forKey: TranscriberHolder.defaultsKey) == nil)
+        #expect(defaults.bool(forKey: ModelChoiceMigration.eouRenameMigratedKey) == true)
     }
 }

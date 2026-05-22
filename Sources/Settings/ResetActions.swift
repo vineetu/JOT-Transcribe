@@ -36,6 +36,8 @@ enum ResetActions {
                 && UserDefaults.standard.bool(forKey: ModelChoiceMigration.fourOptionMigratedKey)
             let preservedFourOptionDownloadPending: Bool = preserveModelChoice
                 && UserDefaults.standard.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey)
+            let preservedEouRenameMigrated: Bool = preserveModelChoice
+                && UserDefaults.standard.bool(forKey: ModelChoiceMigration.eouRenameMigratedKey)
 
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
             // Relaunch captures setupComplete=false, so single-or-chord migration stays gated off.
@@ -55,6 +57,9 @@ enum ResetActions {
                 }
                 if preservedFourOptionDownloadPending {
                     UserDefaults.standard.set(true, forKey: ModelChoiceMigration.fourOptionDownloadPendingKey)
+                }
+                if preservedEouRenameMigrated {
+                    UserDefaults.standard.set(true, forKey: ModelChoiceMigration.eouRenameMigratedKey)
                 }
             }
         }
