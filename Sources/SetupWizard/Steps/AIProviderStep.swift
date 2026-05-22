@@ -170,30 +170,7 @@ struct AIProviderStep: View {
     @ViewBuilder
     private var providerFields: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TextField(
-                "Base URL (leave empty for default)",
-                text: config.baseURLBinding(for: config.provider)
-            )
-            .textFieldStyle(.roundedBorder)
-            Text("Default: \(config.provider.defaultBaseURL)")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-
-            TextField(
-                "Model (leave empty for default)",
-                text: config.modelBinding(for: config.provider)
-            )
-            .textFieldStyle(.roundedBorder)
-            Text("Default: \(config.provider.defaultModel)")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-            if let catalogURL = config.provider.modelCatalogURL {
-                Link("Browse models →", destination: catalogURL)
-                    .font(.system(size: 11))
-            }
-
+            // API key first — without it, the picker can't probe.
             // Gate on the provider's own contract instead of an
             // explicit case list. `.flavor1` (when JOT_FLAVOR_1 is on)
             // authenticates via JWT — `requiresUserAPIKey` is false
@@ -216,6 +193,19 @@ struct AIProviderStep: View {
                         .font(.system(size: 11))
                 }
             }
+
+            // Unified model picker (v1.13): replaces the old freeform
+            // Model TextField + always-visible Base URL TextField with
+            // a combobox that auto-populates from the provider's
+            // /models endpoint. The Base URL field is now hidden
+            // inside the picker's "Use a custom endpoint" disclosure.
+            ProviderModelPicker(
+                provider: config.provider,
+                urlSession: coordinator.urlSession,
+                config: config,
+                justRanTestConnection: testStatus != .idle
+            )
+            .id(config.provider)  // Re-instantiate per provider so the AppStorage keys re-bind.
         }
     }
 

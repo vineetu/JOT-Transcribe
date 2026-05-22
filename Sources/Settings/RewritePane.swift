@@ -108,36 +108,26 @@ struct RewritePane: View {
                             }
                         }
                     } else if !isFlavor1Selected {
-                        HStack {
-                            TextField("Base URL (leave empty for default)", text: config.baseURLBinding(for: config.provider))
-                                .textFieldStyle(.roundedBorder)
-                                .multilineTextAlignment(.leading)
-                            InfoPopoverButton(
-                                title: "Base URL",
-                                body: "Optional override for the provider's API endpoint. Leave empty to use the provider default. Handy for OpenAI-compatible proxies or self-hosted endpoints.",
-                                helpAnchor: "ai-custom-base-url"
+                        // Unified model picker (v1.13). Replaces the
+                        // freeform Model TextField + always-visible
+                        // Base URL TextField. The picker hides the
+                        // base URL behind a `Use a custom endpoint`
+                        // disclosure (auto-expanded if non-default)
+                        // and auto-populates the model combobox from
+                        // the provider's /models endpoint.
+                        HStack(alignment: .firstTextBaseline) {
+                            ProviderModelPicker(
+                                provider: config.provider,
+                                urlSession: urlSession,
+                                config: config,
+                                justRanTestConnection: testStatus != .idle
                             )
-                        }
-                        Text("Default: \(config.provider.defaultBaseURL)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        HStack {
-                            TextField("Model (leave empty for default)", text: config.modelBinding(for: config.provider))
-                                .textFieldStyle(.roundedBorder)
+                            .id(config.provider)  // Re-instantiate per provider so the AppStorage keys re-bind.
                             InfoPopoverButton(
                                 title: "Model",
-                                body: "Which model the provider should route requests to. Leave empty to use the provider default. Use this to opt into newer or cheaper variants your account supports.",
+                                body: "Which model the provider should route requests to. Pick from the auto-detected list, or type a model id to use one we filtered out (e.g. a reasoning model or a snapshot build).",
                                 helpAnchor: "ai-cloud-providers"
                             )
-                        }
-                        Text("Default: \(config.provider.defaultModel)")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        if let catalogURL = config.provider.modelCatalogURL {
-                            Link("Browse models →", destination: catalogURL)
-                                .font(.system(size: 11))
                         }
                     }
                 }
