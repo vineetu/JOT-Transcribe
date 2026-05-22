@@ -16,6 +16,10 @@ struct GeneralPane: View {
     /// `AudioCapture.start()` opportunistically backfills).
     @AppStorage("jot.inputDeviceLastName") private var inputDeviceLastName: String = ""
     @AppStorage("jot.retentionDays") private var retentionDays: Int = 7
+    /// "Show Jot in the Dock" — read once at launch in `AppDelegate` via
+    /// `dockActivationPolicy(setupComplete:storedShowInDock:)`. Toggling
+    /// here writes the value; the change takes effect on next launch.
+    @AppStorage("jot.dock.show") private var showInDock: Bool = true
 
     // Injected at the root scene in `JotApp.swift` so the "Run Setup Wizard…"
     // button can forward the shared TranscriberHolder into the wizard.
@@ -117,6 +121,28 @@ struct GeneralPane: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.red)
                 }
+
+                // "Show Jot in the Dock" — applies on next launch. The
+                // activation-policy gate in `AppDelegate.applicationDidFinishLaunching`
+                // reads `jot.dock.show` once; toggling mid-session does
+                // not flip between `.regular` / `.accessory` because the
+                // live switch has documented edge cases (window hide on
+                // `.accessory`, app-menu reattach quirks). See
+                // `docs/plans/hide-dock-icon.md`.
+                HStack {
+                    Toggle("Show Jot in the Dock", isOn: $showInDock)
+                        .help("When off, Jot lives only in the menu bar. Cmd+Tab won't show it. Applies on next launch.")
+                    Spacer()
+                    InfoPopoverButton(
+                        title: "Show Jot in the Dock",
+                        body: "When on (default), Jot appears in the Dock and Cmd+Tab. When off, Jot lives only in the menu bar — Cmd+Tab won't show it, and the app menu at the top of the screen is hidden. The menu-bar icon, global hotkeys, and Force Quit (⌥⌘⎋) keep working either way. Changes take effect the next time Jot launches.",
+                        helpAnchor: "hide-from-dock"
+                    )
+                }
+                Text("Changes take effect when Jot next launches. When off, Jot lives only in the menu bar; Cmd+Tab won't show it. Force Quit still works.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
 
             Section {

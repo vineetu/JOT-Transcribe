@@ -171,6 +171,20 @@ enum AdvancedContent {
                     + "prefer clicking the dock icon to show the window."
             ),
             AdvancedCardData(
+                id: "hide-from-dock",
+                title: "Hide from Dock",
+                badge: "on/off",
+                body: "Run Jot as a menu-bar-only app. No Dock icon, no Cmd+Tab entry.",
+                expansionProse:
+                    "Toggle Settings → General → \"Show Jot in the Dock\" off and Jot becomes "
+                    + "menu-bar-only on the next launch — no Dock icon, no Cmd+Tab entry, no app "
+                    + "menu at the top of the screen. The menu-bar icon, global hotkeys, recording "
+                    + "pill, and Force Quit (⌥⌘⎋) all keep working. The change applies on next launch, "
+                    + "not live, to avoid documented edge cases with mid-session activation-policy "
+                    + "switches (windows briefly hiding, app menu not reattaching cleanly). Turn the "
+                    + "toggle back on and relaunch to restore the Dock icon."
+            ),
+            AdvancedCardData(
                 id: "sys-reset-scopes",
                 title: "Reset scopes",
                 badge: "3 levels",
