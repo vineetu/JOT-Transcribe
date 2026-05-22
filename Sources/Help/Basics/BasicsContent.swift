@@ -98,6 +98,7 @@ enum HeroIllustrationKind {
     case dictation
     case cleanup
     case rewrite
+    case prompts
 }
 
 // MARK: - HelpSearchable conformance
@@ -337,7 +338,7 @@ struct BasicsContent {
             title: "Prompts",
             subtitle: "Optional. Pick a prompt from a library of 30+ instructions, apply it to selected text. Rewrite is the default prompt.",
             isOptional: true,
-            illustrationKind: .rewrite,
+            illustrationKind: .prompts,
             subRows: [
                 SubRow(
                     id: "prompt-library",
