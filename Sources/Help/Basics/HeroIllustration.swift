@@ -32,6 +32,7 @@ struct HeroIllustration: View {
                 case .dictation:   DictationArt(phase: phase)
                 case .cleanup:     CleanupArt(phase: phase)
                 case .rewrite:     RewriteArt(phase: phase)
+                case .prompts:     PromptsArt(phase: phase)
                 }
             }
             .padding(.horizontal, 20)
@@ -60,6 +61,7 @@ struct HeroIllustration: View {
         case .dictation:  return "Illustration: microphone to waveform to transcribed text."
         case .cleanup:    return "Illustration: messy transcript cleaned up into polished text."
         case .rewrite:    return "Illustration: selected text rewritten with a voice instruction."
+        case .prompts:    return "Illustration: a prompt picker panel listing built-in and custom prompts; the user picks one and it applies to selected text."
         }
     }
 }
@@ -73,7 +75,10 @@ struct HeroIllustration: View {
 /// Never clamps opacity below a floor externally — callers that want the
 /// "never below 0.2" rule from redesign §4 must apply their own floor via
 /// `max(0.2, ...)`.
-private func keyframe(
+///
+/// Module-internal (not `private`) so illustration siblings in
+/// `Sources/Help/Basics/Illustrations/` can reuse the same easing curve.
+func heroKeyframe(
     phase: Double,
     start: Double,
     end: Double,
@@ -105,8 +110,8 @@ private struct DictationArt: View {
         HStack(alignment: .center, spacing: 14) {
 
             // Mic: grows & fills over [0.0, 0.3]; stays on afterward.
-            let micOpacity = max(0.35, keyframe(phase: phase, start: 0.0, end: 0.3, from: 0.35, to: 1.0))
-            let micScale = keyframe(phase: phase, start: 0.0, end: 0.3, from: 0.9, to: 1.0)
+            let micOpacity = max(0.35, heroKeyframe(phase: phase, start: 0.0, end: 0.3, from: 0.35, to: 1.0))
+            let micScale = heroKeyframe(phase: phase, start: 0.0, end: 0.3, from: 0.9, to: 1.0)
             Image(systemName: "mic.fill")
                 .font(.system(size: 26))
                 .foregroundStyle(phase < 0.3 ? Color.accentColor.opacity(micOpacity) : Color.accentColor)
@@ -117,15 +122,15 @@ private struct DictationArt: View {
             // Waveform: visible during [0.25, 0.75] roughly.
             let waveVisibility = max(
                 0.2,
-                keyframe(phase: phase, start: 0.2, end: 0.35, from: 0.2, to: 1.0)
-                * keyframe(phase: phase, start: 0.7, end: 0.85, from: 1.0, to: 0.2)
+                heroKeyframe(phase: phase, start: 0.2, end: 0.35, from: 0.2, to: 1.0)
+                * heroKeyframe(phase: phase, start: 0.7, end: 0.85, from: 1.0, to: 0.2)
             )
             Waveform7Bar(phase: phase)
                 .opacity(waveVisibility)
                 .frame(width: 90)
 
             // Text bubble: fades in during [0.7, 1.0].
-            let bubbleOpacity = max(0.2, keyframe(phase: phase, start: 0.65, end: 0.95, from: 0.0, to: 1.0))
+            let bubbleOpacity = max(0.2, heroKeyframe(phase: phase, start: 0.65, end: 0.95, from: 0.0, to: 1.0))
             TranscriptBubble(phase: phase, text: "Hello world")
                 .opacity(bubbleOpacity)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -200,10 +205,10 @@ private struct CleanupArt: View {
     let phase: Double
 
     var body: some View {
-        let messyOpacity = max(0.2, keyframe(phase: phase, start: 0.4, end: 0.7, from: 1.0, to: 0.35))
-        let messyOffsetX = keyframe(phase: phase, start: 0.4, end: 0.7, from: 0.0, to: -10.0)
-        let cleanOpacity = max(0.2, keyframe(phase: phase, start: 0.4, end: 0.7, from: 0.2, to: 1.0))
-        let cleanOffsetX = keyframe(phase: phase, start: 0.4, end: 0.7, from: 24.0, to: 0.0)
+        let messyOpacity = max(0.2, heroKeyframe(phase: phase, start: 0.4, end: 0.7, from: 1.0, to: 0.35))
+        let messyOffsetX = heroKeyframe(phase: phase, start: 0.4, end: 0.7, from: 0.0, to: -10.0)
+        let cleanOpacity = max(0.2, heroKeyframe(phase: phase, start: 0.4, end: 0.7, from: 0.2, to: 1.0))
+        let cleanOffsetX = heroKeyframe(phase: phase, start: 0.4, end: 0.7, from: 24.0, to: 0.0)
 
         HStack(alignment: .center, spacing: 16) {
             // Messy bubble
@@ -272,14 +277,14 @@ private struct RewriteArt: View {
     let phase: Double
 
     var body: some View {
-        let beforeOpacity = max(0.2, keyframe(phase: phase, start: 0.5, end: 0.8, from: 1.0, to: 0.3))
+        let beforeOpacity = max(0.2, heroKeyframe(phase: phase, start: 0.5, end: 0.8, from: 1.0, to: 0.3))
         let instructionOpacity = max(
             0.0,
-            keyframe(phase: phase, start: 0.28, end: 0.45, from: 0.0, to: 1.0)
-            * keyframe(phase: phase, start: 0.7, end: 0.85, from: 1.0, to: 0.4)
+            heroKeyframe(phase: phase, start: 0.28, end: 0.45, from: 0.0, to: 1.0)
+            * heroKeyframe(phase: phase, start: 0.7, end: 0.85, from: 1.0, to: 0.4)
         )
-        let instructionOffsetY = keyframe(phase: phase, start: 0.28, end: 0.45, from: -14.0, to: 0.0)
-        let afterOpacity = max(0.0, keyframe(phase: phase, start: 0.55, end: 0.85, from: 0.0, to: 1.0))
+        let instructionOffsetY = heroKeyframe(phase: phase, start: 0.28, end: 0.45, from: -14.0, to: 0.0)
+        let afterOpacity = max(0.0, heroKeyframe(phase: phase, start: 0.55, end: 0.85, from: 0.0, to: 1.0))
 
         VStack(alignment: .leading, spacing: 6) {
             // Instruction bubble (appears above the text pair)
