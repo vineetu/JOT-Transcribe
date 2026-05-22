@@ -73,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         #if DEBUG
         HelpInfraTests.runAll()
         ChatbotVoiceInputTests.runAll()
+        ShortcutsTests.runAll()
         #endif
 
         ResetActions.processPendingHardReset()
