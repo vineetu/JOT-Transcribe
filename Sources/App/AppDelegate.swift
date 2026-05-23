@@ -10,6 +10,37 @@ import os.log
 /// ⌘Q. Previously `.accessory` with `LSUIElement = true`, which hid the
 /// app from every AppKit surface — unfriendly when the app ever wedged,
 /// since users couldn't Force Quit it through normal channels.
+///
+/// The "Show Jot in the Dock" preference (`jot.dock.show`, default true)
+/// lets the user opt back into `.accessory` for a menu-bar-only Jot. The
+/// decision is made once at `applicationDidFinishLaunching` via
+/// `dockActivationPolicy(setupComplete:storedShowInDock:)` — no
+/// mid-session policy juggling. While the Setup Wizard is still pending
+/// (`FirstRunState.shared.setupComplete == false`), we force `.regular`
+/// regardless so the wizard always has a Dock icon during the macOS
+/// Settings round-trip for permission grants.
+
+/// Pure decision function for the macOS activation policy at launch.
+///
+/// - Parameters:
+///   - setupComplete: `FirstRunState.shared.setupComplete` at launch.
+///     When `false`, we force `.regular` so the Setup Wizard window has
+///     a Dock icon during permission grant flows.
+///   - storedShowInDock: The user's `jot.dock.show` preference, or `nil`
+///     if no value has been written yet (default behavior: show in Dock).
+/// - Returns: The `NSApplication.ActivationPolicy` to apply at launch.
+///
+/// Pulled out as a free function so DEBUG tests can exercise the matrix
+/// without launching the app or touching `NSApplication`.
+func dockActivationPolicy(
+    setupComplete: Bool,
+    storedShowInDock: Bool?
+) -> NSApplication.ActivationPolicy {
+    let forceRegular = !setupComplete
+    let showInDock = forceRegular || (storedShowInDock ?? true)
+    return showInDock ? .regular : .accessory
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private let log = Logger(subsystem: "com.jot.Jot", category: "AppDelegate")
@@ -60,7 +91,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let wasSetupCompleteAtLaunch = FirstRunState.shared.setupComplete
-        NSApp.setActivationPolicy(.regular)
+        // Read the "Show Jot in the Dock" preference once at launch. The
+        // gate forces `.regular` while the Setup Wizard is pending so
+        // permission round-trips through System Settings keep a Dock
+        // icon to come back to. After setup completes, subsequent
+        // launches honor the user's stored toggle.
+        let storedShowInDock = UserDefaults.standard.object(forKey: "jot.dock.show") as? Bool
+        let policy = dockActivationPolicy(
+            setupComplete: wasSetupCompleteAtLaunch,
+            storedShowInDock: storedShowInDock
+        )
+        NSApp.setActivationPolicy(policy)
         log.info("Jot launched")
 
         // Hotfix: ensure Jot appears in System Settings → Privacy → Microphone
@@ -74,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         HelpInfraTests.runAll()
         ChatbotVoiceInputTests.runAll()
         ShortcutsTests.runAll()
+        DockActivationPolicyTests.runAll()
         #endif
 
         ResetActions.processPendingHardReset()
