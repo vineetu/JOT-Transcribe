@@ -102,29 +102,38 @@ struct SpeakerLabelsEnrollmentSheet: View {
             }
             .frame(maxHeight: 180)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 switch recorder.state {
                 case .idle, .failed, .stopped:
+                    // Red bordered-prominent via `.tint(.red)` so the
+                    // background AND foreground render with system-managed
+                    // contrast — fixes the v0 blue-background-red-icon clash.
                     Button {
                         recorder.start()
                     } label: {
                         Label("Start recording", systemImage: "record.circle.fill")
-                            .foregroundStyle(.red)
+                            .padding(.horizontal, 4)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .controlSize(.large)
                 case .recording:
                     Button {
                         finalizeRecording()
                     } label: {
                         Label("Done", systemImage: "stop.fill")
+                            .padding(.horizontal, 4)
                     }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     Text(String(format: "%.1f s", recorder.elapsedSeconds))
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
                 Spacer()
             }
+            .padding(.vertical, 4)
 
             if case .failed(let message) = recorder.state {
                 Text(message)
