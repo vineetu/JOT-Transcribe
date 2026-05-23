@@ -248,6 +248,7 @@ struct JotAppWindow: View {
                                     hotkeyRouter: hotkeyRouter
                                 )
             case .transcription: TranscriptionPane()
+            case .speakerLabels: SpeakerLabelsPane()
             case .vocabulary:    VocabularyPane()
             case .prompts:       PromptsPane(
                                     urlSession: urlSession,
