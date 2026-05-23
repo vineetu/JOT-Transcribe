@@ -219,10 +219,11 @@ extension Feature {
         features.append(advancedCard(id: "ai-prompt-library", title: "Prompt library"))
         features.append(advancedCard(id: "ai-test-connection", title: "Test Connection"))
 
-        // System (4)
+        // System (5)
         features.append(advancedCard(id: "sys-launch-at-login", title: "Launch at login"))
         features.append(advancedCard(id: "sys-retention", title: "Retention"))
         features.append(advancedCard(id: "sys-hide-to-tray", title: "Hide to tray"))
+        features.append(advancedCard(id: "hide-from-dock", title: "Hide from Dock"))
         features.append(advancedCard(id: "sys-reset-scopes", title: "Reset scopes"))
 
         // Input (4). `input-vocabulary` is a catalog alias of `custom-vocabulary`
@@ -409,7 +410,7 @@ extension Feature {
         "ai-custom-base-url", "ai-editable-prompts", "ai-prompt-library",
         "ai-test-connection",
         "sys-launch-at-login", "sys-retention", "sys-hide-to-tray",
-        "sys-reset-scopes",
+        "hide-from-dock", "sys-reset-scopes",
         "input-device", "input-vocabulary", "input-bluetooth",
         "input-silent-capture",
         "sound-recording-chimes", "sound-transcription-complete",

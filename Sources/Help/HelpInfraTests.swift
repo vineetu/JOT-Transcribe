@@ -421,6 +421,7 @@ enum InfoCircleAnchorRegistry {
     static let entries: [(label: String, anchor: String)] = [
         // GeneralPane
         ("GeneralPane.launchAtLogin",          "sys-launch-at-login"),
+        ("GeneralPane.showInDock",             "hide-from-dock"),
         ("GeneralPane.restartJot",             "hotkey-stopped-working"),
         ("GeneralPane.runSetupWizardAgain",    "resetting-jot"),
         // GeneralPane.donationReminder has helpAnchor: nil
