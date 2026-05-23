@@ -46,34 +46,31 @@ struct ShortcutSingleKeyChip: View {
 
     @ViewBuilder
     private var chipLabel: some View {
-        HStack(spacing: 4) {
-            if selection == .none {
-                Text("Not set")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-            } else if !selection.glyph.isEmpty {
-                Text(selection.glyph)
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-            } else {
-                Text(selection.displayName)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 5)
-                .fill(Color.secondary.opacity(0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 5)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
+        // Always show the full human-readable display name ("Caps Lock",
+        // "Fn / Globe", "Right Option (⌥)" …) — never just the glyph in
+        // isolation. The chord chip on adjacent rows is a full
+        // `KeyboardShortcuts.Recorder` text-field; making this chip the
+        // same physical size keeps the right column visually consistent
+        // across rows regardless of which trigger mode is active.
+        Text(displayText)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(selection == .none ? .secondary : .primary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .frame(minWidth: 130, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.secondary.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            )
+    }
+
+    private var displayText: String {
+        selection == .none ? "Not set" : selection.displayName
     }
 }
