@@ -41,6 +41,11 @@ struct AppSidebar: View {
                     systemImage: "waveform.badge.mic",
                     tag: .settings(.transcription)
                 )
+                subRow(
+                    title: "Speaker labels",
+                    systemImage: "person.wave.2",
+                    tag: .settings(.speakerLabels)
+                )
                 // Vocabulary boost is incompatible with the JA-tokenized
                 // primary model (`docs/plans/japanese-support.md` §C):
                 // hide the entry while JA is primary so users don't add
