@@ -52,14 +52,17 @@ struct ShortcutSingleKeyChip: View {
         // `KeyboardShortcuts.Recorder` text-field; making this chip the
         // same physical size keeps the right column visually consistent
         // across rows regardless of which trigger mode is active.
+        // Sized to match KeyboardShortcuts.Recorder's NSView intrinsics —
+        // `minimumWidth = 130, height = 24` per RecorderCocoa.swift:30,93.
+        // Locking both dimensions keeps the right column visually aligned
+        // whether a row is in chord mode or single-key mode.
         Text(displayText)
             .font(.system(size: 12, weight: .medium))
             .foregroundStyle(selection == .none ? .secondary : .primary)
             .lineLimit(1)
             .truncationMode(.tail)
             .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .frame(minWidth: 130, alignment: .leading)
+            .frame(minWidth: 130, minHeight: 24, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 5)
                     .fill(Color.secondary.opacity(0.12))
