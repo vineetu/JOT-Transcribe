@@ -183,6 +183,14 @@ struct AppServices {
     /// soon as `build()` returns and holding Rewrite would silently
     /// no-op (Codex review, 2026-05-17).
     let promptPicker: PromptPickerController
+    /// Speaker Labels piece A: lifecycle owner for the Sortformer model.
+    /// `.notSetUp` for existing users on update; transitions are driven
+    /// by Settings → Speaker Labels.
+    let sortformerHolder: SortformerHolder
+    /// Speaker Labels piece A: SwiftData-backed identity list + writer.
+    /// Held strongly so SwiftUI surfaces (`SpeakerLabelsPane`) can observe
+    /// via `@EnvironmentObject` without holding their own context handle.
+    let enrolledIdentitiesStore: EnrolledIdentitiesStore
 }
 
 extension AppServices {
@@ -420,7 +428,7 @@ enum JotComposition {
             do {
                 let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
                     configurations: memoryConfig
                 )
             } catch {
@@ -430,14 +438,14 @@ enum JotComposition {
             do {
                 let config = ModelConfiguration(url: newURL)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
                     configurations: config
                 )
             } catch {
                 do {
                     let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                     modelContainer = try ModelContainer(
-                        for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self,
+                        for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
                         configurations: memoryConfig
                     )
                 } catch {
@@ -571,10 +579,20 @@ enum JotComposition {
             promptPicker?.open()
         }
 
+        // Speaker Labels piece A: lifecycle for the Sortformer diarization
+        // model. Defaults to `.notSetUp` on existing installs — the
+        // Settings pane CTA + post-stop labeling are gated on identities
+        // being enrolled and the master toggle being ON.
+        let sortformerHolder = SortformerHolder()
+        let enrolledIdentitiesStore = EnrolledIdentitiesStore(
+            context: modelContainer.mainContext
+        )
+
         let recordingPersister = RecordingPersister(
             recorder: recorder,
             context: modelContainer.mainContext,
-            transcriberHolder: transcriberHolder
+            transcriberHolder: transcriberHolder,
+            sortformerHolder: sortformerHolder
         )
 
         let retention = RetentionService(context: modelContainer.mainContext)
@@ -604,7 +622,9 @@ enum JotComposition {
             updaterController: updaterController,
             modelContainer: modelContainer,
             promptStore: promptStore,
-            promptPicker: promptPicker
+            promptPicker: promptPicker,
+            sortformerHolder: sortformerHolder,
+            enrolledIdentitiesStore: enrolledIdentitiesStore
         )
     }
 }

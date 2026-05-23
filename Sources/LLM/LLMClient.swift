@@ -77,7 +77,7 @@ actor LLMClient {
         //    classifier-routed branch tendency. The user's voice
         //    instruction is the primary signal; the prompt is thin
         //    scaffolding.
-        let systemPrompt: String
+        var systemPrompt: String
         if let override = systemPromptOverride, !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             systemPrompt = override
         } else if instruction == nil {
@@ -95,6 +95,14 @@ actor LLMClient {
 
                 \(RewriteBranchPrompt.prompt(for: branch))
                 """
+        }
+
+        // Speaker Labels piece A: when the selection itself carries
+        // `Name:` prefixes (i.e. the user selected a multi-speaker chunk
+        // from a labeled transcript), append the label-preservation rule
+        // so the rewrite keeps the labels intact. See Decision #16.
+        if SpeakerLabelDetector.looksLabeled(selectedText) {
+            systemPrompt += "\n\n" + RewritePrompt.speakerLabelRule
         }
 
         // On-device Apple Intelligence short-circuits the HTTP path entirely.
@@ -752,6 +760,12 @@ actor LLMClient {
             return transcript
         }
 
+        // Speaker Labels piece A: detect a labeled multi-speaker transcript
+        // so we can append the label-preservation rule. Heuristic in
+        // SpeakerLabelDetector — conservative enough that single-line
+        // "Note: …" dictation does not trip it.
+        let inputIsLabeled = SpeakerLabelDetector.looksLabeled(transcript)
+
         let config = await MainActor.run { [llmConfiguration] in
             let c = llmConfiguration
             let p = c.provider
@@ -761,9 +775,15 @@ actor LLMClient {
             let sanitizedTransformPrompt = CleanupPromptHardening.stripControlCharacters(
                 from: c.transformPrompt
             )
-            let systemPrompt = p == .appleIntelligence
+            var systemPrompt = p == .appleIntelligence
                 ? sanitizedTransformPrompt
                 : sanitizedTransformPrompt + "\n\n" + TransformPrompt.homophoneRule
+            // Speaker Labels piece A: append the label-preservation rule
+            // when the input carries `Name:` prefixes. Applies on both
+            // Apple Intelligence and cloud providers (Decision #16).
+            if inputIsLabeled {
+                systemPrompt += "\n\n" + TransformPrompt.speakerLabelRule
+            }
             let hardenedSystemPrompt =
                 CleanupPromptHardening.immutablePreamble
                 + CleanupPromptHardening.preferencesHeader

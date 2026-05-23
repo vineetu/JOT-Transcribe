@@ -2,9 +2,11 @@ import SwiftUI
 
 struct TranscriptionPane: View {
     @EnvironmentObject private var holder: TranscriberHolder
+    @EnvironmentObject private var identitiesStore: EnrolledIdentitiesStore
     @AppStorage("jot.autoPaste") private var autoPaste: Bool = true
     @AppStorage("jot.autoPressEnter") private var autoPressEnter: Bool = false
     @AppStorage("jot.preserveClipboard") private var preserveClipboard: Bool = true
+    @AppStorage("jot.speakerLabels.enabled") private var speakerLabelsEnabled: Bool = true
 
     @Environment(\.setSidebarSelection) private var setSidebarSelection
 
@@ -31,6 +33,8 @@ struct TranscriptionPane: View {
             } footer: {
                 Text("Each model is downloaded once and runs on the Apple Neural Engine. Multiple models can be installed; only the primary is hot in memory.")
             }
+
+            speakerLabelsCard
 
             Section {
                 HStack {
@@ -102,6 +106,55 @@ struct TranscriptionPane: View {
         }
         .formStyle(.grouped)
         .onAppear { holder.refreshInstalled() }
+    }
+
+    @ViewBuilder
+    private var speakerLabelsCard: some View {
+        Section {
+            Button {
+                setSidebarSelection(.settings(.speakerLabels))
+            } label: {
+                HStack {
+                    Image(systemName: "person.wave.2")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.tint)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Speaker labels")
+                            .font(.system(size: 13, weight: .medium))
+                        Text(speakerLabelsCardSubtitle)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(speakerLabelsCardActionLabel)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.tint)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var speakerLabelsCardSubtitle: String {
+        if !identitiesStore.hasIdentities {
+            return "Not set up — label who said what in meeting recordings."
+        }
+        let voiceCount = identitiesStore.identities.count
+        let voicesText = voiceCount == 1 ? "1 voice" : "\(voiceCount) voices"
+        if speakerLabelsEnabled && SortformerHardwareGate.isSupported {
+            return "On (\(voicesText))"
+        } else {
+            return "Off (\(voicesText))"
+        }
+    }
+
+    private var speakerLabelsCardActionLabel: String {
+        identitiesStore.hasIdentities ? "Manage" : "Set up"
     }
 
     @ViewBuilder
