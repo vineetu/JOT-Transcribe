@@ -116,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         ChatbotVoiceInputTests.runAll()
         ShortcutsTests.runAll()
         DockActivationPolicyTests.runAll()
+        SpeakerLabelsTests.runAll()
         #endif
 
         ResetActions.processPendingHardReset()
@@ -241,6 +242,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Retention cleanup: purge on launch, hourly thereafter. Respects
         // `jot.retentionDays` (0 = keep forever).
         services.retention.start()
+
+        // Speaker Labels piece A — warmup. Loads Sortformer + replays
+        // enrolled clips so slot↔name bindings are live before the first
+        // recording. Skipped when: model isn't downloaded yet (a fresh
+        // install or pre-feature user); no identities enrolled; master
+        // toggle is OFF; hardware is below the 16 GB gate.
+        //
+        // Per plan Risk #1 the wall-clock cost (replays N ~30 s clips
+        // through `enrollSpeaker(withAudio:)`) is empirically unknown.
+        // Detached `Task` keeps it off the launch critical path; the
+        // first recording after launch may briefly run without labels
+        // if warmup hasn't completed.
+        let speakerLabelsMasterOn = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
+        if speakerLabelsMasterOn,
+           SortformerHardwareGate.isSupported,
+           services.sortformerHolder.state == .offHaveModel {
+            let clips = services.enrolledIdentitiesStore.clipsForWarmup()
+            if !clips.isEmpty {
+                Task { @MainActor [weak holder = services.sortformerHolder] in
+                    await holder?.loadIfNeeded(clips: clips)
+                }
+            }
+        }
     }
 
     private func presentSetupWizardIfNeeded(

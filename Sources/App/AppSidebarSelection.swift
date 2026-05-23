@@ -27,6 +27,10 @@ public enum SettingsSubsection: Hashable {
     case sound
     case ai
     case shortcuts
+    /// Speaker Labels piece A: identifies the device-owner voice and labels
+    /// other speakers in meeting recordings. Placed between Transcription
+    /// and Vocabulary in the sidebar.
+    case speakerLabels
 }
 
 // MARK: - Environment key for programmatic selection changes
