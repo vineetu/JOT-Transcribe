@@ -420,7 +420,7 @@ enum JotComposition {
             do {
                 let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
                     configurations: memoryConfig
                 )
             } catch {
@@ -430,14 +430,14 @@ enum JotComposition {
             do {
                 let config = ModelConfiguration(url: newURL)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
                     configurations: config
                 )
             } catch {
                 do {
                     let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                     modelContainer = try ModelContainer(
-                        for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self,
+                        for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
                         configurations: memoryConfig
                     )
                 } catch {

@@ -19,6 +19,14 @@ final class Recording {
     var audioFileName: String
     var modelIdentifier: String
 
+    /// Speaker Labels piece A: JSON-encoded array of
+    /// `{speakerID, startSec, endSec, text}` segments. Populated only when
+    /// Speaker Labels were on at recording time AND Sortformer detected
+    /// more than one speaker (Decision #13's solo-recording detect-and-skip
+    /// — solo recordings keep this `nil` and remain indistinguishable from
+    /// pre-feature recordings).
+    var speakerTimeline: Data?
+
     init(
         id: UUID = UUID(),
         createdAt: Date = .now,
@@ -27,7 +35,8 @@ final class Recording {
         transcript: String,
         rawTranscript: String,
         audioFileName: String,
-        modelIdentifier: String
+        modelIdentifier: String,
+        speakerTimeline: Data? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -37,6 +46,7 @@ final class Recording {
         self.rawTranscript = rawTranscript
         self.audioFileName = audioFileName
         self.modelIdentifier = modelIdentifier
+        self.speakerTimeline = speakerTimeline
     }
 }
 
