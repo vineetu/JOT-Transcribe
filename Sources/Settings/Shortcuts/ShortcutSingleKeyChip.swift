@@ -41,7 +41,6 @@ struct ShortcutSingleKeyChip: View {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
     }
 
     @ViewBuilder
@@ -61,8 +60,8 @@ struct ShortcutSingleKeyChip: View {
             .foregroundStyle(selection == .none ? .secondary : .primary)
             .lineLimit(1)
             .truncationMode(.tail)
-            .padding(.horizontal, 10)
-            .frame(minWidth: 130, minHeight: 24, alignment: .leading)
+            .padding(.horizontal, 12)
+            .frame(width: ShortcutChipSize.width, height: ShortcutChipSize.height, alignment: .center)
             .background(
                 RoundedRectangle(cornerRadius: 5)
                     .fill(Color.secondary.opacity(0.12))

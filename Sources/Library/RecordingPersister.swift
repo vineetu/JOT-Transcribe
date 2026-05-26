@@ -81,6 +81,9 @@ final class RecordingPersister {
         // toggle is on, and we're on supported hardware. Failures are
         // silent: the recording stays as a plain transcript, indistinguishable
         // from a pre-feature recording.
+        let _stateDesc: String = sortformerHolder.map { "\($0.state)" } ?? "no-holder"
+        let _diarDesc: String = sortformerHolder?.currentDiarizer() == nil ? "nil" : "present"
+        SortformerDiag.log("RecordingPersister.persist state=\(_stateDesc) diarizer=\(_diarDesc) duration=\(audio.duration)s samples=\(audio.samples.count)")
         if let sortformerHolder, sortformerHolder.state == .loaded,
            let diarizer = sortformerHolder.currentDiarizer() {
             let samples = audio.samples

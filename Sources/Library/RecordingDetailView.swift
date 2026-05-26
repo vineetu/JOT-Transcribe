@@ -11,6 +11,7 @@ struct RecordingDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
+    @EnvironmentObject private var sortformerHolder: SortformerHolder
     @Bindable var recording: Recording
 
     @StateObject private var player = AudioPlaybackController()
@@ -126,25 +127,66 @@ struct RecordingDetailView: View {
         return recording.transcript
     }
 
+    /// Decoded speaker-labeled segments, or nil when the recording was
+    /// solo-detected or pre-feature. Cached per view-render so the JSON
+    /// decode doesn't repeat on every layout pass.
+    private var speakerSegments: [SpeakerTimelineSegment]? {
+        guard let data = recording.speakerTimeline,
+              let payload = try? JSONDecoder().decode(SpeakerTimelinePayload.self, from: data),
+              !payload.segments.isEmpty
+        else { return nil }
+        return payload.segments
+    }
+
+    /// Stable palette assigned to speaker labels in order of first appearance.
+    /// Keeps each speaker visually consistent without depending on enrollment.
+    private func color(for label: String, in segments: [SpeakerTimelineSegment]) -> Color {
+        let palette: [Color] = [.blue, .purple, .orange, .green, .pink, .teal]
+        var ordered: [String] = []
+        for seg in segments {
+            if !ordered.contains(seg.speakerLabel) { ordered.append(seg.speakerLabel) }
+        }
+        let idx = ordered.firstIndex(of: label) ?? 0
+        return palette[idx % palette.count]
+    }
+
     private var transcriptBlock: some View {
         GroupBox {
             ScrollView {
-                Text(displayedTranscript.isEmpty ? "(empty transcript)" : displayedTranscript)
-                    .font(.system(size: 13, design: .monospaced))
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+                if let segments = speakerSegments, !showRawTranscript {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(seg.speakerLabel)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(color(for: seg.speakerLabel, in: segments))
+                                Text(seg.text)
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .lineSpacing(4)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
                     .padding(4)
+                } else {
+                    Text(displayedTranscript.isEmpty ? "(empty transcript)" : displayedTranscript)
+                        .font(.system(size: 13, design: .monospaced))
+                        .lineSpacing(4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                        .padding(4)
+                }
             }
             .frame(minHeight: 180, maxHeight: 320)
         } label: {
             HStack {
-                Text("Transcript")
+                Text(speakerSegments != nil && !showRawTranscript ? "Transcript (labeled)" : "Transcript")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                if hasTransformedTranscript {
+                if hasTransformedTranscript || speakerSegments != nil {
                     Spacer()
-                    Toggle("Show original", isOn: $showRawTranscript)
+                    Toggle(speakerSegments != nil ? "Show plain" : "Show original", isOn: $showRawTranscript)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .font(.system(size: 11))
@@ -198,9 +240,37 @@ struct RecordingDetailView: View {
             defer { Task { @MainActor in isRetranscribing = false } }
             do {
                 let result = try await transcriber.transcribeFile(url)
+                // Decode audio once for the diarization pass. Done off the
+                // main actor since the file read + AVAudioConverter work
+                // shouldn't block UI.
+                let samples = (try? Self.readMono16kFloat(url: url)) ?? []
                 await MainActor.run {
                     recording.rawTranscript = result.rawText
                     recording.transcript = result.text
+                    // Best-effort re-diarization. Diarizer is non-Sendable,
+                    // so the call has to live entirely on the main actor —
+                    // we grabbed `samples` and `result.text` from off-actor
+                    // work above. A failure here (solo detection, decode
+                    // failure, model unloaded) is silent: the transcript
+                    // still updates; the labeled timeline gets cleared so
+                    // it doesn't desync with the new transcript.
+                    let payload: SpeakerTimelinePayload? = {
+                        guard !samples.isEmpty,
+                              sortformerHolder.state == .loaded,
+                              let diarizer = sortformerHolder.currentDiarizer()
+                        else { return nil }
+                        return try? SpeakerTimelineBuilder.buildTimeline(
+                            samples: samples,
+                            transcript: result.text,
+                            duration: Double(samples.count) / 16_000.0,
+                            diarizer: diarizer
+                        )
+                    }()
+                    if let payload, let data = try? JSONEncoder().encode(payload) {
+                        recording.speakerTimeline = data
+                    } else {
+                        recording.speakerTimeline = nil
+                    }
                     try? context.save()
                 }
             } catch {
@@ -209,6 +279,58 @@ struct RecordingDetailView: View {
                 }
             }
         }
+    }
+
+    /// Decode an audio file to 16 kHz mono Float32 samples. Mirrors
+    /// `Transcriber.readMono16kFloat` (kept private there); duplicated as
+    /// a static helper so re-transcribe can run Sortformer over the same
+    /// PCM buffer without exposing the Transcriber internals.
+    private static func readMono16kFloat(url: URL) throws -> [Float] {
+        let file = try AVAudioFile(forReading: url)
+        let frameCount = AVAudioFrameCount(file.length)
+        guard frameCount > 0 else { return [] }
+        let processingFormat = file.processingFormat
+
+        let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16_000,
+            channels: 1,
+            interleaved: false
+        )!
+
+        if processingFormat.sampleRate == targetFormat.sampleRate,
+           processingFormat.channelCount == 1,
+           processingFormat.commonFormat == .pcmFormatFloat32,
+           !processingFormat.isInterleaved {
+            guard let buf = AVAudioPCMBuffer(pcmFormat: processingFormat, frameCapacity: frameCount) else { return [] }
+            try file.read(into: buf)
+            return Self.floats(from: buf)
+        }
+
+        guard let inBuf = AVAudioPCMBuffer(pcmFormat: processingFormat, frameCapacity: frameCount) else { return [] }
+        try file.read(into: inBuf)
+        guard let converter = AVAudioConverter(from: processingFormat, to: targetFormat) else { return [] }
+        let outCap = AVAudioFrameCount(Double(frameCount) * targetFormat.sampleRate / processingFormat.sampleRate) + 1024
+        guard let outBuf = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outCap) else { return [] }
+        var consumed = false
+        var err: NSError?
+        converter.convert(to: outBuf, error: &err) { _, status in
+            if consumed {
+                status.pointee = .endOfStream
+                return nil
+            }
+            consumed = true
+            status.pointee = .haveData
+            return inBuf
+        }
+        if err != nil { return [] }
+        return Self.floats(from: outBuf)
+    }
+
+    private static func floats(from buffer: AVAudioPCMBuffer) -> [Float] {
+        let frames = Int(buffer.frameLength)
+        guard frames > 0, let ptr = buffer.floatChannelData?[0] else { return [] }
+        return Array(UnsafeBufferPointer(start: ptr, count: frames))
     }
 
     private func copyTranscript() {

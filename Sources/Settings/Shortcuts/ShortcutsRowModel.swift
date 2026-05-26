@@ -144,10 +144,10 @@ struct ShortcutsRow: Identifiable, Hashable {
                 kind: .bindable(action),
                 group: .rewrite,
                 title: "Rewrite",
-                subtitle: "Apply the default Rewrite prompt to selected text.",
+                subtitle: "Tap to apply the default Rewrite prompt to selected text. Hold to open the prompt picker and choose a different one.",
                 firing: .needsSelection,
                 helpAnchor: "articulate-fixed",
-                searchKeywords: ["articulate", "rewrite", "fix", "selection"]
+                searchKeywords: ["articulate", "rewrite", "fix", "selection", "prompt", "picker"]
             )
         }
     }

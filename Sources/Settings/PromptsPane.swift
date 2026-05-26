@@ -1,4 +1,5 @@
 import Foundation
+import KeyboardShortcuts
 import SwiftData
 import SwiftUI
 
@@ -11,6 +12,10 @@ struct PromptsPane: View {
     @State private var searchText = ""
     /// Drives the read-only inspection sheet for a tapped built-in prompt.
     @State private var inspectingBuiltIn: BuiltInPromptInspection?
+    /// "How to use prompts" card collapsed state. Default open on a fresh
+    /// install (first-visit users need the orientation), persists across
+    /// launches once the user collapses it.
+    @AppStorage("jot.promptsPane.howToCardCollapsed") private var howToCollapsed: Bool = false
 
     private let urlSession: URLSession
     private let appleIntelligence: any AppleIntelligenceClienting
@@ -26,6 +31,7 @@ struct PromptsPane: View {
     var body: some View {
         Form {
             headerSection
+            howToUseSection
             searchSection
             if !pinnedPromptsFiltered().isEmpty {
                 pinnedSection
@@ -77,6 +83,144 @@ struct PromptsPane: View {
             }
         } message: { deletion in
             Text("This removes \"\(deletion.title)\" from your prompt library.")
+        }
+    }
+
+    /// Live readout of the user's current Rewrite hotkey, used by the
+    /// "How to use" card. Returns a tuple of (verb, hotkey-or-status) so
+    /// the card can render "Press and **hold** **⌥/**" for chords,
+    /// "Press your **Caps Lock**" for single-key, or "Set a Rewrite
+    /// hotkey first" for the not-configured case.
+    private struct RewriteHotkeyReadout {
+        let verb: String       // "Press and hold" / "Press"
+        let glyph: String?     // "⌥/" / "Caps Lock" — nil when unset
+        let isUnset: Bool
+    }
+
+    private var rewriteHotkey: RewriteHotkeyReadout {
+        let binding = SingleKeyMigration.effectiveBinding(for: .rewrite)
+        switch binding.triggerType {
+        case .chord:
+            if let desc = binding.chordDescription, !desc.isEmpty {
+                return RewriteHotkeyReadout(verb: "Press and hold", glyph: desc, isUnset: false)
+            } else {
+                return RewriteHotkeyReadout(verb: "Press and hold", glyph: nil, isUnset: true)
+            }
+        case .singleKey:
+            if binding.singleKey == .none {
+                return RewriteHotkeyReadout(verb: "Press", glyph: nil, isUnset: true)
+            } else {
+                return RewriteHotkeyReadout(verb: "Press", glyph: binding.singleKey.displayName, isUnset: false)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var howToUseSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: howToCollapsed ? 0 : 10) {
+                // Header — fully clickable row that toggles collapse.
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        howToCollapsed.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "lightbulb")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.tint)
+                        Text("How to use prompts")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: howToCollapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if !howToCollapsed {
+                    howToBody
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var howToBody: some View {
+        let hotkey = rewriteHotkey
+        VStack(alignment: .leading, spacing: 8) {
+            howToStep(number: "1", text: "Select the text you want to rewrite in any app.")
+            howToStep(
+                number: "2",
+                text: nil,
+                richContent: {
+                    HStack(spacing: 6) {
+                        Text(hotkey.verb)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                        if let glyph = hotkey.glyph {
+                            Text(glyph)
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(Color.secondary.opacity(0.15))
+                                )
+                            Text("to open the prompt picker.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("your Rewrite hotkey — ")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                            Text("set one in Settings → Shortcuts")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.tint)
+                            Text("to open the prompt picker.")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            )
+            howToStep(number: "3", text: "Pick a prompt — Jot replaces the selection with the rewritten text.")
+
+            Text("Tip: pin frequently-used prompts so they appear at the top of the picker.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private func howToStep<Content: View>(
+        number: String,
+        text: String?,
+        @ViewBuilder richContent: () -> Content = { EmptyView() }
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(number)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 16, height: 16)
+                .background(
+                    Circle().fill(Color.secondary.opacity(0.12))
+                )
+            if let text {
+                Text(text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                richContent()
+            }
+            Spacer(minLength: 0)
         }
     }
 

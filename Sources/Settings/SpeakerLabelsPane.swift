@@ -78,8 +78,11 @@ struct SpeakerLabelsPane: View {
     private var headerSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Speaker labels")
-                    .font(.headline)
+                HStack(spacing: 8) {
+                    Text("Speaker labels")
+                        .font(.headline)
+                    ExperimentalBadge()
+                }
                 Text("Label who said what in meeting recordings. Jot recognizes your voice and labels other speakers. Voice profiles stay on this Mac — about 4 MB at the 4-identity cap, never sent to a server, wiped on Reset all data.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)

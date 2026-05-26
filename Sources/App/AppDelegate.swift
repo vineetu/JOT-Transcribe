@@ -256,13 +256,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // if warmup hasn't completed.
         let speakerLabelsMasterOn = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
         if speakerLabelsMasterOn,
-           SortformerHardwareGate.isSupported,
-           services.sortformerHolder.state == .offHaveModel {
+           SortformerHardwareGate.isSupported {
             let clips = services.enrolledIdentitiesStore.clipsForWarmup()
-            if !clips.isEmpty {
+            switch services.sortformerHolder.state {
+            case .offHaveModel where !clips.isEmpty:
                 Task { @MainActor [weak holder = services.sortformerHolder] in
                     await holder?.loadIfNeeded(clips: clips)
                 }
+            case .notSetUp where !clips.isEmpty:
+                // Identities already enrolled but model bundle missing or
+                // corrupt — auto-redownload so labels resume working without
+                // the user having to delete their enrollment to expose the
+                // "Set up" CTA.
+                Task { @MainActor [weak holder = services.sortformerHolder] in
+                    guard let holder else { return }
+                    try? await holder.downloadModelIfNeeded()
+                    await holder.loadIfNeeded(clips: clips)
+                }
+            default:
+                break
             }
         }
     }
@@ -281,6 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let llmConfiguration = services.llmConfiguration
         let logSink = services.logSink
         let hotkeyRouter = services.hotkeyRouter
+        let promptStore = services.promptStore
         DispatchQueue.main.async {
             WizardPresenter.present(
                 reason: .firstRun,
@@ -291,6 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 llmConfiguration: llmConfiguration,
                 logSink: logSink,
                 hotkeyRouter: hotkeyRouter,
+                promptStore: promptStore,
                 onDismiss: {
                     SingleOrChordMigrationWizardPresenter.presentIfNeeded(
                         wasSetupCompleteAtLaunch: wasSetupCompleteAtLaunch

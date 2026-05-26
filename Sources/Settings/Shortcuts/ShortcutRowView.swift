@@ -51,23 +51,26 @@ struct ShortcutRowView: View {
 
     var body: some View {
         let _ = refreshToken
-        HStack(alignment: .top, spacing: 12) {
-            // Left column: title + subtitle + badge.
+        HStack(alignment: .center, spacing: 12) {
+            // Left column: title + subtitle.
             VStack(alignment: .leading, spacing: 4) {
                 Text(row.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
 
-                HStack(spacing: 8) {
-                    Text(row.subtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    ShortcutBadge(firing: row.firing)
-                }
+                Text(row.subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer(minLength: 12)
+
+            // Firing-context pill in its own slot, just before the controls.
+            // Sized to its content (`fixedSize()` inside `ShortcutBadge`),
+            // never wraps. Sits at a consistent x across rows because the
+            // controls to its right are all fixed-width.
+            ShortcutBadge(firing: row.firing)
 
             // Right column: secondary actions + binding chip + info.
             HStack(spacing: 8) {
@@ -129,22 +132,29 @@ struct ShortcutRowView: View {
         .opacity(isHovered ? 1.0 : 0.45)
         .help("Switch between chord and single-key trigger")
 
-        // The active binding chip.
-        if triggerType == .singleKey {
-            ShortcutSingleKeyChip(
-                action: action,
-                selection: Binding(
-                    get: { singleKey.wrappedValue },
-                    set: { newValue in
-                        singleKey.wrappedValue = newValue
-                        onBindingChange()
-                    }
-                ),
-                conflicts: singleKeyConflicts
-            )
-        } else {
-            ShortcutChordChip(action: action, onChange: onBindingChange)
+        // Fixed-width chip slot. Same container for chord recorder,
+        // single-key menu, and the cancel "esc" pill on the cancel row —
+        // anchors the right column so the trailing InfoPopover dot stays
+        // pinned at the same x across every row regardless of which chip
+        // variant the row is rendering.
+        ZStack {
+            if triggerType == .singleKey {
+                ShortcutSingleKeyChip(
+                    action: action,
+                    selection: Binding(
+                        get: { singleKey.wrappedValue },
+                        set: { newValue in
+                            singleKey.wrappedValue = newValue
+                            onBindingChange()
+                        }
+                    ),
+                    conflicts: singleKeyConflicts
+                )
+            } else {
+                ShortcutChordChip(action: action, onChange: onBindingChange)
+            }
         }
+        .frame(width: ShortcutChipSize.width, height: ShortcutChipSize.height)
 
         InfoPopoverButton(
             title: row.title,
@@ -155,16 +165,38 @@ struct ShortcutRowView: View {
 
     @ViewBuilder
     private var cancelControls: some View {
-        Text("esc")
-            .font(.system(.body, design: .monospaced))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.secondary.opacity(0.12))
-            )
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("Escape (not configurable)")
+        // Invisible mirrors of the reset button and mode-menu icon in
+        // bindable rows. `.hidden()` keeps the layout footprint so the
+        // chip slot lines up at the same x as the bindable rows above —
+        // and any future tweak to the real icons' sizes carries over to
+        // these placeholders automatically because they reuse the exact
+        // same modifiers.
+        Label("Reset", systemImage: "arrow.uturn.backward")
+            .labelStyle(.iconOnly)
+            .font(.system(size: 11))
+            .hidden()
+
+        Image(systemName: "slider.horizontal.3")
+            .font(.system(size: 11))
+            .frame(width: 18, height: 18)
+            .hidden()
+
+        // Same fixed-width slot as the bindable rows so "esc" lines up
+        // pixel-for-pixel with the chord recorder and single-key menu in
+        // the column above it.
+        ZStack {
+            Text("esc")
+                .font(.system(.body, design: .monospaced))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.secondary.opacity(0.12))
+                )
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Escape (not configurable)")
+        }
+        .frame(width: ShortcutChipSize.width, height: ShortcutChipSize.height)
 
         InfoPopoverButton(
             title: row.title,
