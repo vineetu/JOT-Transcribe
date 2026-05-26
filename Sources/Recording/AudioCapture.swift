@@ -208,7 +208,12 @@ public actor AudioCapture: AudioCapturing {
             withIntermediateDirectories: true
         )
 
-        let url = recordingsDirectory.appendingPathComponent("\(UUID().uuidString).wav")
+        // Opus history migration: extension was `.wav` until this change.
+        // Old recordings keep their `.wav` extension; readers (AVAudioFile,
+        // AVAudioPlayer) handle either transparently. See AudioFormat.swift.
+        let url = recordingsDirectory.appendingPathComponent(
+            "\(UUID().uuidString).\(AudioFormat.storageFileExtension)"
+        )
         let selectedUID = UserDefaults.standard.string(forKey: "jot.inputDeviceUID") ?? ""
         let savedNameCache = UserDefaults.standard.string(forKey: "jot.inputDeviceLastName") ?? ""
         let publisher = amplitudePublisher
@@ -860,12 +865,16 @@ public actor AudioCapture: AudioCapturing {
                 attempt.renderABL = abl
                 attempt.renderBytes = bytes
 
-                // 9. Open the WAV file and converter at Jot's target format.
+                // 9. Open the Opus-encoded storage file and converter at Jot's target format.
+                //    AVAudioFile accepts Float32 buffers on `.write(from:)` and encodes
+                //    to Opus on the fly. The in-memory buffer + live transcription
+                //    pipeline remain Float32 PCM (Parakeet's required format) —
+                //    only the on-disk artifact is compressed. See AudioFormat.storageSettings.
                 let audioFile: AVAudioFile
                 do {
                     audioFile = try AVAudioFile(
                         forWriting: url,
-                        settings: AudioFormat.target.settings,
+                        settings: AudioFormat.storageSettings,
                         commonFormat: .pcmFormatFloat32,
                         interleaved: false
                     )
