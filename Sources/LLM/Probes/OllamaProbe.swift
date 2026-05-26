@@ -17,22 +17,8 @@ import Foundation
 /// everything the user has pulled.
 struct OllamaProbe: AIProviderProbe {
     let provider: LLMProvider = .ollama
-    let classifier: TierClassifier
 
-    init() {
-        // Ollama models follow no consistent version scheme across
-        // families (llama3.1:8b, gemma2:27b, qwen2.5-coder:14b,
-        // mixtral:8x7b). No latest-gen regex; the default-pick logic
-        // returns the first id, and the user picks from the full
-        // list. `tierFor` is also nil — without a version scheme,
-        // small/medium/large can't be inferred from the id alone.
-        self.classifier = TierClassifier(
-            provider: .ollama,
-            latestGenRegex: nil,
-            tierFor: { _ in nil },
-            isThinking: { _ in false }
-        )
-    }
+    init() {}
 
     func probe(
         baseURL: String,
@@ -70,12 +56,7 @@ struct OllamaProbe: AIProviderProbe {
         }
         return list.compactMap { entry -> DiscoveredModel? in
             guard let name = entry["name"] as? String else { return nil }
-            return DiscoveredModel(
-                id: name,
-                displayName: nil,
-                isThinking: false,
-                tier: nil
-            )
+            return DiscoveredModel(id: name)
         }
         .sorted { lhs, rhs in lhs.id < rhs.id }
     }

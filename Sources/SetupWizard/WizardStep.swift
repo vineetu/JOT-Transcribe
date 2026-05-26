@@ -35,15 +35,18 @@ enum WizardStepID: Int, CaseIterable, Identifiable, Sendable {
     /// rewrite pipeline against a bundled draft.
     case rewriteWithVoiceBullets
     /// Rewrite-with-voice demo #2 — "Translate this to Spanish."
-    /// Last step of the wizard.
     case rewriteWithVoiceSpanish
+    /// Step 12 — teaching card introducing the curated prompt library.
+    /// Frames the bundled prompts as the headline; user-saved prompts
+    /// are a footnote. Closes the wizard via Finish.
+    case promptsLibrary
 
     var id: Int { rawValue }
 
     static var totalCount: Int { allCases.count }
 
     var isFirst: Bool { self == .welcome }
-    var isLast: Bool { self == .rewriteWithVoiceSpanish }
+    var isLast: Bool { self == .promptsLibrary }
 }
 
 /// Read-only snapshot of step presentation that the wizard shell consumes

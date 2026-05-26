@@ -74,8 +74,10 @@ enum SpeakerTimelineBuilder {
 
         let segments = mergedSegments(from: timeline)
         let distinctSpeakers = Set(segments.map { $0.speakerKey })
+        let timelineSpeakerCount = timeline.speakers.count
+        SortformerDiag.log("buildTimeline segments=\(segments.count) distinctSpeakerKeys=\(distinctSpeakers.count) timelineSpeakers=\(timelineSpeakerCount) duration=\(duration)s samples=\(samples.count)")
         guard distinctSpeakers.count > 1 else {
-            // Solo recording — detect-and-skip per Decision #13.
+            SortformerDiag.log("buildTimeline RETURNING nil (solo detection)")
             return nil
         }
 

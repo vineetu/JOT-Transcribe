@@ -1,4 +1,5 @@
 @preconcurrency import FluidAudio
+@preconcurrency import CoreML
 import Combine
 import Foundation
 import os.log
@@ -79,6 +80,7 @@ public final class SortformerHolder: ObservableObject {
         }
 
         state = .downloading(progress: 0)
+        SortformerDiag.log("downloadModelIfNeeded START")
         let downloader = self.downloader
         do {
             try await downloader.downloadIfMissing(progress: { [weak self] fraction in
@@ -89,8 +91,10 @@ public final class SortformerHolder: ObservableObject {
                 }
             })
             state = .offHaveModel
+            SortformerDiag.log("downloadModelIfNeeded SUCCESS state=.offHaveModel cached=\(cache.isCached)")
         } catch {
-            log.error("Sortformer download failed: \(String(describing: error))")
+            log.error("Sortformer download failed: \(String(describing: error), privacy: .public)")
+            SortformerDiag.log("downloadModelIfNeeded FAILED error=\(String(describing: error))")
             state = .downloadFailed(message: error.localizedDescription)
             throw error
         }
@@ -104,10 +108,12 @@ public final class SortformerHolder: ObservableObject {
     /// - Parameter clips: ordered list of `(name, audioSamples)` pairs.
     ///   Pass an empty array to load the model without any enrollments.
     public func loadIfNeeded(clips: [EnrolledClip]) async {
+        SortformerDiag.log("loadIfNeeded ENTRY state=\(state) clips.count=\(clips.count) cached=\(cache.isCached)")
         switch state {
         case .loaded, .loading, .unsupportedHardware, .notSetUp, .downloading, .downloadFailed:
             switch state {
             case .loaded, .loading, .unsupportedHardware:
+                SortformerDiag.log("loadIfNeeded EARLY RETURN state=\(state)")
                 return
             default:
                 break
@@ -117,6 +123,7 @@ public final class SortformerHolder: ObservableObject {
         }
         guard cache.isCached else {
             log.warning("loadIfNeeded called without a cached Sortformer bundle")
+            SortformerDiag.log("loadIfNeeded ABORT: cache.isCached=false")
             return
         }
 
@@ -126,14 +133,20 @@ public final class SortformerHolder: ObservableObject {
 
         let diar = SortformerDiarizer(config: config, timelineConfig: .sortformerDefault)
         do {
-            // `initialize(mainModelPath:)` internally does `MLModel.compileModel`
-            // + load; the SDK suspends the calling task while CoreML compiles
-            // the .mlpackage. We stay on the main actor — Sortformer is not
-            // Sendable, so detaching the work and then re-publishing would
-            // require an unsafe transfer. CoreML's compile is the heaviest
-            // step (~1 s on M1 Pro for fastV2_1); marginal UI hitches are
-            // preferable to the unsafe-transfer dance.
-            try await diar.initialize(mainModelPath: bundleURL)
+            // FluidAudio's `initialize(mainModelPath:)` always runs the model
+            // through `MLModel.compileModel(at:)` first. That API expects a
+            // `.mlmodel` / `.mlpackage` source — but FluidAudio's downloader
+            // ships the already-compiled `.mlmodelc`. On macOS 26 the compile
+            // step now hard-fails on a `.mlmodelc` input with a misleading
+            // "A valid manifest does not exist" CoreML error. Workaround:
+            // load the compiled bundle directly via `MLModel(contentsOf:)`
+            // (which works on every macOS we support) and hand the resulting
+            // `SortformerModels` to the diarizer via its pre-loaded overload.
+            let mainConfig = MLModelConfiguration()
+            mainConfig.computeUnits = .all
+            let mainModel = try MLModel(contentsOf: bundleURL, configuration: mainConfig)
+            let models = try SortformerModels(config: config, main: mainModel)
+            diar.initialize(models: models)
 
             for clip in clips {
                 do {
@@ -144,14 +157,16 @@ public final class SortformerHolder: ObservableObject {
                         overwritingAssignedSpeakerName: true
                     )
                 } catch {
-                    log.error("Failed to enroll '\(clip.name, privacy: .public)': \(String(describing: error))")
+                    log.error("Failed to enroll '\(clip.name, privacy: .public)': \(String(describing: error), privacy: .public)")
                 }
             }
 
             diarizer = diar
             state = .loaded
+            SortformerDiag.log("loadIfNeeded SUCCESS state=.loaded diarizer set")
         } catch {
-            log.error("Sortformer model load failed: \(String(describing: error))")
+            log.error("Sortformer model load failed: \(String(describing: error), privacy: .public)")
+            SortformerDiag.log("loadIfNeeded FAILED error=\(String(describing: error))")
             diarizer = nil
             state = .offHaveModel
         }
@@ -192,7 +207,7 @@ public final class SortformerHolder: ObservableObject {
             )
             return true
         } catch {
-            log.error("Live enrollment failed for '\(clip.name, privacy: .public)': \(String(describing: error))")
+            log.error("Live enrollment failed for '\(clip.name, privacy: .public)': \(String(describing: error), privacy: .public)")
             return false
         }
     }
