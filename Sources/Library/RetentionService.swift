@@ -50,7 +50,11 @@ final class RetentionService {
     }
 
     func purgeOnce() {
-        let days = (UserDefaults.standard.object(forKey: "jot.retentionDays") as? Int) ?? 7
+        // Default 90 days (bumped from 7 in the compressed-history migration —
+        // AAC 16 kbps mono brings the on-disk footprint of 90 days to ~1.1 GB
+        // at typical usage). Must stay in sync with the default on the
+        // `@AppStorage("jot.retentionDays")` declaration in GeneralPane.swift.
+        let days = (UserDefaults.standard.object(forKey: "jot.retentionDays") as? Int) ?? 90
         guard days > 0 else { return }
 
         guard let context else { return }
