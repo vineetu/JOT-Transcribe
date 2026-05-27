@@ -255,7 +255,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // first recording after launch may briefly run without labels
         // if warmup hasn't completed.
         let speakerLabelsMasterOn = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
-        if speakerLabelsMasterOn,
+        if Features.speakerLabels,
+           speakerLabelsMasterOn,
            SortformerHardwareGate.isSupported {
             let clips = services.enrolledIdentitiesStore.clipsForWarmup()
             switch services.sortformerHolder.state {
@@ -271,6 +272,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 Task { @MainActor [weak holder = services.sortformerHolder] in
                     guard let holder else { return }
                     try? await holder.downloadModelIfNeeded()
+                    // Re-check the master toggle after the (~250 MB,
+                    // multi-second) download. The user may have flipped
+                    // Speaker Labels OFF mid-download — in that case the
+                    // bundle is on disk but we honor the OFF intent by
+                    // skipping the load. The next launch with the toggle
+                    // back ON will warm the model from the disk cache.
+                    let stillEnabled = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
+                    guard stillEnabled else { return }
                     await holder.loadIfNeeded(clips: clips)
                 }
             default:
