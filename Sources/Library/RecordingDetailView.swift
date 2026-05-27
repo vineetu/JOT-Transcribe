@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import AppKit
 import Combine
 import SwiftData
@@ -128,9 +128,19 @@ struct RecordingDetailView: View {
     }
 
     /// Decoded speaker-labeled segments, or nil when the recording was
-    /// solo-detected or pre-feature. Cached per view-render so the JSON
-    /// decode doesn't repeat on every layout pass.
+    /// solo-detected or pre-feature. **Not** cached: this is a plain
+    /// computed property that re-runs `JSONDecoder().decode(...)` on
+    /// every access. Callers inside `transcriptBlock` MUST hoist this
+    /// into a local once per body evaluation — otherwise SwiftUI's
+    /// per-tick body re-renders (e.g. the 10 Hz playback timer) will
+    /// decode the payload 4× per render.
+    ///
+    /// Returns `nil` when the Speaker Labels feature gate is off, even
+    /// if a recording from a previous build has a stored timeline —
+    /// keeps the plain-transcript path uniform across all recordings
+    /// while the feature is held off.
     private var speakerSegments: [SpeakerTimelineSegment]? {
+        guard Features.speakerLabels else { return nil }
         guard let data = recording.speakerTimeline,
               let payload = try? JSONDecoder().decode(SpeakerTimelinePayload.self, from: data),
               !payload.segments.isEmpty
@@ -138,28 +148,40 @@ struct RecordingDetailView: View {
         return payload.segments
     }
 
-    /// Stable palette assigned to speaker labels in order of first appearance.
-    /// Keeps each speaker visually consistent without depending on enrollment.
-    private func color(for label: String, in segments: [SpeakerTimelineSegment]) -> Color {
+    /// Precomputed `label → Color` map for one render's worth of segments.
+    /// Built once per body evaluation (was rebuilt O(N²) per row inside the
+    /// previous `color(for:in:)` helper).
+    private static func colorMap(for segments: [SpeakerTimelineSegment]) -> [String: Color] {
         let palette: [Color] = [.blue, .purple, .orange, .green, .pink, .teal]
         var ordered: [String] = []
         for seg in segments {
             if !ordered.contains(seg.speakerLabel) { ordered.append(seg.speakerLabel) }
         }
-        let idx = ordered.firstIndex(of: label) ?? 0
-        return palette[idx % palette.count]
+        var map: [String: Color] = [:]
+        for (idx, label) in ordered.enumerated() {
+            map[label] = palette[idx % palette.count]
+        }
+        return map
     }
 
     private var transcriptBlock: some View {
-        GroupBox {
+        // Decode the timeline once per body evaluation. During playback
+        // the 100 ms tick re-renders this view; without the hoist the
+        // four downstream reads (header text, toggle visibility, toggle
+        // title, ForEach body) each re-decode the JSON payload.
+        let segments = speakerSegments
+        let colorMap = segments.map { Self.colorMap(for: $0) }
+        let useLabeledView = segments != nil && !showRawTranscript
+
+        return GroupBox {
             ScrollView {
-                if let segments = speakerSegments, !showRawTranscript {
+                if useLabeledView, let segments {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(seg.speakerLabel)
                                     .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(color(for: seg.speakerLabel, in: segments))
+                                    .foregroundStyle(colorMap?[seg.speakerLabel] ?? .primary)
                                 Text(seg.text)
                                     .font(.system(size: 13, design: .monospaced))
                                     .lineSpacing(4)
@@ -181,12 +203,12 @@ struct RecordingDetailView: View {
             .frame(minHeight: 180, maxHeight: 320)
         } label: {
             HStack {
-                Text(speakerSegments != nil && !showRawTranscript ? "Transcript (labeled)" : "Transcript")
+                Text(useLabeledView ? "Transcript (labeled)" : "Transcript")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.secondary)
-                if hasTransformedTranscript || speakerSegments != nil {
+                if hasTransformedTranscript || segments != nil {
                     Spacer()
-                    Toggle(speakerSegments != nil ? "Show plain" : "Show original", isOn: $showRawTranscript)
+                    Toggle(segments != nil ? "Show plain" : "Show original", isOn: $showRawTranscript)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .font(.system(size: 11))
@@ -240,10 +262,16 @@ struct RecordingDetailView: View {
             defer { Task { @MainActor in isRetranscribing = false } }
             do {
                 let result = try await transcriber.transcribeFile(url)
-                // Decode audio once for the diarization pass. Done off the
-                // main actor since the file read + AVAudioConverter work
-                // shouldn't block UI.
-                let samples = (try? Self.readMono16kFloat(url: url)) ?? []
+                // Decode audio off MainActor for the diarization pass.
+                // A bare `Task { }` inside an `@MainActor View` inherits
+                // MainActor isolation, so wrapping the synchronous read
+                // in `Task.detached` is the explicit jump that keeps the
+                // AVAudioFile + AVAudioConverter work off the main
+                // thread — for a multi-minute recording the resample
+                // can stall the UI for hundreds of ms to multi-seconds.
+                let samples = await Task.detached(priority: .userInitiated) {
+                    (try? Self.readMono16kFloat(url: url)) ?? []
+                }.value
                 await MainActor.run {
                     recording.rawTranscript = result.rawText
                     recording.transcript = result.text
@@ -254,8 +282,13 @@ struct RecordingDetailView: View {
                     // failure, model unloaded) is silent: the transcript
                     // still updates; the labeled timeline gets cleared so
                     // it doesn't desync with the new transcript.
+                    //
+                    // Gated on `Features.speakerLabels` so the re-transcribe
+                    // path stays consistent with the rest of the UI while
+                    // the feature is held off.
                     let payload: SpeakerTimelinePayload? = {
-                        guard !samples.isEmpty,
+                        guard Features.speakerLabels,
+                              !samples.isEmpty,
                               sortformerHolder.state == .loaded,
                               let diarizer = sortformerHolder.currentDiarizer()
                         else { return nil }
@@ -285,7 +318,11 @@ struct RecordingDetailView: View {
     /// `Transcriber.readMono16kFloat` (kept private there); duplicated as
     /// a static helper so re-transcribe can run Sortformer over the same
     /// PCM buffer without exposing the Transcriber internals.
-    private static func readMono16kFloat(url: URL) throws -> [Float] {
+    /// `nonisolated` so `Task.detached` in `retranscribe()` can call it
+    /// off the main actor — the function touches no shared mutable state
+    /// (it allocates locals and returns a `[Float]`), so it's safe to
+    /// run on any executor.
+    nonisolated private static func readMono16kFloat(url: URL) throws -> [Float] {
         let file = try AVAudioFile(forReading: url)
         let frameCount = AVAudioFrameCount(file.length)
         guard frameCount > 0 else { return [] }
@@ -327,7 +364,7 @@ struct RecordingDetailView: View {
         return Self.floats(from: outBuf)
     }
 
-    private static func floats(from buffer: AVAudioPCMBuffer) -> [Float] {
+    nonisolated private static func floats(from buffer: AVAudioPCMBuffer) -> [Float] {
         let frames = Int(buffer.frameLength)
         guard frames > 0, let ptr = buffer.floatChannelData?[0] else { return [] }
         return Array(UnsafeBufferPointer(start: ptr, count: frames))

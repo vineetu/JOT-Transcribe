@@ -76,15 +76,25 @@ final class RecordingPersister {
         }
 
         // Speaker Labels piece A: kick off a best-effort post-stop
-        // diarization pass. Only runs when the SortformerHolder reports a
-        // loaded model — i.e. the user is fully enrolled, the master
-        // toggle is on, and we're on supported hardware. Failures are
-        // silent: the recording stays as a plain transcript, indistinguishable
-        // from a pre-feature recording.
+        // diarization pass. Gated on:
+        //   • `state == .loaded` (model warm in memory)
+        //   • `currentDiarizer() != nil` (non-nil handle)
+        //   • `jot.speakerLabels.enabled == true` (master toggle ON)
+        // The master-toggle check is defense-in-depth against a race
+        // where the user toggled OFF mid-download but the warmup task
+        // still completed and set state to `.loaded` — without the
+        // explicit master read here, those recordings would still get
+        // diarized + stamped with a `speakerTimeline` against the
+        // user's OFF intent. Failures are silent: the recording stays
+        // as a plain transcript, indistinguishable from a pre-feature
+        // recording.
         let _stateDesc: String = sortformerHolder.map { "\($0.state)" } ?? "no-holder"
         let _diarDesc: String = sortformerHolder?.currentDiarizer() == nil ? "nil" : "present"
         SortformerDiag.log("RecordingPersister.persist state=\(_stateDesc) diarizer=\(_diarDesc) duration=\(audio.duration)s samples=\(audio.samples.count)")
-        if let sortformerHolder, sortformerHolder.state == .loaded,
+        let speakerLabelsMasterOn = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
+        if Features.speakerLabels,
+           speakerLabelsMasterOn,
+           let sortformerHolder, sortformerHolder.state == .loaded,
            let diarizer = sortformerHolder.currentDiarizer() {
             let samples = audio.samples
             let duration = audio.duration

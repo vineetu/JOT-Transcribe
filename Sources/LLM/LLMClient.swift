@@ -764,6 +764,15 @@ actor LLMClient {
         // so we can append the label-preservation rule. Heuristic in
         // SpeakerLabelDetector — conservative enough that single-line
         // "Note: …" dictation does not trip it.
+        //
+        // NOTE: scaffolding for piece B. Unreachable on the cleanup path
+        // today because `RecorderController.persist` feeds the raw
+        // Parakeet output (unlabeled) into `transform()`; Sortformer's
+        // labeled timeline is stored on `Recording.speakerTimeline` and
+        // is not re-injected into cleanup. Piece B will plumb
+        // `SpeakerTimelineBuilder.renderLabeled(...)` into this entry
+        // point so the branch below fires. The mirror check on the
+        // rewrite path (selection-driven) is reachable today.
         let inputIsLabeled = SpeakerLabelDetector.looksLabeled(transcript)
 
         let config = await MainActor.run { [llmConfiguration] in

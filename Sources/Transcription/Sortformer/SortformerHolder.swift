@@ -130,38 +130,50 @@ public final class SortformerHolder: ObservableObject {
         state = .loading
         let bundleURL = cache.bundleURL
         let config = SortformerConfig.fastV2_1
+        let logRef = self.log
 
-        let diar = SortformerDiarizer(config: config, timelineConfig: .sortformerDefault)
+        // Heavy work — CoreML JIT-compile + ANE warmup + per-clip
+        // enrollSpeaker passes — runs on a detached priority-userInitiated
+        // task so the toggle in Settings doesn't freeze the UI for 1-3 s.
+        // `SortformerDiarizer` and `MLModel` aren't `Sendable`, so the
+        // diarizer transfers back to MainActor inside an `@unchecked
+        // Sendable` box. Safe in practice: nothing else touches `diar`
+        // until we publish it onto `self.diarizer` here on MainActor.
         do {
-            // FluidAudio's `initialize(mainModelPath:)` always runs the model
-            // through `MLModel.compileModel(at:)` first. That API expects a
-            // `.mlmodel` / `.mlpackage` source — but FluidAudio's downloader
-            // ships the already-compiled `.mlmodelc`. On macOS 26 the compile
-            // step now hard-fails on a `.mlmodelc` input with a misleading
-            // "A valid manifest does not exist" CoreML error. Workaround:
-            // load the compiled bundle directly via `MLModel(contentsOf:)`
-            // (which works on every macOS we support) and hand the resulting
-            // `SortformerModels` to the diarizer via its pre-loaded overload.
-            let mainConfig = MLModelConfiguration()
-            mainConfig.computeUnits = .all
-            let mainModel = try MLModel(contentsOf: bundleURL, configuration: mainConfig)
-            let models = try SortformerModels(config: config, main: mainModel)
-            diar.initialize(models: models)
+            let boxed = try await Task.detached(priority: .userInitiated) {
+                let mainConfig = MLModelConfiguration()
+                mainConfig.computeUnits = .all
+                // FluidAudio's `initialize(mainModelPath:)` always runs the
+                // model through `MLModel.compileModel(at:)` first. That API
+                // expects a `.mlmodel` / `.mlpackage` source — but
+                // FluidAudio's downloader ships the already-compiled
+                // `.mlmodelc`. On macOS 26 the compile step hard-fails on a
+                // `.mlmodelc` input with a misleading "A valid manifest does
+                // not exist" CoreML error. Workaround: load the compiled
+                // bundle directly via `MLModel(contentsOf:)` and hand the
+                // resulting `SortformerModels` to the diarizer via its
+                // pre-loaded overload.
+                let mainModel = try MLModel(contentsOf: bundleURL, configuration: mainConfig)
+                let models = try SortformerModels(config: config, main: mainModel)
+                let diar = SortformerDiarizer(config: config, timelineConfig: .sortformerDefault)
+                diar.initialize(models: models)
 
-            for clip in clips {
-                do {
-                    _ = try diar.enrollSpeaker(
-                        withAudio: clip.samples,
-                        sourceSampleRate: Double(SortformerConfig.fastV2_1.sampleRate),
-                        named: clip.name,
-                        overwritingAssignedSpeakerName: true
-                    )
-                } catch {
-                    log.error("Failed to enroll '\(clip.name, privacy: .public)': \(String(describing: error), privacy: .public)")
+                for clip in clips {
+                    do {
+                        _ = try diar.enrollSpeaker(
+                            withAudio: clip.samples,
+                            sourceSampleRate: Double(SortformerConfig.fastV2_1.sampleRate),
+                            named: clip.name,
+                            overwritingAssignedSpeakerName: true
+                        )
+                    } catch {
+                        logRef.error("Failed to enroll '\(clip.name, privacy: .public)': \(String(describing: error), privacy: .public)")
+                    }
                 }
-            }
+                return UncheckedDiarizerBox(diarizer: diar)
+            }.value
 
-            diarizer = diar
+            diarizer = boxed.diarizer
             state = .loaded
             SortformerDiag.log("loadIfNeeded SUCCESS state=.loaded diarizer set")
         } catch {
@@ -170,6 +182,15 @@ public final class SortformerHolder: ObservableObject {
             diarizer = nil
             state = .offHaveModel
         }
+    }
+
+    /// Box that lets us transfer a non-`Sendable` `SortformerDiarizer`
+    /// back from the off-actor load task to MainActor. Safe in practice:
+    /// the diarizer is constructed inside the detached task, returned
+    /// once, and only ever read/mutated on MainActor afterwards (no
+    /// concurrent access).
+    private struct UncheckedDiarizerBox: @unchecked Sendable {
+        let diarizer: SortformerDiarizer
     }
 
     /// Drop the in-memory model. ARC reclaims the ANE handle; on-disk
