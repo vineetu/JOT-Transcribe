@@ -28,6 +28,6 @@ struct ShortcutChordChip: View {
         KeyboardShortcuts.Recorder(for: action.keyboardShortcutsName) { _ in
             onChange()
         }
-        .fixedSize()
+        .frame(width: ShortcutChipSize.width, height: ShortcutChipSize.height)
     }
 }

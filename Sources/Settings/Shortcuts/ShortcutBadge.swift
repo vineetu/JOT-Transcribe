@@ -21,6 +21,7 @@ struct ShortcutBadge: View {
             Text(firing.label)
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
@@ -28,6 +29,7 @@ struct ShortcutBadge: View {
             Capsule()
                 .fill(Color.secondary.opacity(0.08))
         )
+        .fixedSize()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(firing.label))
     }

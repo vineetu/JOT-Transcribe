@@ -21,16 +21,24 @@ final class RecordingPersister {
     /// snapshotted at init), so a swap mid-session stamps subsequent rows
     /// with the new id without rebinding the persister.
     private let holder: TranscriberHolder
+    /// Speaker Labels piece A: when the model is loaded, the persister runs
+    /// a post-stop Sortformer pass on the recorded audio buffer to attach a
+    /// labeled timeline to the new `Recording` row. `nil` when Speaker
+    /// Labels is not built into this graph (test harnesses) — the persist
+    /// path still writes a plain transcript.
+    private let sortformerHolder: SortformerHolder?
     private var cancellable: AnyCancellable?
 
     init(
         recorder: RecorderController,
         context: ModelContext,
-        transcriberHolder: TranscriberHolder
+        transcriberHolder: TranscriberHolder,
+        sortformerHolder: SortformerHolder? = nil
     ) {
         self.recorder = recorder
         self.context = context
         self.holder = transcriberHolder
+        self.sortformerHolder = sortformerHolder
     }
 
     func start() {
@@ -64,6 +72,57 @@ final class RecordingPersister {
         } catch {
             log.error("Failed to save Recording: \(String(describing: error))")
             Task { await ErrorLog.shared.error(component: "RecordingPersister", message: "SwiftData save failed", context: ["error": ErrorLog.redactedAppleError(error)]) }
+            return
+        }
+
+        // Speaker Labels piece A: kick off a best-effort post-stop
+        // diarization pass. Gated on:
+        //   • `state == .loaded` (model warm in memory)
+        //   • `currentDiarizer() != nil` (non-nil handle)
+        //   • `jot.speakerLabels.enabled == true` (master toggle ON)
+        // The master-toggle check is defense-in-depth against a race
+        // where the user toggled OFF mid-download but the warmup task
+        // still completed and set state to `.loaded` — without the
+        // explicit master read here, those recordings would still get
+        // diarized + stamped with a `speakerTimeline` against the
+        // user's OFF intent. Failures are silent: the recording stays
+        // as a plain transcript, indistinguishable from a pre-feature
+        // recording.
+        let _stateDesc: String = sortformerHolder.map { "\($0.state)" } ?? "no-holder"
+        let _diarDesc: String = sortformerHolder?.currentDiarizer() == nil ? "nil" : "present"
+        SortformerDiag.log("RecordingPersister.persist state=\(_stateDesc) diarizer=\(_diarDesc) duration=\(audio.duration)s samples=\(audio.samples.count)")
+        let speakerLabelsMasterOn = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
+        if Features.speakerLabels,
+           speakerLabelsMasterOn,
+           let sortformerHolder, sortformerHolder.state == .loaded,
+           let diarizer = sortformerHolder.currentDiarizer() {
+            let samples = audio.samples
+            let duration = audio.duration
+            let modelContext = self.context
+            let recordingID = recording.id
+            let logRef = self.log
+            Task { @MainActor in
+                do {
+                    guard let payload = try SpeakerTimelineBuilder.buildTimeline(
+                        samples: samples,
+                        transcript: transcript,
+                        duration: duration,
+                        diarizer: diarizer
+                    ) else {
+                        return // solo recording — detect-and-skip
+                    }
+                    let data = try JSONEncoder().encode(payload)
+                    let descriptor = FetchDescriptor<Recording>(
+                        predicate: #Predicate { $0.id == recordingID }
+                    )
+                    if let row = try modelContext.fetch(descriptor).first {
+                        row.speakerTimeline = data
+                        try modelContext.save()
+                    }
+                } catch {
+                    logRef.error("Speaker timeline build failed: \(String(describing: error))")
+                }
+            }
         }
     }
 }

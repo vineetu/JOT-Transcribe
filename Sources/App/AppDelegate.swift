@@ -116,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         ChatbotVoiceInputTests.runAll()
         ShortcutsTests.runAll()
         DockActivationPolicyTests.runAll()
+        SpeakerLabelsTests.runAll()
         #endif
 
         ResetActions.processPendingHardReset()
@@ -241,6 +242,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Retention cleanup: purge on launch, hourly thereafter. Respects
         // `jot.retentionDays` (0 = keep forever).
         services.retention.start()
+
+        // Speaker Labels piece A — warmup. Loads Sortformer + replays
+        // enrolled clips so slot↔name bindings are live before the first
+        // recording. Skipped when: model isn't downloaded yet (a fresh
+        // install or pre-feature user); no identities enrolled; master
+        // toggle is OFF; hardware is below the 16 GB gate.
+        //
+        // Per plan Risk #1 the wall-clock cost (replays N ~30 s clips
+        // through `enrollSpeaker(withAudio:)`) is empirically unknown.
+        // Detached `Task` keeps it off the launch critical path; the
+        // first recording after launch may briefly run without labels
+        // if warmup hasn't completed.
+        let speakerLabelsMasterOn = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
+        if Features.speakerLabels,
+           speakerLabelsMasterOn,
+           SortformerHardwareGate.isSupported {
+            let clips = services.enrolledIdentitiesStore.clipsForWarmup()
+            switch services.sortformerHolder.state {
+            case .offHaveModel where !clips.isEmpty:
+                Task { @MainActor [weak holder = services.sortformerHolder] in
+                    await holder?.loadIfNeeded(clips: clips)
+                }
+            case .notSetUp where !clips.isEmpty:
+                // Identities already enrolled but model bundle missing or
+                // corrupt — auto-redownload so labels resume working without
+                // the user having to delete their enrollment to expose the
+                // "Set up" CTA.
+                Task { @MainActor [weak holder = services.sortformerHolder] in
+                    guard let holder else { return }
+                    try? await holder.downloadModelIfNeeded()
+                    // Re-check the master toggle after the (~250 MB,
+                    // multi-second) download. The user may have flipped
+                    // Speaker Labels OFF mid-download — in that case the
+                    // bundle is on disk but we honor the OFF intent by
+                    // skipping the load. The next launch with the toggle
+                    // back ON will warm the model from the disk cache.
+                    let stillEnabled = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
+                    guard stillEnabled else { return }
+                    await holder.loadIfNeeded(clips: clips)
+                }
+            default:
+                break
+            }
+        }
     }
 
     private func presentSetupWizardIfNeeded(
@@ -257,6 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let llmConfiguration = services.llmConfiguration
         let logSink = services.logSink
         let hotkeyRouter = services.hotkeyRouter
+        let promptStore = services.promptStore
         DispatchQueue.main.async {
             WizardPresenter.present(
                 reason: .firstRun,
@@ -267,6 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 llmConfiguration: llmConfiguration,
                 logSink: logSink,
                 hotkeyRouter: hotkeyRouter,
+                promptStore: promptStore,
                 onDismiss: {
                     SingleOrChordMigrationWizardPresenter.presentIfNeeded(
                         wasSetupCompleteAtLaunch: wasSetupCompleteAtLaunch

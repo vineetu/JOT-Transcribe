@@ -42,6 +42,7 @@ enum WizardPresenter {
         llmConfiguration: LLMConfiguration,
         logSink: any LogSink = ErrorLog.shared,
         hotkeyRouter: HotkeyRouter,
+        promptStore: PromptStore? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         if let controller {
@@ -59,6 +60,7 @@ enum WizardPresenter {
             llmConfiguration: llmConfiguration,
             logSink: logSink,
             hotkeyRouter: hotkeyRouter,
+            promptStore: promptStore,
             onFinish: { closeWindow() }
         )
         let wc = SetupWizardWindowController(
