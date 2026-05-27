@@ -1156,7 +1156,7 @@ final class HelpChatStore {
     /// deterministic alternative via `init(snapshotBuilder:)`.
     private static func liveSnapshot() -> UserConfigSnapshot {
         let cleanupEnabled = UserDefaults.standard.bool(forKey: "jot.transformEnabled")
-        let retention = (UserDefaults.standard.object(forKey: "jot.retentionDays") as? Int) ?? 7
+        let retention = (UserDefaults.standard.object(forKey: "jot.retentionDays") as? Int) ?? 90
         let providerRaw = UserDefaults.standard.string(forKey: "jot.llm.provider")
         let providerDisplay: String? = {
             guard let raw = providerRaw, let provider = LLMProvider(rawValue: raw) else {

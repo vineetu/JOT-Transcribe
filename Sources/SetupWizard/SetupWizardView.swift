@@ -94,6 +94,7 @@ struct SetupWizardView: View {
         case .rewriteIntro: RewriteIntroStep()
         case .rewriteWithVoiceBullets: RewriteWithVoiceStep(config: .bullets)
         case .rewriteWithVoiceSpanish: RewriteWithVoiceStep(config: .spanish)
+        case .promptsLibrary: PromptsLibraryStep()
         }
     }
 

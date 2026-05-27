@@ -64,6 +64,14 @@ final class SetupWizardCoordinator: ObservableObject {
     /// flow tests never render `TestStep`'s view body.
     let hotkeyRouter: HotkeyRouter?
 
+    /// Prompt library used by `PromptsLibraryStep` (step 12) to render
+    /// a live teaser of bundled prompt titles. Coordinator-injected
+    /// rather than read via `@EnvironmentObject` because the wizard
+    /// window doesn't sit inside the main SwiftUI scene that injects
+    /// `PromptStore` — reading it from environment crashes the wizard
+    /// with `EnvironmentObject.error()`.
+    let promptStore: PromptStore?
+
     private let onFinish: () -> Void
 
     init(
@@ -75,6 +83,7 @@ final class SetupWizardCoordinator: ObservableObject {
         llmConfiguration: LLMConfiguration,
         logSink: any LogSink = ErrorLog.shared,
         hotkeyRouter: HotkeyRouter? = nil,
+        promptStore: PromptStore? = nil,
         onFinish: @escaping () -> Void
     ) {
         self.currentStep = step
@@ -85,6 +94,7 @@ final class SetupWizardCoordinator: ObservableObject {
         self.llmConfiguration = llmConfiguration
         self.logSink = logSink
         self.hotkeyRouter = hotkeyRouter
+        self.promptStore = promptStore
         self.onFinish = onFinish
     }
 
@@ -121,7 +131,8 @@ final class SetupWizardCoordinator: ObservableObject {
             // precondition.
             return true
         case .done, .aiProvider, .cleanup, .rewriteIntro,
-             .rewriteWithVoiceBullets, .rewriteWithVoiceSpanish:
+             .rewriteWithVoiceBullets, .rewriteWithVoiceSpanish,
+             .promptsLibrary:
             // Post-basics walkthrough steps. No persistent precondition.
             return true
         }

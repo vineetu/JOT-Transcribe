@@ -15,7 +15,13 @@ struct GeneralPane: View {
     /// the cache hasn't been populated yet (existing user upgrading;
     /// `AudioCapture.start()` opportunistically backfills).
     @AppStorage("jot.inputDeviceLastName") private var inputDeviceLastName: String = ""
-    @AppStorage("jot.retentionDays") private var retentionDays: Int = 7
+    // Default bumped 7 → 90 in the compressed-history migration. With AAC
+    // 16 kbps mono storage (~330 KB/min, vs. WAV's 3.84 MB/min) a 90-day
+    // window at typical usage (47 dictations/day × 30 sec avg) lands around
+    // ~1.1 GB on disk — comfortable footprint for a desktop app. Existing
+    // users keep whatever value they previously set; only fresh installs
+    // (and users who never opened Settings → General) pick up the new default.
+    @AppStorage("jot.retentionDays") private var retentionDays: Int = 90
     /// "Show Jot in the Dock" — read once at launch in `AppDelegate` via
     /// `dockActivationPolicy(setupComplete:storedShowInDock:)`. Toggling
     /// here writes the value; the change takes effect on next launch.
