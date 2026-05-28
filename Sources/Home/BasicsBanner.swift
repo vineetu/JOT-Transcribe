@@ -17,41 +17,59 @@ import SwiftUI
 /// `help.basics`. The X dismisses without navigating.
 struct BasicsBanner: View {
     @AppStorage("jot.home.bannerDismissed") private var dismissed: Bool = false
+    /// v1.13: when Advanced is off, the banner appends a one-line hint
+    /// pointing at the Settings → General toggle so new users can
+    /// discover the gated surface. The hint is suppressed when Advanced
+    /// is already on (existing users; new users who completed the
+    /// Setup Wizard).
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
     @Environment(\.setSidebarSelection) private var setSidebarSelection
 
     var body: some View {
         if !dismissed {
-            HStack(spacing: 8) {
-                Button(action: openBasics) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                        Text("New to Jot? See the Basics →")
-                            .font(.callout)
-                            .foregroundStyle(.primary)
-                        Spacer(minLength: 0)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        dismissed = true
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Button(action: openBasics) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                            Text("New to Jot? See the Basics →")
+                                .font(.callout)
+                                .foregroundStyle(.primary)
+                            Spacer(minLength: 0)
+                        }
                         .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            dismissed = true
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss basics banner")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss basics banner")
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+
+                if !advancedEnabled {
+                    Divider().opacity(0.5)
+                    Text("More options — custom vocabulary, the Ask Jot chatbot, and other power-user shortcuts — live behind 'Advanced' in Settings → General.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                }
             }
-            .padding(.horizontal, 12)
-            .frame(height: 36)
             .background(.regularMaterial)
             .overlay(
                 Rectangle()

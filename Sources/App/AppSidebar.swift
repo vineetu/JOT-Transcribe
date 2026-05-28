@@ -2,11 +2,18 @@ import SwiftUI
 
 /// The unified window's left source-list.
 ///
-/// Layout order:
-///   Home · Settings (expanded, 7 children) · Help · Ask Jot · About
+/// Layout order (Advanced ON):
+///   Recents · Settings (expanded, sub-rows including Vocabulary) · Help · Ask Jot · About
 ///
-/// - Expanded by default — most "Open Jot…" clicks are settings-adjacent,
-///   so showing the settings sub-items saves a click (design doc §D, option D1).
+/// Layout order (Advanced OFF — v1.13 slim mode):
+///   Recents · Settings (no Vocabulary sub-row) · Help · About
+///
+/// - Settings group expand/collapse state is persisted via
+///   `@AppStorage("jot.sidebar.settingsExpanded")`. Default expanded for
+///   new and existing users; once collapsed it stays collapsed across
+///   relaunches.
+/// - Per Decision #8, clicking the "Settings" header navigates to General
+///   but does NOT force-expand the group — matches macOS System Settings.
 /// - No dividers between rows — the native source-list grouping reads
 ///   clean enough at this count.
 /// - Sub-item icons use the *subordinate* tint (secondary foreground on
@@ -23,11 +30,17 @@ struct AppSidebar: View {
     /// "Sidebar item visible but muted."
     let askJotAvailable: Bool
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
-    @State private var settingsExpanded: Bool = true
+    /// v1.13: persisted across launches. Default expanded for both new
+    /// and existing users. Decision #8: clicking the header navigates
+    /// to General without changing this state — only the chevron toggles.
+    @AppStorage("jot.sidebar.settingsExpanded") private var settingsExpanded: Bool = true
+    /// v1.13: master toggle for the "Advanced" surface. Off hides the
+    /// Vocabulary sub-row and the top-level Ask Jot row.
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
 
     var body: some View {
         List(selection: $selection) {
-            Label("Home", systemImage: "house")
+            Label("Recents", systemImage: "house")
                 .tag(AppSidebarSelection.home)
 
             DisclosureGroup(isExpanded: $settingsExpanded) {
@@ -54,7 +67,8 @@ struct AppSidebar: View {
                 // terms that can't apply. The user's saved list and the
                 // master toggle preference persist — the row reappears
                 // when primary swaps back to a European model.
-                if transcriberHolder.primaryModelID != .tdt_0_6b_ja {
+                // v1.13: additionally gated behind Advanced.
+                if advancedEnabled && transcriberHolder.primaryModelID != .tdt_0_6b_ja {
                     subRow(
                         title: "Vocabulary",
                         systemImage: "text.book.closed",
@@ -83,8 +97,7 @@ struct AppSidebar: View {
                 )
             } label: {
                 // macOS 26.4 sidebar idiom: clicking the group header routes
-                // to the group's default child (General) AND keeps the group
-                // expanded — matches System Settings behavior. `DisclosureGroup`
+                // to the group's default child (General). `DisclosureGroup`
                 // on SwiftUI 7 (Xcode 26.4.1) has no selection semantics on its
                 // label, and `List(selection:)` only tracks tags on leaf rows,
                 // so we drive the behavior with a `Button(.plain)`. Button is
@@ -93,12 +106,13 @@ struct AppSidebar: View {
                 // and focus traversal is standard — per Apple's SwiftUI 7
                 // guidance to prefer controls over tap gestures for
                 // button-like interactions. The disclosure chevron rendered
-                // as DisclosureGroup chrome on the trailing edge continues to
-                // handle its own tap for users who explicitly want to
-                // collapse the group.
+                // as DisclosureGroup chrome on the trailing edge handles
+                // its own tap for users who want to collapse/expand the
+                // group; the header click is navigate-only per Decision #8
+                // so an incidental click doesn't re-expand a deliberately
+                // collapsed group.
                 Button {
                     selection = .settings(.general)
-                    settingsExpanded = true
                 } label: {
                     HStack(spacing: 0) {
                         Label("Settings", systemImage: "gearshape")
@@ -113,7 +127,9 @@ struct AppSidebar: View {
             Label("Help", systemImage: "questionmark.circle")
                 .tag(AppSidebarSelection.help)
 
-            askJotRow
+            if advancedEnabled {
+                askJotRow
+            }
 
             Label("About", systemImage: "info.circle")
                 .tag(AppSidebarSelection.about)

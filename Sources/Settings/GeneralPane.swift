@@ -26,6 +26,14 @@ struct GeneralPane: View {
     /// `dockActivationPolicy(setupComplete:storedShowInDock:)`. Toggling
     /// here writes the value; the change takes effect on next launch.
     @AppStorage("jot.dock.show") private var showInDock: Bool = true
+    /// Master toggle for the v1.13 "Advanced" surface (Custom Vocabulary,
+    /// Ask Jot chatbot, Push-to-Talk + Paste Last Result rows, About →
+    /// Ask Jot section, Help Basics sparkle affordances). Seeded once at
+    /// launch by `AdvancedFlag.migrateIfNeeded()` — existing users land
+    /// on `true`, fresh installs on `false`. Completing the Setup Wizard
+    /// flips this to `true` automatically. Toggling never deletes data;
+    /// hidden surfaces preserve their state on disk.
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
 
     // Injected at the root scene in `JotApp.swift` so the "Run Setup Wizard…"
     // button can forward the shared TranscriberHolder into the wizard.
@@ -254,6 +262,18 @@ struct GeneralPane: View {
                         body: "Jot counts your successful dictations locally to time a single donation nudge on the Home tab, and computes the \"months saved vs comparable tools\" line in About from the day you first launched Jot. Nothing is uploaded — the counters live in your Mac's preferences only. Turn this off to hide both surfaces."
                     )
                 }
+            }
+
+            // Advanced toggle — bottom of General per iOS Settings
+            // convention. New users start off; completing the Setup
+            // Wizard auto-flips this on. Toggling never deletes data —
+            // hidden surfaces preserve their state on disk.
+            Section("Advanced") {
+                Toggle("Show advanced features", isOn: $advancedEnabled)
+                Text("Custom vocabulary, the Ask Jot chatbot, push-to-talk, and other power-user options.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
         }
         .formStyle(.grouped)

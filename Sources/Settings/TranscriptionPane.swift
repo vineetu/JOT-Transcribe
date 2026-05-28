@@ -34,7 +34,15 @@ struct TranscriptionPane: View {
                 Text("Each model is downloaded once and runs on the Apple Neural Engine. Multiple models can be installed; only the primary is hot in memory.")
             }
 
-            speakerLabelsCard
+            // v1.13: gate the card on the same kill switch the sidebar
+            // already uses. Without this, the card leaks into Transcription
+            // settings and tapping it lands on a pane that has no sidebar
+            // entry — a navigation dead-end. When Speaker Labels actually
+            // ships, flipping `Features.speakerLabels = true` re-surfaces
+            // the card and the sidebar row together.
+            if Features.speakerLabels {
+                speakerLabelsCard
+            }
 
             Section {
                 HStack {

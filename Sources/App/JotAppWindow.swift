@@ -32,6 +32,11 @@ struct JotAppWindow: View {
     @State private var selection: AppSidebarSelection
     @State private var navHistory: NavigationHistory
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
+    /// v1.13: master toggle for the Advanced surface. Observed so we can
+    /// (a) sanitize incoming sidebar selections that point at now-hidden
+    /// panes, and (b) redirect + cancel + scrub history when the user
+    /// flips Advanced off mid-session.
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
 
     /// Shared Help navigator. Owned at this root so every pane (Help,
     /// Ask Jot, Settings popovers) sees the same instance — deep-link
@@ -93,6 +98,7 @@ struct JotAppWindow: View {
         )
     }
 
+    @MainActor
     init(
         pipeline: VoiceInputPipeline,
         recorder: RecorderController,
@@ -104,8 +110,16 @@ struct JotAppWindow: View {
         hotkeyRouter: HotkeyRouter,
         navigationHistory: NavigationHistory
     ) {
-        let initial = JotAppWindow.pendingSelection ?? .home
+        let raw = JotAppWindow.pendingSelection ?? .home
         JotAppWindow.pendingSelection = nil
+        // Read the flag directly out of UserDefaults at init time so the
+        // very first render already has a sanitized selection. Reading
+        // `@AppStorage` from inside `init` isn't supported (the property
+        // wrapper isn't materialized until `body` runs). The launch-time
+        // `AdvancedFlag.migrateIfNeeded()` call runs from `AppDelegate`
+        // BEFORE this `init` executes, so the value is always present.
+        let advancedSeed = UserDefaults.standard.bool(forKey: AdvancedFlag.storageKey)
+        let initial = JotAppWindow.sanitize(raw, advancedEnabled: advancedSeed)
         _selection = State(initialValue: initial)
         _navHistory = State(initialValue: navigationHistory)
         self.llmConfiguration = llmConfiguration
@@ -144,7 +158,12 @@ struct JotAppWindow: View {
         }
         .environment(\.navigationHistory, navHistory)
         .environment(\.setSidebarSelection) { newValue in
-            selection = newValue
+            // v1.13: deep-links from Help "Open in Settings →", About
+            // Ask Jot row, Help Basics sparkles, cloud `ShowFeatureTool`,
+            // and any future call site all flow through this closure.
+            // Redirect requests that target a now-hidden pane so the
+            // detail view never strands the user on an orphan.
+            selection = JotAppWindow.sanitize(newValue, advancedEnabled: advancedEnabled)
         }
         .environment(\.helpNavigator, helpNavigator)
         .environmentObject(llmConfiguration)
@@ -157,7 +176,7 @@ struct JotAppWindow: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .jotWindowSetSidebarSelection)) { note in
             if let newSelection = note.userInfo?["selection"] as? AppSidebarSelection {
-                selection = newSelection
+                selection = JotAppWindow.sanitize(newSelection, advancedEnabled: advancedEnabled)
             }
         }
         .onChange(of: selection) { oldValue, newValue in
@@ -171,8 +190,19 @@ struct JotAppWindow: View {
         // re-fires cleanly next time.
         .onChange(of: helpNavigator.sidebarSelection) { _, newValue in
             guard let newValue else { return }
-            selection = newValue
+            selection = JotAppWindow.sanitize(newValue, advancedEnabled: advancedEnabled)
             helpNavigator.sidebarSelection = nil
+        }
+        // v1.13: when the user flips Advanced off mid-session, redirect
+        // any selection pointing at a now-hidden pane, cancel any
+        // in-flight Ask Jot stream, and scrub stale back/forward history.
+        .onChange(of: advancedEnabled) { _, isOn in
+            guard !isOn else { return }
+            selection = JotAppWindow.sanitize(selection, advancedEnabled: false)
+            chatStore.cancelStream()
+            navHistory.filter { sel in
+                JotAppWindow.sanitize(sel, advancedEnabled: false) == sel
+            }
         }
         // Drop the live CTC rescorer when primary swaps to a model
         // that can't apply it: JA (different tokenizer,
@@ -223,6 +253,30 @@ struct JotAppWindow: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(.regularMaterial)
+        }
+    }
+
+    // MARK: - Advanced-mode sanitization
+
+    /// Redirect requests for now-hidden panes to `.home` when Advanced is
+    /// off. When Advanced is on, behaves as identity. Invoked at the
+    /// `\.setSidebarSelection` boundary, the
+    /// `.jotWindowSetSidebarSelection` notification handler, the
+    /// navigator-driven mirror, the `pendingSelection` init read, and
+    /// the runtime flip-off observer — so a deep-link from Help / About /
+    /// menu bar / cloud tool-calling never strands the user on an orphan
+    /// pane.
+    @MainActor
+    static func sanitize(
+        _ raw: AppSidebarSelection,
+        advancedEnabled: Bool
+    ) -> AppSidebarSelection {
+        guard !advancedEnabled else { return raw }
+        switch raw {
+        case .askJot, .settings(.vocabulary):
+            return .home
+        default:
+            return raw
         }
     }
 

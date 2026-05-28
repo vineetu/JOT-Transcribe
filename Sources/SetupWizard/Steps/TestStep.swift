@@ -3,21 +3,31 @@ import KeyboardShortcuts
 import SwiftUI
 
 /// Step 5 (merged) — "your dictation shortcut" + "try your hotkey" in
-/// one page. Shows the current `.toggleRecording` binding, exposes inline
-/// controls to pick a single key or chord trigger, and then drives an
-/// end-to-end smoke test from the *real* hotkey press.
+/// one page. v1.13 redesign per `docs/wizard-shortcuts-redesign/design.md`:
 ///
-/// Why merged: users were setting a binding on the previous "Shortcuts"
-/// step, hitting Continue, and only verifying it on the next "Test"
-/// step — which made the relationship between the two pages confusing
-/// (especially after the trigger can now be either a single key or chord).
+///   • One focal chip is the page's primary affordance (no more
+///     segmented "Trigger type" Picker as the first interactive control).
+///   • Three quick-pick chips below the chip (Caps Lock, ⌥ Right Option,
+///     ⌥ Space) — tap to bind in one click.
+///   • "Custom…" toggles a `KeyboardShortcuts.Recorder` inside the focal
+///     chip for chord-style bindings.
+///   • Input Monitoring missing → proactive top banner from page load
+///     (replacing the v1.12 12 s silent-timer remediation hint).
+///   • Fresh-install vs upgrader copy diverges so existing users see
+///     "let's make sure it still works" instead of "press it now."
+///
+/// Why merged stays merged: users were setting a binding on the previous
+/// "Shortcuts" step, hitting Continue, and only verifying it on the next
+/// "Test" step — which made the relationship between the two pages
+/// confusing. The 2026-05 redesign keeps the merge but declutters the
+/// rendering so the chip can carry the page on its own.
 ///
 /// Why hotkey-driven test (and not an in-app Test button): the button
-/// bypasses the global event tap and Input Monitoring permission, so
-/// it passes even when the real dictation hotkey would silently fail.
-/// Forcing the user to press the actual hotkey here proves three
-/// things in one step: the binding is correct, Input Monitoring is
-/// granted, and the global tap is firing.
+/// bypasses the global event tap and Input Monitoring permission, so it
+/// passes even when the real dictation hotkey would silently fail.
+/// Forcing the user to press the actual hotkey here proves three things
+/// in one step: the binding is correct, Input Monitoring is granted, and
+/// the global tap is firing.
 ///
 /// We commandeer the `.toggleRecording` handler on appear via
 /// `HotkeyRouter.setToggleRecordingOverride(...)` and restore the
@@ -27,29 +37,28 @@ import SwiftUI
 /// stack the production flow depends on.
 ///
 /// Capture + transcription use `coordinator.audioCapture` and
-/// `coordinator.transcriber`, the same instances the production
-/// recorder shares, so warming the ANE here carries over to the first
+/// `coordinator.transcriber`, the same instances the production recorder
+/// shares, so warming the ANE here carries over to the first
 /// post-wizard real dictation.
-///
-/// A 12-second silent timer surfaces a remediation hint if no press
-/// arrives — that almost always means Input Monitoring isn't granted
-/// or the binding got clobbered.
 struct TestStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
     @EnvironmentObject private var holder: TranscriberHolder
+    @ObservedObject private var permissions = PermissionsService.shared
 
     @State private var phase: TestPhase = .waitingForStart
     @State private var transcript: String = ""
     @State private var errorMessage: String?
-    @State private var hotkeyDidFire: Bool = false
-    @State private var showTimeoutHint: Bool = false
-    @State private var timeoutTask: Task<Void, Never>?
-    /// Bumped by the inline `KeyboardShortcuts.Recorder`'s onChange so
-    /// `shortcutDisplay` re-evaluates after a chord edit. `@AppStorage`
-    /// handles the single-key half reactively on its own.
+    /// True while the user has the chord recorder open inside the focal
+    /// chip. The quick-pick strip's "Custom…" toggles this.
+    @State private var isEditingBinding: Bool = false
+    /// Bumped by the inline `KeyboardShortcuts.Recorder` so any computed
+    /// view of `effectiveBinding(...)` re-evaluates after a chord commit.
+    /// `@AppStorage` handles the single-key half reactively on its own.
     @State private var bindingsRefreshToken: Int = 0
-    /// Read live so the displayed hotkey reflects edits the user may
-    /// make in a different Settings window between wizard runs.
+    /// Set once on appear so the header copy doesn't flip between fresh
+    /// and upgrader framings if the user changes their binding mid-flow.
+    @State private var isUpgrader: Bool = false
+
     @AppStorage(SingleKey.storageKey) private var toggleSingleKey: SingleKey = .none
     @AppStorage("jot.hotkey.toggleRecording.triggerType") private var toggleTriggerTypeRaw: String = ""
 
@@ -57,7 +66,7 @@ struct TestStep: View {
         holder.primaryModelID
     }
 
-    /// The hotkey shown in the big chip follows the active trigger type.
+    /// The hotkey shown in the focal chip follows the active trigger type.
     private var shortcutDisplay: String {
         _ = bindingsRefreshToken
         _ = toggleSingleKey
@@ -66,226 +75,170 @@ struct TestStep: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Your dictation shortcut")
-                    .font(.system(size: 22, weight: .semibold))
-                Text("Press your hotkey from any app to start and stop recording. Change it if you want, then test it below.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 18) {
+            header
 
-            bindingControls
-
+            // Banners stack above the chip — the chip stays the focal point.
+            inputMonitoringBanner
             remediationBanner
 
-            hotkeyCard
+            // Focal chip + quick-pick strip + the test-result chrome below.
+            VStack(spacing: 14) {
+                WizardShortcutChip(
+                    label: shortcutDisplay,
+                    phase: chipPhase,
+                    recorderName: .toggleRecording,
+                    onRecorderChange: {
+                        bindingsRefreshToken &+= 1
+                        // Committing a chord through the recorder closes
+                        // the editing state — same semantics as
+                        // Apple-shipped recorders.
+                        isEditingBinding = false
+                    }
+                )
 
-            if showTimeoutHint && phase == .waitingForStart {
-                timeoutHint
+                if !isEditingBinding {
+                    calloutCopy
+                }
+
+                WizardAlternativesStrip(
+                    activeSingleKey: effectiveSingleKey,
+                    isCustomActive: isEditingBinding,
+                    onPickSingleKey: applySingleKey,
+                    onToggleCustom: toggleCustomRecorder
+                )
+                .disabled(phase == .recording || phase == .transcribing)
+                .opacity((phase == .recording || phase == .transcribing) ? 0.35 : 1.0)
             }
 
-            transcriptBlock
+            // Caps Lock LED education (only when the active binding IS
+            // Caps Lock, and only while idle — too noisy mid-test).
+            if shouldShowCapsLockCallout {
+                capsLockCallout
+            }
+
+            // Live-test result chrome (transcript, success, failure).
+            testResultBlock
 
             Spacer(minLength: 0)
+
+            footerTip
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
+            isUpgrader = computeIsUpgrader()
             coordinator.hotkeyRouter?.setToggleRecordingOverride {
                 Task { @MainActor in handleHotkeyPress() }
             }
-            armTimeoutHintIfNeeded()
             updateChrome()
         }
         .onDisappear {
             coordinator.hotkeyRouter?.clearToggleRecordingOverride()
-            timeoutTask?.cancel()
         }
     }
 
-    // MARK: - Binding controls
+    // MARK: - Header
 
-    /// Inline trigger-type picker plus the active editor for `.toggleRecording`.
-    /// Changes here write to `@AppStorage` / `UserDefaults` and
-    /// `HotkeyRouter.applySingleKeys()` rebinds on the next
-    /// `UserDefaults.didChangeNotification` tick — so the next press
-    /// of the new binding fires the wizard's test override correctly.
     @ViewBuilder
-    private var bindingControls: some View {
+    private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Trigger type", selection: triggerTypeBinding) {
-                ForEach(SingleKey.TriggerType.allCases, id: \.self) { type in
-                    Text(type.displayName).tag(type)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            HStack(spacing: 10) {
-                if triggerType == .singleKey {
-                    Picker("", selection: $toggleSingleKey) {
-                        Text(SingleKey.none.displayName).tag(SingleKey.none)
-                        Divider()
-                        ForEach(SingleKey.Action.toggleRecording.pickerCases) { key in
-                            Text(key.displayName).tag(key)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 220)
-                } else {
-                    KeyboardShortcuts.Recorder(for: .toggleRecording) { _ in
-                        bindingsRefreshToken &+= 1
-                    }
-                }
-                Spacer(minLength: 0)
-            }
-            Text("Change anytime in Settings → Shortcuts.")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+            Text(headerTitle)
+                .font(.system(size: 22, weight: .semibold))
+            Text(headerSubtitle)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
+        .textSelection(.enabled)
     }
 
-    private var triggerType: SingleKey.TriggerType {
-        _ = toggleTriggerTypeRaw
-        return SingleKeyMigration.effectiveTriggerType(for: .toggleRecording)
+    private var headerTitle: String {
+        isUpgrader ? "Try your dictation shortcut" : "Your dictation shortcut"
     }
 
-    private var triggerTypeBinding: Binding<SingleKey.TriggerType> {
-        Binding(
-            get: { triggerType },
-            set: { type in
-                SingleKeyMigration.setTriggerType(type, for: .toggleRecording)
-                bindingsRefreshToken &+= 1
-            }
-        )
+    private var headerSubtitle: String {
+        if isUpgrader {
+            return "Looks like you've already got a hotkey — let's make sure it still works."
+        }
+        return "Press your shortcut from any app to start and stop recording. Tap a chip to change it."
     }
 
-    // MARK: - Banner
+    /// Owner is treated as an "upgrader" for header-copy purposes when
+    /// the v1.12+ setup-complete flag is set OR when they've already
+    /// moved away from the fresh-install default (single-key Caps Lock).
+    /// The signal is conservative: any deviation from the freshly-migrated
+    /// state shows the upgrader framing.
+    private func computeIsUpgrader() -> Bool {
+        if FirstRunState.shared.setupComplete { return true }
+        let binding = SingleKeyMigration.effectiveBinding(for: .toggleRecording)
+        switch binding.triggerType {
+        case .singleKey:
+            return binding.singleKey != .capsLock && binding.singleKey != .none
+        case .chord:
+            return true
+        }
+    }
+
+    // MARK: - Banners
+
+    @ViewBuilder
+    private var inputMonitoringBanner: some View {
+        let status = permissions.statuses[.inputMonitoring] ?? .notDetermined
+        if status != .granted {
+            WizardPermissionBanner(
+                variant: .inputMonitoring(needsRelaunch: status == .requiresRelaunch),
+                onGoBackToPermissions: { coordinator.goTo(.permissions) },
+                onGoBackToModel: { coordinator.goTo(.model) },
+                onOpenSystemSettings: { SystemSettingsLinks.open(for: .inputMonitoring) },
+                onRestart: { RestartHelper.relaunch() }
+            )
+        }
+    }
 
     @ViewBuilder
     private var remediationBanner: some View {
         let mic = PermissionsService.shared.statuses[.microphone] == .granted
         let modelReady = ModelCache.shared.isCached(selectedModel)
-        if !mic || !modelReady {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                VStack(alignment: .leading, spacing: 4) {
-                    if !mic {
-                        Text("Microphone permission is not granted.")
-                            .font(.system(size: 13, weight: .semibold))
-                        Button("Go back to Permissions") {
-                            coordinator.goTo(.permissions)
-                        }
-                        .controlSize(.small)
-                    } else {
-                        Text("Model isn't downloaded yet.")
-                            .font(.system(size: 13, weight: .semibold))
-                        Button("Go back to Model") {
-                            coordinator.goTo(.model)
-                        }
-                        .controlSize(.small)
-                    }
-                }
-                Spacer()
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.orange.opacity(0.12))
+        if !mic {
+            WizardPermissionBanner(
+                variant: .microphone,
+                onGoBackToPermissions: { coordinator.goTo(.permissions) },
+                onGoBackToModel: { coordinator.goTo(.model) },
+                onOpenSystemSettings: { SystemSettingsLinks.open(for: .microphone) },
+                onRestart: { RestartHelper.relaunch() }
+            )
+        } else if !modelReady {
+            WizardPermissionBanner(
+                variant: .modelNotDownloaded,
+                onGoBackToPermissions: { coordinator.goTo(.permissions) },
+                onGoBackToModel: { coordinator.goTo(.model) },
+                onOpenSystemSettings: {},
+                onRestart: {}
             )
         }
     }
 
-    // MARK: - Hotkey card
+    // MARK: - Callouts
 
     @ViewBuilder
-    private var hotkeyCard: some View {
-        VStack(spacing: 14) {
-            Text(shortcutDisplay)
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
-                .foregroundStyle(hotkeyForeground)
-                .padding(.horizontal, 26)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(hotkeyBackground)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(hotkeyBorder, lineWidth: 1)
-                )
-
-            Text(calloutText)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(calloutColor)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
-        .padding(.horizontal, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.3))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    /// Callout text color tracks phase the same way the chip does —
-    /// red while recording so the "stop" instruction reads as the
-    /// active concern, otherwise secondary.
-    private var calloutColor: Color {
-        switch phase {
-        case .recording: return .red
-        case .transcribing: return .accentColor
-        default: return .secondary
-        }
-    }
-
-    private var hotkeyForeground: Color {
-        switch phase {
-        case .recording: return .red
-        case .transcribing: return .accentColor
-        default: return .primary
-        }
-    }
-
-    private var hotkeyBackground: Color {
-        switch phase {
-        case .recording: return Color.red.opacity(0.10)
-        case .transcribing: return Color.accentColor.opacity(0.08)
-        default: return Color.primary.opacity(0.05)
-        }
-    }
-
-    private var hotkeyBorder: Color {
-        switch phase {
-        case .recording: return Color.red.opacity(0.45)
-        case .transcribing: return Color.accentColor.opacity(0.45)
-        default: return Color.primary.opacity(0.10)
-        }
+    private var calloutCopy: some View {
+        Text(calloutText)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(calloutColor)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var calloutText: String {
+        if !isInputMonitoringGranted {
+            return "Pressing your hotkey now won't work — grant Input Monitoring above."
+        }
         switch phase {
         case .waitingForStart:
             return "Press it now to start recording."
         case .recording:
-            return "Listening… press the same hotkey to stop."
+            return "Listening… press it again to stop."
         case .transcribing:
             return "Transcribing…"
         case .done, .failed:
@@ -293,37 +246,65 @@ struct TestStep: View {
         }
     }
 
-    // MARK: - Timeout hint
-
-    private var timeoutHint: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Hotkey didn't fire?")
-                    .font(.system(size: 13, weight: .semibold))
-                Text("Most often this means Input Monitoring isn't granted. Go back to Permissions and make sure Jot is checked in System Settings → Privacy & Security → Input Monitoring (add manually via + → Applications if it's not listed).")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Go back to Permissions") {
-                    coordinator.goTo(.permissions)
-                }
-                .controlSize(.small)
-            }
-            Spacer()
+    private var calloutColor: Color {
+        if !isInputMonitoringGranted { return .secondary }
+        switch phase {
+        case .recording:    return .red
+        case .transcribing: return .accentColor
+        default:            return .secondary
         }
-        .padding(12)
+    }
+
+    private var shouldShowCapsLockCallout: Bool {
+        let binding = SingleKeyMigration.effectiveBinding(for: .toggleRecording)
+        guard binding.triggerType == .singleKey, binding.singleKey == .capsLock else {
+            return false
+        }
+        // Only educate while idle. Mid-test the chip + callout copy carry
+        // the moment-to-moment messaging.
+        return phase == .waitingForStart && !isEditingBinding
+    }
+
+    @ViewBuilder
+    private var capsLockCallout: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+                .font(.system(size: 12))
+            Text("Pressing Caps Lock now will start Jot — your keyboard's Caps Lock light becomes your recording indicator while it's on.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.orange.opacity(0.12))
+                .fill(Color.secondary.opacity(0.07))
         )
     }
 
-    // MARK: - Transcript
+    @ViewBuilder
+    private var footerTip: some View {
+        HStack(spacing: 6) {
+            Text("Tip:")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.tertiary)
+            Text("Press Esc to cancel a recording at any time.")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 0)
+            Text("Change anytime in Settings → Shortcuts.")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    // MARK: - Test result block
 
     @ViewBuilder
-    private var transcriptBlock: some View {
+    private var testResultBlock: some View {
         switch phase {
         case .waitingForStart, .recording:
             EmptyView()
@@ -335,49 +316,108 @@ struct TestStep: View {
                     .foregroundStyle(.secondary)
             }
         case .done:
-            VStack(alignment: .leading, spacing: 10) {
-                if transcript.isEmpty {
-                    Text("Didn't catch anything — try again and speak a little louder.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.system(size: 14))
-                        Text("Your hotkey, mic, and model all work.")
-                            .font(.system(size: 13, weight: .medium))
-                    }
-                    Text("YOU SAID")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .tracking(0.6)
-                    Text(transcript)
-                        .font(.system(size: 13))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-                        )
-                }
-            }
+            doneBlock
         case .failed:
-            VStack(alignment: .leading, spacing: 8) {
-                Group {
-                    if let errorMessage {
-                        Text(verbatim: errorMessage)
-                    } else {
-                        Text("Test failed.")
-                    }
+            failedBlock
+        }
+    }
+
+    @ViewBuilder
+    private var doneBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if transcript.isEmpty {
+                Text("Didn't catch anything — try again and speak a little louder.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.system(size: 14))
+                    Text("Your hotkey, mic, and model all work.")
+                        .font(.system(size: 13, weight: .medium))
                 }
-                .font(.system(size: 13))
-                .foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
+                Text("YOU SAID")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .tracking(0.6)
+                Text(transcript)
+                    .font(.system(size: 13))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                    )
             }
         }
+    }
+
+    @ViewBuilder
+    private var failedBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Group {
+                if let errorMessage {
+                    Text(verbatim: errorMessage)
+                } else {
+                    Text("Test failed.")
+                }
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: - Chip phase mapping
+
+    /// The focal chip's visual state. Editing wins over everything else
+    /// so the recorder is visible regardless of where the test pipeline
+    /// happens to be — though in practice we disable the quick-pick
+    /// strip during recording/transcribing so the user can't enter
+    /// editing mid-test.
+    private var chipPhase: WizardShortcutChip.Phase {
+        if isEditingBinding { return .editing }
+        if !isInputMonitoringGranted { return .disabled }
+        switch phase {
+        case .waitingForStart: return .idle
+        case .recording:       return .recording
+        case .transcribing:    return .transcribing
+        case .done:            return transcript.isEmpty ? .failed : .passed
+        case .failed:          return .failed
+        }
+    }
+
+    private var isInputMonitoringGranted: Bool {
+        (permissions.statuses[.inputMonitoring] ?? .notDetermined) == .granted
+    }
+
+    private var effectiveSingleKey: SingleKey {
+        let binding = SingleKeyMigration.effectiveBinding(for: .toggleRecording)
+        return binding.triggerType == .singleKey ? binding.singleKey : .none
+    }
+
+    // MARK: - Binding writes
+
+    /// Apply a quick-pick single key. Switches trigger type to
+    /// `.singleKey` (which clears the chord storage in
+    /// `SingleKeyMigration`) and writes the new single key. The
+    /// `HotkeyRouter`'s UserDefaults observer rebinds within the same
+    /// runloop tick.
+    private func applySingleKey(_ key: SingleKey) {
+        SingleKeyMigration.setTriggerType(.singleKey, for: .toggleRecording)
+        UserDefaults.standard.set(key.rawValue, forKey: SingleKey.Action.toggleRecording.storageKey)
+        bindingsRefreshToken &+= 1
+        isEditingBinding = false
+    }
+
+    private func toggleCustomRecorder() {
+        // Opening the custom recorder leaves storage untouched until the
+        // recorder commits or is dismissed. Closing without a commit
+        // simply returns the chip to its previous (still-active) binding.
+        isEditingBinding.toggle()
     }
 
     // MARK: - Coordinator chrome
@@ -391,39 +431,22 @@ struct TestStep: View {
         ))
     }
 
-    // MARK: - Timeout hint timer
-
-    private func armTimeoutHintIfNeeded() {
-        // Only arm once per appearance — and never after the user has
-        // already proven the hotkey works. If the user navigates back
-        // and forward, SwiftUI rebuilds the view; `hotkeyDidFire` and
-        // `showTimeoutHint` reset with it, which is the right
-        // semantics.
-        guard !hotkeyDidFire else { return }
-        timeoutTask?.cancel()
-        timeoutTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(12))
-            guard !Task.isCancelled else { return }
-            if !hotkeyDidFire {
-                showTimeoutHint = true
-            }
-        }
-    }
-
     // MARK: - Hotkey handler
 
     @MainActor
     private func handleHotkeyPress() {
-        hotkeyDidFire = true
-        showTimeoutHint = false
-        timeoutTask?.cancel()
+        // If the user is mid-edit (custom recorder open) the recorder
+        // owns the keyboard — production override doesn't fire because
+        // the trigger isn't yet bound at the system level. This branch is
+        // just defence in depth.
+        guard !isEditingBinding else { return }
         switch phase {
         case .waitingForStart, .done, .failed:
             startCapture()
         case .recording:
             stopCaptureAndTranscribe()
         case .transcribing:
-            // Ignore — transcription is in flight, presses queue badly
+            // Ignore — transcription is in flight, presses queue badly.
             break
         }
     }

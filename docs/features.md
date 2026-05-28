@@ -8,7 +8,7 @@ User-facing features in the shipping build. This is the product surface — not 
 
 ## Recording & Dictation
 
-- **Toggle recording** — press the hotkey (default `⌥Space`) to start, press again to stop and transcribe. Also triggerable from the tray menu and the Home recording button.
+- **Toggle recording** — press the hotkey (default `⌥Space`) to start, press again to stop and transcribe. Also triggerable from the tray menu and the Recents recording button.
 - **Push to talk** — hold a hotkey to record, release to stop. Unbound by default.
 - **Cancel recording** — press the hotkey (default `Esc`) to discard without transcribing. Active only while recording so it doesn't steal `Esc` from other apps.
 - **Any-length recordings** — no hard duration limit; long recordings work reliably.
@@ -95,9 +95,9 @@ A first-class home for the catalog of LLM instructions that drive Rewrite. Visib
 
 ## Ask Jot
 
-- **Dedicated sidebar pane** — a top-level "Ask Jot" entry sits between Home and Settings and opens a full-pane conversational help experience.
+- **Dedicated sidebar pane** — a top-level "Ask Jot" entry sits between Help and About (hidden when the Advanced toggle is off) and opens a full-pane conversational help experience.
 - **Grounded answers** — responses are grounded in Jot's bundled help documentation and stream into the chat UI without navigating away from Ask Jot. Apple Intelligence via `FoundationModels` is the default Ask Jot provider, with a 300-token response cap.
-- **Cloud provider opt-in** — if the selected AI provider is OpenAI, Anthropic, Gemini, or Ollama, Settings → AI exposes an "Allow Ask Jot to use this provider" toggle. When enabled, Ask Jot can use that provider; otherwise it stays on Apple Intelligence.
+- **Follows the global AI provider** — Ask Jot uses whichever provider you've configured in Settings → AI (Apple Intelligence, OpenAI, Anthropic, Gemini, or Ollama). To keep Ask Jot on Apple Intelligence, set the global provider to Apple Intelligence. Users who had explicitly opted out via the v1.12 "Allow Ask Jot to use this provider" toggle retain their privacy preference — Ask Jot stays on Apple Intelligence for them and a one-time banner explains the change.
 - **Voice input in chat** — the input bar includes a mic button that reuses Parakeet ASR plus Rewrite-style Apple Intelligence condensation, with the same pill states as dictation: Recording → Transcribing → Condensing. Condensation has a 10-second budget and silently falls back to the raw transcript if it times out.
 - **Fast recovery** — if a turn fails or is interrupted, Ask Jot preserves conversation context and prefills the last question so the user can retry without retyping.
 - **In-app feature links** — answers render markdown, surface clickable feature citations inline, and open the matching Help card inside Jot instead of launching a browser.
@@ -112,10 +112,10 @@ A first-class home for the catalog of LLM instructions that drive Rewrite. Visib
 - **Auto-paste at cursor** — transcription is pasted into the frontmost app.
 - **Auto-press Enter** — optional; pastes and sends in one step (chat inputs, search boxes).
 - **Clipboard preservation** — choose whether the transcript stays on the clipboard or the previous clipboard contents are restored after paste.
-- **Copy last transcription** — from the Home card, Recordings detail, the tray menu, or a global shortcut.
-- **Quick copy from any row** — an inline copy button on every Home recordings row copies that recording's transcript to the clipboard without opening detail.
+- **Copy last transcription** — from the Recents card, Recordings detail, the tray menu, or a global shortcut.
+- **Quick copy from any row** — an inline copy button on every Recents recordings row copies that recording's transcript to the clipboard without opening detail.
 
-**Related:** [Recording & Dictation](#recording--dictation), [Global Shortcuts](#global-shortcuts), [Settings → Transcription](#transcription), [Home & Library](#home--library).
+**Related:** [Recording & Dictation](#recording--dictation), [Global Shortcuts](#global-shortcuts), [Settings → Transcription](#transcription), [Recents & Library](#recents--library).
 
 ## Global Shortcuts
 
@@ -155,10 +155,10 @@ A small floating overlay near the menu bar — a Dynamic Island-style pill — t
 
 **Related:** [Recording & Dictation](#recording--dictation), [Local Transcription](#local-transcription), [Transcript Cleanup](#transcript-cleanup-optional), [Rewrite](#rewrite-optional), [Ask Jot](#ask-jot).
 
-## Home & Library
+## Recents & Library
 
-- **Single library surface** — Home now hosts the full library experience: dictation recordings and Rewrite sessions interleave chronologically. There is no separate Library sidebar destination.
-- **Hotkey glance + discovery banner** — the Home header keeps the current shortcut summary and the dismissible first-run basics banner.
+- **Single library surface** — **Recents** (renamed from **Home** in v1.13; the underlying pane and storage are unchanged) hosts the full library experience: dictation recordings and Rewrite sessions interleave chronologically. There is no separate Library sidebar destination.
+- **Hotkey glance + discovery banner** — the Recents header keeps the current shortcut summary and the dismissible first-run basics banner. When the Advanced toggle is off (slim mode for fresh installs that didn't complete the Setup Wizard), the banner appends a one-line hint pointing at Settings → General → Advanced so users can discover the gated surface.
 - **Merged library list** — browse by date group (Today, Yesterday, Last 7 days, …), search across title, transcript, and Rewrite fields (selection / instruction / output / model). A leading icon distinguishes kinds (`waveform` for dictation, `wand.and.stars` for Rewrite).
 - **Recording detail** — every dictation recording opens into the waveform/detail view with playback, scrubbing, and the full transcript. Recording row actions: Re-transcribe, Reveal in Finder, Copy, Delete.
 - **Rewrite session detail** — every Rewrite run opens into a three-pane view (Selected text → Instruction → Rewritten output) with the model label and flavor in the header. Rewrite row actions: Copy Output, Delete (no playback, no Re-transcribe, no Reveal — Rewrite sessions don't persist audio).
@@ -172,13 +172,17 @@ Jot runs as a menu-bar app with a single main window opened from the tray and ap
 
 Sidebar entries:
 
-- **Home** — landing pane plus the full recordings browser.
-- **Ask Jot** — conversational help assistant grounded in the in-app docs.
-- **Settings** — grouped children: General, Transcription, Vocabulary, Sound, AI, Shortcuts.
+- **Recents** — landing pane plus the full recordings browser. (Previously labeled "Home" in v1.12 and earlier; the underlying pane and storage are unchanged.)
+- **Ask Jot** — conversational help assistant grounded in the in-app docs. Hidden when the Advanced toggle is off.
+- **Settings** — grouped children: General, Transcription, Vocabulary (hidden when Advanced is off), Sound, AI, Shortcuts. The Settings disclosure group is collapsible and the state persists across launches; clicking the "Settings" header navigates to General without force-expanding the group.
 - **Help** — Basics, Advanced, Troubleshooting.
 - **About** — app identity, privacy pledge, donation link, and the Troubleshooting log-sharing flow.
 
 The main window is the single destination for all five sections — there is no separate Settings window and no global `⌘,` binding (the default SwiftUI `appSettings` command group is intentionally removed).
+
+### Advanced toggle
+
+A master toggle in **Settings → General** controls which power-user surfaces are visible. When **off**, four surfaces are hidden: the Vocabulary sub-row under Settings, the Ask Jot sidebar entry, the About-pane Ask Jot section + the Help Basics sparkle affordances, and the Push-to-Talk + Paste Last Result rows in Settings → Shortcuts. When **on**, the sidebar matches the v1.12 layout. Existing users upgrading to v1.13 keep Advanced on (no visible change). Fresh installs start with Advanced off; completing the Setup Wizard automatically flips it on. Toggling never deletes data — hidden surfaces preserve their state on disk, and existing hotkey bindings continue to fire even when their Settings row is hidden.
 
 ## Navigation
 
@@ -193,6 +197,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Input device (microphone) — pick any connected input device; selection is remembered across sessions and the meter restarts so the bars track the newly-bound device. A disconnected preferred device stays visible in the picker as "Last used (not connected)".
 - Launch at login
 - Library retention — Forever / Last 7 / 30 / 90 days (default: 7 days). Applies to both dictation recordings and rewrite sessions.
+- **Show advanced features** — master toggle that hides power-user surfaces (Vocabulary sub-row, Ask Jot sidebar entry, About-pane Ask Jot section, Help Basics sparkle affordances, Push-to-Talk row, Paste Last Result row) so first-run users see a smaller surface. Fresh installs start with this **off** and completing the Setup Wizard automatically flips it **on**. Existing v1.12 users upgrade with it on (no visible change). Toggling never deletes data — hidden surfaces preserve state on disk and existing hotkey bindings keep firing even when their Settings row is hidden. See [Main Window → Advanced toggle](#advanced-toggle).
 - Run setup wizard again (preloads current selections)
 - **Restart Jot** — a Troubleshooting row that quits and relaunches the app after a confirmation prompt, re-registering global shortcuts from scratch. Use when a hotkey suddenly produces a Unicode character (≤, ÷, …) instead of triggering its action, which happens when another app grabs the same shortcut while Jot is off.
 - **Reset group** — a dedicated section at the bottom of General with three tiered actions:
@@ -210,7 +215,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
 - Footer note clarifying that AI-powered transcription features are configured in Settings → AI
 
 ### Vocabulary
-**Experimental.** Marked with an inline "Experimental" badge in the Settings pane. The CTC rescoring pipeline is a best-effort boost layered on top of the primary transcription model — it never gates correctness, and the underlying FluidAudio API surface that exposes per-token timings is only available on a subset of models.
+**Experimental.** Marked with an inline "Experimental" badge in the Settings pane. The CTC rescoring pipeline is a best-effort boost layered on top of the primary transcription model — it never gates correctness, and the underlying FluidAudio API surface that exposes per-token timings is only available on a subset of models. The Vocabulary sub-row is hidden in the Settings sidebar when the Advanced toggle is off (its stored terms persist and re-appear when Advanced is re-enabled).
 
 - **Custom vocabulary list** — a short list of user-supplied terms (product names, proper nouns, jargon) that Jot should prefer when transcribing, so names and domain words don't get misheard as their common-word neighbors.
 - Inline add / rename / delete of terms; the list is persisted to disk and reloaded on pane open so external edits are picked up.
@@ -231,8 +236,7 @@ A browser + editor for the prompt catalog used by Rewrite. See [Prompt Library](
 **Related:** [Prompt Library](#prompt-library), [Rewrite](#rewrite-optional), [Prompt picker](#prompt-picker), [Settings → AI](#ai).
 
 ### AI
-- Provider (Apple Intelligence / OpenAI / Anthropic / Gemini / Ollama)
-- Allow Ask Jot to use this provider (shown when the selected provider is not Apple Intelligence)
+- Provider (Apple Intelligence / OpenAI / Anthropic / Gemini / Ollama). Ask Jot follows this selection by default; users who had toggled the v1.12 "Allow Ask Jot to use this provider" opt-in OFF before upgrading keep Ask Jot pinned to Apple Intelligence (no per-provider opt-in lives in this pane anymore).
 - Base URL (left-aligned) and model — override per-provider defaults
 - API key (hidden for Ollama — local, no key required)
 - Clean up transcript with AI toggle (always visible; disabled until the provider is minimally configured)
@@ -250,6 +254,7 @@ A browser + editor for the prompt catalog used by Rewrite. See [Prompt Library](
 
 ### Shortcuts
 - Editable bindings for Toggle Recording, Push to Talk, Paste Last Transcription, Rewrite, Rewrite with Voice. Cancel Recording (Esc) is hardcoded, not configurable, and not shown in the Shortcuts list — a footnote tells the user that Esc is the cancel key and that macOS global hotkeys must include at least one modifier.
+- **Push to Talk** and **Paste Last Transcription** rows are hidden when the Advanced toggle is off. Their bindings still fire — only the configuration UI is gated.
 
 **Related:** [Global Shortcuts](#global-shortcuts), [Recording & Dictation](#recording--dictation), [Rewrite](#rewrite-optional), [Output — Paste & Clipboard](#output--paste--clipboard).
 
@@ -259,12 +264,13 @@ A top-level sidebar pane (not a Settings child) for identity, giving back, priva
 
 - App identity (icon, tagline, version / build) and the project vision statement.
 - **Check for Updates…** — manual Sparkle update check from the About pane, alongside the current version.
-- **Ask Jot entry point** — a dedicated row with a sparkles icon jumps straight into the chatbot.
+- **Ask Jot entry point** — a dedicated row with a sparkles icon jumps straight into the chatbot. Hidden when the Advanced toggle is off.
 - **Support Jot** — a single **Donate to charity** button that opens the in-app donations browser; donations route 100% to the author's every.org charity fund (the actual donate step opens every.org in the user's browser; no payment flows inside Jot). Beneath the button, an inline **"$X raised across N donations"** caption hydrates from the cached `/summary` payload immediately on appear, then refreshes from the donations server in the background. The caption is omitted on a fresh install (no cache and no successful fetch yet) and when the server reports zero donations.
 - **Privacy pledge** — inline reminder that transcription is local-only. About-pane network calls are limited to the one-time model download, the daily Sparkle appcast check, and the donations `/summary` GET that hydrates the "raised so far" caption on appear.
 - **Troubleshooting** — a dedicated section for error reporting:
   - **View log** — opens the local error log in a sheet with a Done button.
   - **Copy log / Reveal in Finder / Send via email** — each goes through a privacy-scan sheet that checks the log for API keys, credential URLs, absolute paths, and your last 90 days of transcripts before handing over the file. Every flow offers an "Auto-redact and …" option when anything sensitive is found. Emails are pre-addressed to `jottranscribe@gmail.com` with app diagnostics pre-filled; the log itself is placed on the clipboard so the user can review before pasting.
+  - **Send Feedback** — a single feedback button (consolidated in v1.13 — the separate "Send bug report" row was removed) that opens a composer sheet with the redacted log and app-details footer pre-filled. An in-sheet "Show original log" toggle reveals the un-redacted log on demand. Attach **up to 3 screenshots** via the paperclip button (NSOpenPanel restricted to image content types); each attachment renders as a thumbnail with an inline X to remove it. A live upload-size counter shows the current payload; oversized payloads are reduced automatically through iterative JPEG quality reduction to fit the 5 MB server cap, and an inline "too large" error surfaces if the encoder can't bring the payload under cap. Submit stays disabled while any attachment is mid-encode so partial uploads never ship.
 
 **Related:** [System Integration](#system-integration) (Sparkle), [Ask Jot](#ask-jot), [Privacy & Data](#privacy--data), [Help](#help).
 
@@ -288,10 +294,10 @@ Shown on first launch and on demand from Settings → General. Ten steps, in ord
 
 1. **Welcome**
 2. **Permissions** — grant Microphone, Input Monitoring, and Accessibility. A "Restart Jot" button is offered after granting Input Monitoring or Accessibility (a running app can't detect those until it relaunches). The Input Monitoring row carries an inline instruction: if Jot doesn't auto-populate in the System Settings list, click + → Applications → Jot.
-3. **Model** — pick the transcription engine and download it on first run. Four options: Parakeet v3 (multilingual) + Nemotron live preview (default), Parakeet 0.6B Japanese, Parakeet v2 + EOU live preview (deprecated), and Nemotron (English, lighter). Each row shows an inline Download button next to the size; cached rows show a green "Downloaded" chip. Already-downloaded models skip straight through.
+3. **Model** — pick the transcription engine and download it on first run. The default view shows just **Nemotron (English, lighter)** pre-selected with a single Download button — the fastest path for the majority of read-style English first-run users. A **"Show 3 more options"** disclosure underneath expands to reveal the alternates in order: Parakeet v3 (multilingual) + Nemotron live preview, Parakeet 0.6B Japanese, and Parakeet v2 + EOU live preview (deprecated, listed last). The whole disclosure row is clickable, not just the chevron. For returning users whose stored model is not Nemotron, the disclosure is auto-expanded so they land on their existing selection. Each row shows an inline Download button next to the size; cached rows show a green "Downloaded" chip. Already-downloaded models skip straight through.
 4. **Microphone** — pick the input device for recording. A live input-level meter under the picker confirms the mic is hot before you continue. A disconnected preferred device stays visible as "Last used (not connected)".
 5. **Shortcuts** — preview of the default Toggle Recording shortcut.
-6. **Test dictation** — speak to verify the full pipeline end-to-end. The user controls the capture window (no hard 3-second cap) and can re-test as many times as they like.
+6. **Test dictation** — bind your dictation hotkey and verify the full pipeline end-to-end in one merged step. Redesigned in v1.13: one focal chip displays the currently-bound key with a gentle pulse animation while waiting for you to press it. Three quick-pick chips below offer Caps Lock, ⌥ Right Option, and ⌥ Space — tap any to bind, no recorder needed. A **Custom…** button opens an inline recorder for arbitrary chords. The previous "Trigger type: Single key | Chord" picker is gone — the wizard infers chord vs single-key from what you actually pick. If Input Monitoring isn't granted, a banner surfaces immediately at page load with a "Grant in System Settings" deep-link button (replacing the prior 12-second silent timer). Header copy adapts: fresh installs see "Press the key combination you want to use to start a recording"; returning users with a non-default binding see "Looks like you already have a hotkey — let's make sure it works." The actual capture window has no hard 3-second cap and can be re-tested as many times as you like.
 7. **Done** — terminal "you're set up for the basics" card shown right after Test succeeds. Skip here to start using Jot; Continue advances into the advanced steps below.
 8. **AI Provider** (optional) — picker for Cleanup / Rewrite provider. Starts at "Choose…" with **no default pre-selected** so users actively pick. Options: Apple Intelligence, OpenAI, Anthropic, Gemini, Ollama. Provider-specific fields (base URL, model, API key) plus Test Connection appear only after a pick. Hides the API-key field for providers that don't use one (Apple Intelligence, Ollama, Flavor-1 JWT). The picker remembers the user's choice across Back/Continue and subsequent wizard reruns.
 9. **Cleanup** — introduces Auto-correct (LLM transcript cleanup). When the Test step produced a transcript, a "Preview cleanup" button runs the user's current provider against that transcript so the user sees the before/after inline. The Apple-Intelligence-specific quality disclaimer is only shown when the user actually picked Apple Intelligence — otherwise hidden. No toggle here — actually enabling Auto-correct still happens in Settings → AI.
@@ -340,6 +346,20 @@ Items queued for upcoming releases — UX gaps, bug-shaped product issues, and f
 
 These have landed in code but haven't shipped yet — listed here so the backlog stays current.
 
-- **Parakeet v3 + EOU pairing** *(v1.12)* — retires the v3+Nemotron pairing in favor of v3+EOU as the multilingual primary. v3 batch's English output was visibly worse than Nemotron's live preview, creating a "transcript got worse at stop" UX bug. EOU is intentionally lighter so the live preview reads as a rough draft. Migration shim auto-rewrites existing v3+Nemotron users. Internal plan: `docs/plans/v3-eou-pairing.md`.
-- **JA alias-based vocabulary** *(v1.12)* — unlocks custom vocabulary on the Japanese primary via text-layer alias substitution. Real acoustic CTC rescoring is blocked on two upstream FluidAudio gaps (no `CtcJaKeywordSpotter`, no token timings on `TdtJaManager.transcribe`). Internal plan: `docs/plans/custom-vocabulary-mvp.md` §8–§10.
-- **Nemotron-vocab UI guidance** *(v1.12)* — one-click "Switch to Parakeet v3 + EOU" button in Settings → Vocabulary when Nemotron is the active primary, plus a "Doesn't support custom vocabulary" caveat on the Nemotron picker row. Reflects that Nemotron's streaming pipeline can't supply the token timings the rescorer needs.
+- **Advanced mode master toggle** *(v1.13)* — new **Settings → General → Show advanced features** switch. Hides Vocabulary, Ask Jot (sidebar + About-pane row + Help Basics sparkles), Push-to-Talk and Paste Last Result Shortcuts rows when off. Fresh installs start off; Setup Wizard completion auto-flips it on. Existing v1.12 users upgrade with it on (zero visible change). Toggling never deletes data and hidden hotkey bindings still fire. See [Main Window → Advanced toggle](#advanced-toggle) and [Settings → General](#general).
+- **Home → Recents rename** *(v1.13)* — sidebar label and pane title now read "Recents." Strings-only rename; underlying pane and storage are unchanged.
+- **Ask Jot follows the global provider** *(v1.13)* — the v1.12 "Allow Ask Jot to use this provider" toggle has been removed. Ask Jot now uses whichever AI provider is configured globally. Users who explicitly toggled the old setting OFF retain their preference (Ask Jot stays on Apple Intelligence for them) and a one-time first-open banner explains the change.
+- **Collapsible Settings group in the sidebar** *(v1.13)* — the Settings sidebar group (General / Transcription / Vocabulary / Sound / AI / Shortcuts) is now a disclosure that can collapse to a single row. State persists across launches. Clicking the "Settings" header label navigates to General without forcing the group to expand.
+- **Setup Wizard model step simplification** *(v1.13)* — the model step defaults to a single pre-selected Nemotron row with a Download button. A "Show 3 more options" disclosure expands to reveal Parakeet v3 multilingual + EOU, Parakeet Japanese, and Parakeet v2 (deprecated, listed last). The whole disclosure row is clickable, and the disclosure auto-expands for returning users whose stored model is not Nemotron.
+- **Send Feedback: screenshot attachments** *(v1.13)* — attach up to 3 images to a feedback report via a paperclip → NSOpenPanel flow. Thumbnails render with X-to-remove, a live upload-size counter is visible, and iterative JPEG quality reduction is applied automatically to fit a 5 MB server cap. Inline "too large" error surfaces if the encoder can't fit the payload; Submit is gated against partial encodes.
+- **Send Feedback consolidated to a single button** *(v1.13)* — the separate "Send bug report" row in About-pane Troubleshooting has been removed. The single Send Feedback button always includes the redacted log + app-details footer pre-filled, and the in-sheet "Show original log" toggle is preserved.
+
+#### Bug fixes in v1.13
+
+- **Speaker Labels card no longer leaks into Settings → Transcription.** The card was rendering even though the feature's kill switch said hide; the kill switch is now respected. Speaker Labels itself remains gated by the kill switch and invisible to users.
+
+### Released — v1.12
+
+- **Parakeet v3 + EOU pairing** — retires the v3+Nemotron pairing in favor of v3+EOU as the multilingual primary. v3 batch's English output was visibly worse than Nemotron's live preview, creating a "transcript got worse at stop" UX bug. EOU is intentionally lighter so the live preview reads as a rough draft. Migration shim auto-rewrites existing v3+Nemotron users. Internal plan: `docs/plans/v3-eou-pairing.md`.
+- **JA alias-based vocabulary** — unlocks custom vocabulary on the Japanese primary via text-layer alias substitution. Real acoustic CTC rescoring is blocked on two upstream FluidAudio gaps (no `CtcJaKeywordSpotter`, no token timings on `TdtJaManager.transcribe`). Internal plan: `docs/plans/custom-vocabulary-mvp.md` §8–§10.
+- **Nemotron-vocab UI guidance** — one-click "Switch to Parakeet v3 + EOU" button in Settings → Vocabulary when Nemotron is the active primary, plus a "Doesn't support custom vocabulary" caveat on the Nemotron picker row. Reflects that Nemotron's streaming pipeline can't supply the token timings the rescorer needs.

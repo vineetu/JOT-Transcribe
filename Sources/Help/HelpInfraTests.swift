@@ -383,13 +383,19 @@ enum HelpNavigatorTests {
     /// weak reference so nothing leaks.
     @MainActor
     static func test_highlightedFeatureId_autoClearsAfter1p5s() {
+        // Hero was renamed `articulate` → `prompts` in v1.11 (see
+        // `Feature.makeAll()`); the bare-hero slug `articulate` no
+        // longer resolves. Sub-row slugs (`articulate-fixed` etc.)
+        // were intentionally preserved for deep-link stability, so
+        // they still work — but this test needs the current hero
+        // id to exercise the highlight pipeline.
         let nav = HelpNavigator()
-        guard let feature = Feature.bySlug("articulate") else {
-            assertionFailure("articulate missing from Feature registry")
+        guard let feature = Feature.bySlug("prompts") else {
+            assertionFailure("prompts missing from Feature registry")
             return
         }
         nav.show(feature: feature)
-        assert(nav.highlightedFeatureId == "articulate", "highlight should be staged immediately")
+        assert(nav.highlightedFeatureId == "prompts", "highlight should be staged immediately")
 
         Task { @MainActor in
             // 1.5s pulse + 200ms jitter budget.
