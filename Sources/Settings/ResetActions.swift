@@ -38,6 +38,17 @@ enum ResetActions {
                 && UserDefaults.standard.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey)
             let preservedEouRenameMigrated: Bool = preserveModelChoice
                 && UserDefaults.standard.bool(forKey: ModelChoiceMigration.eouRenameMigratedKey)
+            // Decision #7: soft reset preserves the sidebar Settings group
+            // expand/collapse state (it's a UI presentation preference, not
+            // a configurable setting). Hard reset clears it via the
+            // `preserveModelChoice == false` path so a `from-scratch`
+            // wipe is total. The key is only captured when there's an
+            // explicit user-written value — leaving it absent for first-time
+            // users so the default-expanded behavior holds.
+            let hadSettingsExpandedKey: Bool = preserveModelChoice
+                && UserDefaults.standard.object(forKey: "jot.sidebar.settingsExpanded") != nil
+            let preservedSettingsExpanded: Bool = hadSettingsExpandedKey
+                && UserDefaults.standard.bool(forKey: "jot.sidebar.settingsExpanded")
 
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
             // Relaunch captures setupComplete=false, so single-or-chord migration stays gated off.
@@ -60,6 +71,9 @@ enum ResetActions {
                 }
                 if preservedEouRenameMigrated {
                     UserDefaults.standard.set(true, forKey: ModelChoiceMigration.eouRenameMigratedKey)
+                }
+                if hadSettingsExpandedKey {
+                    UserDefaults.standard.set(preservedSettingsExpanded, forKey: "jot.sidebar.settingsExpanded")
                 }
             }
         }

@@ -31,6 +31,11 @@ struct ShortcutsPane: View {
     // One @AppStorage per `SingleKey.Action` — SwiftUI needs literal
     // compile-time keys, so we can't drive these off the enum directly.
     // Values match `SingleKey.Action.<case>.storageKey`.
+    /// v1.13: master toggle for Advanced. When off, rows marked
+    /// `isAdvanced` (Push-to-Talk, Paste Last Result) are filtered out.
+    /// Existing bindings continue to fire — Decision #2.
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
+
     @AppStorage("jot.hotkey.toggleRecording.singleKey") private var toggleSingleKey: SingleKey = .none
     @AppStorage("jot.hotkey.pushToTalk.singleKey") private var pushToTalkSingleKey: SingleKey = .none
     @AppStorage("jot.hotkey.pasteLastTranscription.singleKey") private var pasteLastSingleKey: SingleKey = .none
@@ -57,7 +62,10 @@ struct ShortcutsPane: View {
                         conflictBanner(text: conflict)
                     }
 
-                    let visibleRows = ShortcutsSearchFilter.filter(ShortcutsRow.all, query: searchText)
+                    // v1.13: filter advanced rows BEFORE search so they
+                    // don't surface in search results either.
+                    let baseRows = ShortcutsRow.all.filter { advancedEnabled || !$0.isAdvanced }
+                    let visibleRows = ShortcutsSearchFilter.filter(baseRows, query: searchText)
                     let isSearchActive = !ShortcutsSearchFilter.tokenize(searchText).isEmpty
 
                     if visibleRows.isEmpty {

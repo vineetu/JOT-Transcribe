@@ -263,7 +263,7 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'. Marked experimental because the rescoring pipeline only applies to a subset of transcription models — boost works on v3, v3 int4, v3 + Nemotron preview, and v2+EOU. It does NOT apply when primary is Nemotron-only (English) or Japanese, because those paths don't expose per-token timings to the rescorer; your saved terms persist and re-engage when you switch primary to a vocab-capable model.",
+                        prose: "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'. Marked experimental because the rescoring pipeline only applies to certain transcription models; saved terms persist and re-engage when you switch to a supported model.",
                         warning: "Vocabulary entries override similar-sounding words. Adding many entries that sound alike causes unpredictable preference among them. Keep the list focused.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",

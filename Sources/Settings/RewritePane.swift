@@ -6,7 +6,6 @@ import SwiftUI
 /// user-visible display name is "AI" (design doc §4 / §7).
 struct RewritePane: View {
     @EnvironmentObject private var config: LLMConfiguration
-    @AppStorage("jot.askjot.allowCloud") private var allowCloudAskJot = false
     @Environment(\.helpNavigator) private var navigator
     @Environment(\.setSidebarSelection) private var setSidebarSelection
     @State private var apiKeyInput: String = ""
@@ -86,13 +85,12 @@ struct RewritePane: View {
                         )
                     }
                     .id("ai-provider")
-                    if !isAppleIntelligenceSelected {
-                        Toggle("Allow Ask Jot to use this provider", isOn: $allowCloudAskJot)
-                        Text("Sends your Ask Jot conversation and Jot's help content to the selected provider using your API key.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
+                    // v1.13: the "Allow Ask Jot to use this provider"
+                    // toggle was removed. Ask Jot now follows the global
+                    // provider unconditionally. Users who explicitly opted
+                    // OUT before retain their privacy preference — see
+                    // `HelpChatStore.isCloudAskJotEnabled` for the
+                    // migration sentinel logic.
 
                     if isAppleIntelligenceSelected {
                         if isAppleIntelligenceAvailable {

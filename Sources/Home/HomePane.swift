@@ -15,7 +15,7 @@ struct HomePane: View {
     @AppStorage("jot.hotkey.toggleRecording.triggerType") private var toggleTriggerTypeRaw: String = ""
 
     var body: some View {
-        RecordingsListView(navigationTitle: "Home") {
+        RecordingsListView(navigationTitle: "Recents") {
             VStack(alignment: .leading, spacing: 20) {
                 BasicsBanner()
 

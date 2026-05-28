@@ -90,6 +90,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var windowObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // One-shot Advanced-mode migration (v1.13). Must run BEFORE any
+        // SwiftUI scene materializes so `@AppStorage("jot.advanced.enabled")`
+        // bindings in `AppSidebar` / `JotAppWindow` see the seeded value on
+        // first read. Idempotent; gated by `jot.advanced.migrated`.
+        AdvancedFlag.migrateIfNeeded()
+
         let wasSetupCompleteAtLaunch = FirstRunState.shared.setupComplete
         // Read the "Show Jot in the Dock" preference once at launch. The
         // gate forces `.regular` while the Setup Wizard is pending so
@@ -117,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         ShortcutsTests.runAll()
         DockActivationPolicyTests.runAll()
         SpeakerLabelsTests.runAll()
+        AdvancedFlagTests.runAll()
         #endif
 
         ResetActions.processPendingHardReset()

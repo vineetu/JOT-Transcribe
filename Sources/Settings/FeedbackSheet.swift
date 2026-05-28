@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 
 /// Plain-text feedback composer. Presented as a `.sheet` from
 /// `AboutPane`. POSTs the entered text to `FeedbackClient.send(...)`
@@ -17,18 +19,17 @@ import SwiftUI
 ///   .hidden)` plus an explicit `Color(nsColor:
 ///   .textBackgroundColor)` is the documented Sonoma+ way to make
 ///   it follow Appearance.
-/// Inputs that put `FeedbackSheet` in bug-report mode. When set,
-/// the sheet pre-fills the editor with empty space at the top
-/// (where the user types their description) followed by the chosen
-/// log footer at the bottom, and exposes a toggle to swap between
-/// the redacted and original logs inline. Distinct from a separate
-/// bug-report sheet so the two flows share one composer / one
-/// network path / one success+error UX.
-struct FeedbackBugReportContext: Identifiable {
+/// Inputs the sheet uses to pre-fill the editor: empty space at
+/// the top (where the user types their description) followed by
+/// the redacted log + app-details footer at the bottom. The
+/// in-sheet "Show original log" toggle swaps between redacted and
+/// original views of the same data; both are sent inline as part
+/// of the message body, never as a separate field.
+struct FeedbackContext: Identifiable {
     /// `Identifiable` so `.sheet(item:)` can drive presentation —
     /// a stable per-instance UUID is enough because each press of
-    /// the "Send Bug Report" button mints a fresh context (and
-    /// dismissing nil's it out). No callers compare contexts.
+    /// "Send Feedback" mints a fresh context (and dismissing nil's
+    /// it out). No callers compare contexts.
     let id = UUID()
     /// Privacy-scrubbed log + app-details block. Default content
     /// of the pre-fill — the safe choice surfaced by the toggle's
@@ -43,13 +44,13 @@ struct FeedbackBugReportContext: Identifiable {
 struct FeedbackSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    /// When non-nil, switches the sheet into bug-report mode:
-    /// different title/subtitle, pre-filled message body, and an
-    /// in-sheet redacted/original-log toggle.
-    let bugReport: FeedbackBugReportContext?
+    /// Log + app-details payload pre-filled into the editor. Always
+    /// present — the previous "no-logs" feedback path was removed
+    /// when the two feedback buttons collapsed into one.
+    let context: FeedbackContext
 
-    init(bugReport: FeedbackBugReportContext? = nil) {
-        self.bugReport = bugReport
+    init(context: FeedbackContext) {
+        self.context = context
     }
 
     @State private var message: String = ""
@@ -58,19 +59,56 @@ struct FeedbackSheet: View {
     @State private var errorMessage: String?
     @State private var submittedID: Int?
 
-    /// True when the user has flipped the bug-report toggle to
-    /// "Show original log". Only meaningful when `bugReport` is
-    /// non-nil — feedback mode never uses this.
+    /// True when the user has flipped the in-sheet toggle to
+    /// "Show original log". Default false — the redacted version
+    /// is the safe surface, the original is opt-in for review.
     @State private var showRawLog: Bool = false
+
+    /// Source-file URLs picked via NSOpenPanel. Authoritative
+    /// selection — `processedDataURIs` is a derived cache that
+    /// follows this array through `FeedbackImageEncoder`. Capped
+    /// at 3 by the picker handler.
+    @State private var selectedURLs: [URL] = []
+
+    /// Index-aligned with `selectedURLs` on a successful encode,
+    /// empty while a fresh encode is mid-flight or after a
+    /// failure. Submit is gated on this matching `selectedURLs`
+    /// count so we never silently send the user's text without
+    /// the screenshots they thought they attached.
+    @State private var processedDataURIs: [String] = []
+
+    /// Combined base64-encoded length of `processedDataURIs`,
+    /// shown in the counter so the user sees the real upload
+    /// size — not the original file size, which is misleading
+    /// (a 12 MB ProRAW screenshot becomes ~700 KB JPEG).
+    @State private var totalEncodedBytes: Int = 0
+
+    /// True while `FeedbackImageEncoder.encode(...)` is mid-run.
+    /// Submit stays disabled during this window so the POST
+    /// never lands without the images the user expected.
+    @State private var isProcessingImages: Bool = false
+
+    /// Image-pipeline errors (too large / unreadable). Shown
+    /// inline below the attachments row. Kept separate from
+    /// `errorMessage` so a stale "too large" warning doesn't
+    /// imply the network send itself failed.
+    @State private var imageError: String?
+
+    /// Holds the in-flight encode task. On a fresh selection
+    /// change we cancel this before starting the next encode —
+    /// otherwise a slow earlier encode (e.g. 3 huge images) can
+    /// land after a fast later one and clobber state the user
+    /// thought they had updated.
+    @State private var encodeTask: Task<Void, Never>?
 
     @FocusState private var editorFocused: Bool
 
-    /// Empty-space prefix the bug-report pre-fill leads with so
-    /// the user has visible blank lines above the log footer to
-    /// type their description into. Four newlines feels like
-    /// "enough room" without making the editor scroll past the
-    /// log section on first paint.
-    private static let bugReportLeadingSpace = "\n\n\n\n"
+    /// Empty-space prefix the pre-fill leads with so the user has
+    /// visible blank lines above the log footer to type their
+    /// description into. Four newlines feels like "enough room"
+    /// without making the editor scroll past the log section on
+    /// first paint.
+    private static let leadingSpace = "\n\n\n\n"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -86,21 +124,27 @@ struct FeedbackSheet: View {
             }
         }
         .padding(20)
-        .frame(
-            // Bug-report mode pre-fills the editor with a log block —
-            // larger frame so the user can see both their description
-            // area and the log without forced scrolling.
-            width: bugReport == nil ? 480 : 580,
-            height: bugReport == nil ? 380 : 540
-        )
+        // Sheet always pre-fills the editor with a log block, so it
+        // needs room for the description area + log + attachments
+        // row (picker button + 56pt thumbnails + counter) without
+        // forced scrolling.
+        .frame(width: 580, height: 620)
+        .onChange(of: selectedURLs) { _, newURLs in
+            scheduleEncode(for: newURLs)
+        }
+        .onDisappear {
+            // Sheet is going away — abandon any in-flight encode so
+            // it doesn't keep burning CPU off-screen.
+            encodeTask?.cancel()
+        }
         .onAppear {
             // Pre-fill the editor with empty space at the top + the
-            // redacted log footer at the bottom when in bug-report
-            // mode. Setting this in `onAppear` rather than `init`
-            // keeps `message` a `@State` (resetting cleanly if the
-            // sheet is dismissed and re-presented).
-            if message.isEmpty, let bugReport {
-                message = Self.bugReportLeadingSpace + bugReport.redactedFooter
+            // redacted log footer at the bottom. Setting this in
+            // `onAppear` rather than `init` keeps `message` a
+            // `@State` (resetting cleanly if the sheet is dismissed
+            // and re-presented).
+            if message.isEmpty {
+                message = Self.leadingSpace + context.redactedFooter
             }
 
             // Defer focus a tick so the sheet's own
@@ -111,59 +155,52 @@ struct FeedbackSheet: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: bugReport == nil ? "envelope.fill" : "ladybug.fill")
+            Image(systemName: "envelope.fill")
                 .font(.system(size: 16))
                 .foregroundStyle(Color.accentColor)
-            Text(bugReport == nil ? "Send Feedback" : "Send Bug Report")
+            Text("Send Feedback")
                 .font(.system(size: 16, weight: .semibold))
             Spacer()
         }
     }
 
     private var subtitle: some View {
-        Text(
-            bugReport == nil
-                ? "Thoughts, suggestions, or what's not working — it goes straight to the developer. No logs are attached."
-                : "Describe what went wrong in the empty space at the top. The log and app details are pre-filled below — they're sent along with your description. Flip to the original log if a redaction obscured something important."
-        )
-        .font(.system(size: 12))
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
+        Text("Type your message in the empty space at the top. Your app details and recent log are pre-filled below and sent along with your description — flip to the original log if a redaction obscured something important.")
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// Bug-report-only row above the editor that toggles the
-    /// embedded footer between the redacted and original log. Edits
-    /// `message` in place by substring-replacing the old footer with
-    /// the new one, which preserves whatever the user has typed in
-    /// the description area above. If the user has manually edited
-    /// the footer text the exact-match swap will no-op — acceptable
-    /// edge case; they've already opted into hand-curating.
-    @ViewBuilder
+    /// Row above the editor that toggles the embedded footer between
+    /// the redacted and original log. Edits `message` in place by
+    /// substring-replacing the old footer with the new one, which
+    /// preserves whatever the user has typed in the description area
+    /// above. If the user has manually edited the footer text the
+    /// exact-match swap will no-op — acceptable edge case; they've
+    /// already opted into hand-curating.
     private var redactedToggleRow: some View {
-        if let bugReport {
-            HStack(spacing: 8) {
-                Image(systemName: showRawLog ? "eye.fill" : "eye.slash.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Toggle(isOn: $showRawLog) {
-                    Text("Show original log")
-                        .font(.system(size: 12))
-                }
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .onChange(of: showRawLog) { _, newValue in
-                    swapFooter(showingRaw: newValue, context: bugReport)
-                }
-                Spacer()
-                Text(showRawLog ? "Original — review before sending" : "Redacted")
-                    .font(.system(size: 11))
-                    .foregroundStyle(showRawLog ? .orange : .secondary)
+        HStack(spacing: 8) {
+            Image(systemName: showRawLog ? "eye.fill" : "eye.slash.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Toggle(isOn: $showRawLog) {
+                Text("Show original log")
+                    .font(.system(size: 12))
             }
-            .padding(.bottom, 8)
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .onChange(of: showRawLog) { _, newValue in
+                swapFooter(showingRaw: newValue)
+            }
+            Spacer()
+            Text(showRawLog ? "Original — review before sending" : "Redacted")
+                .font(.system(size: 11))
+                .foregroundStyle(showRawLog ? .orange : .secondary)
         }
+        .padding(.bottom, 8)
     }
 
-    private func swapFooter(showingRaw: Bool, context: FeedbackBugReportContext) {
+    private func swapFooter(showingRaw: Bool) {
         let oldFooter = showingRaw ? context.redactedFooter : context.rawFooter
         let newFooter = showingRaw ? context.rawFooter : context.redactedFooter
         if let range = message.range(of: oldFooter) {
@@ -189,6 +226,21 @@ struct FeedbackSheet: View {
                 .focused($editorFocused)
                 .disabled(isSending)
                 .frame(maxHeight: .infinity)
+
+            attachmentsRow
+
+            if let imageError {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                        .padding(.top, 1)
+                    Text(imageError)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
             if let errorMessage {
                 HStack(alignment: .top, spacing: 6) {
@@ -235,7 +287,16 @@ struct FeedbackSheet: View {
     }
 
     private var canSend: Bool {
-        !isSending && !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // `processedDataURIs.count == selectedURLs.count` is the
+        // defensive guard: if encoding errored or is mid-flight,
+        // the arrays diverge and submit is blocked. Without this,
+        // a "too large" error could leave the user able to send
+        // their text with the screenshots silently dropped.
+        !isSending
+            && !isProcessingImages
+            && imageError == nil
+            && processedDataURIs.count == selectedURLs.count
+            && !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     // MARK: - Success
@@ -246,7 +307,7 @@ struct FeedbackSheet: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 44))
                 .foregroundStyle(.green)
-            Text(bugReport == nil ? "Thanks for the feedback!" : "Bug report sent.")
+            Text("Thanks for the feedback!")
                 .font(.system(size: 16, weight: .semibold))
             Text(thanksSubtitle)
                 .font(.system(size: 12))
@@ -276,16 +337,190 @@ struct FeedbackSheet: View {
 
         isSending = true
         errorMessage = nil
+        // Snapshot the wire payload at submit time so a thumbnail
+        // remove during the network round-trip can't desync the
+        // POSTed images from what the user saw when they clicked.
+        let imagesSnapshot = processedDataURIs
 
         Task { @MainActor in
             do {
-                let id = try await FeedbackClient.send(message: trimmed)
+                let id = try await FeedbackClient.send(
+                    message: trimmed,
+                    images: imagesSnapshot
+                )
                 submittedID = id
                 didSend = true
             } catch {
                 errorMessage = error.localizedDescription
             }
             isSending = false
+        }
+    }
+
+    // MARK: - Attachments
+
+    @ViewBuilder
+    private var attachmentsRow: some View {
+        HStack(spacing: 10) {
+            Button {
+                openImagePicker()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "paperclip")
+                    Text(selectedURLs.isEmpty ? "Add screenshots" : "Add more")
+                }
+                .font(.system(size: 12))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isSending || isProcessingImages || selectedURLs.count >= 3)
+            .help(selectedURLs.count >= 3 ? "Maximum 3 screenshots." : "Attach up to 3 screenshots (5 MB total).")
+
+            if !selectedURLs.isEmpty || isProcessingImages {
+                Divider().frame(height: 20)
+
+                HStack(spacing: 8) {
+                    ForEach(selectedURLs, id: \.self) { url in
+                        thumbnailView(for: url)
+                    }
+                    if isProcessingImages {
+                        HStack(spacing: 5) {
+                            ProgressView().controlSize(.small)
+                            Text("Processing…")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+
+            if !selectedURLs.isEmpty {
+                Text(counterText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+            }
+        }
+    }
+
+    private func thumbnailView(for url: URL) -> some View {
+        // NSImage is loaded synchronously on MainActor for display
+        // — fine because we cap selection at 3 and SwiftUI caches
+        // the rendered output. The encoder already validated the
+        // file is readable; the `if let` fallback only triggers
+        // if the source moves out from under us after selection.
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let nsImage = NSImage(contentsOf: url) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } else {
+                    Image(systemName: "photo")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            )
+
+            Button {
+                remove(url: url)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(Color.white, Color.black.opacity(0.65))
+            }
+            .buttonStyle(.plain)
+            .offset(x: 6, y: -6)
+            .disabled(isSending)
+            .help("Remove this screenshot")
+        }
+    }
+
+    private var counterText: String {
+        let sizeString: String
+        if isProcessingImages || totalEncodedBytes == 0 {
+            sizeString = "—"
+        } else {
+            sizeString = ByteCountFormatter.string(
+                fromByteCount: Int64(totalEncodedBytes),
+                countStyle: .file
+            )
+        }
+        return "\(selectedURLs.count)/3 · \(sizeString)"
+    }
+
+    private func openImagePicker() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.image]
+        panel.title = "Attach Screenshots"
+        panel.message = "Select up to 3 images to attach to your feedback."
+        panel.prompt = "Attach"
+
+        guard panel.runModal() == .OK else { return }
+
+        // NSOpenPanel doesn't have a max-selection property, so the
+        // cap is enforced here. Take only as many fresh URLs as the
+        // remaining slot count allows.
+        let remaining = max(0, 3 - selectedURLs.count)
+        if remaining > 0 {
+            selectedURLs.append(contentsOf: panel.urls.prefix(remaining))
+        }
+    }
+
+    private func remove(url: URL) {
+        selectedURLs.removeAll { $0 == url }
+    }
+
+    private func scheduleEncode(for urls: [URL]) {
+        // Cancel any in-flight encode before kicking off the new
+        // one. Cancellation is task-local: the encoder checks
+        // `Task.checkCancellation()` between images and between
+        // quality passes, so an older 3-huge-image encode bails
+        // before clobbering state the user has since updated.
+        encodeTask?.cancel()
+        imageError = nil
+
+        guard !urls.isEmpty else {
+            processedDataURIs = []
+            totalEncodedBytes = 0
+            isProcessingImages = false
+            return
+        }
+
+        isProcessingImages = true
+        processedDataURIs = []
+        totalEncodedBytes = 0
+
+        let snapshot = urls
+        encodeTask = Task { @MainActor in
+            do {
+                let uris = try await FeedbackImageEncoder.encode(urls: snapshot)
+                try Task.checkCancellation()
+                processedDataURIs = uris
+                totalEncodedBytes = uris.reduce(0) { $0 + $1.utf8.count }
+                isProcessingImages = false
+            } catch is CancellationError {
+                // A newer encode is in flight (or the sheet is
+                // dismissing) — don't touch state; the newer
+                // task owns it now.
+            } catch {
+                processedDataURIs = []
+                totalEncodedBytes = 0
+                imageError = (error as? LocalizedError)?.errorDescription
+                    ?? "Couldn't process the selected screenshots."
+                isProcessingImages = false
+            }
         }
     }
 }

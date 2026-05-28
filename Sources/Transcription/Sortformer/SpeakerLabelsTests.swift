@@ -68,6 +68,19 @@ private enum EnrolledIdentityCodecTests {
 // MARK: - EnrolledIdentitiesStore CRUD
 
 private enum EnrolledIdentitiesStoreTests {
+
+    /// Keeps the per-test `ModelContainer` alive across the lifetime of
+    /// the suite. `ModelContext` doesn't strongly retain its
+    /// `ModelContainer` on macOS 26 — once `makeStore`'s local
+    /// `container` goes out of scope, the container deallocates and
+    /// the returned context's next SwiftData op (`insert`, `.container`
+    /// access, etc.) traps inside the framework on a dangling pointer.
+    /// Holding the container in a static slot mirrors what
+    /// `JotComposition` does in production (it owns the container
+    /// strongly for the lifetime of the app).
+    @MainActor
+    static var heldContainer: ModelContainer?
+
     @MainActor
     static func runAll() {
         test_add_storesRow()
@@ -81,9 +94,19 @@ private enum EnrolledIdentitiesStoreTests {
     @MainActor
     static func makeStore() -> EnrolledIdentitiesStore {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        // EnrolledIdentity is a SwiftData model; standalone container is
-        // sufficient for these tests.
-        let container = try! ModelContainer(for: EnrolledIdentity.self, configurations: config)
+        let container = try! ModelContainer(
+            for: Recording.self,
+                RewriteSession.self,
+                PromptUsage.self,
+                UserPrompt.self,
+                EnrolledIdentity.self,
+            configurations: config
+        )
+        // Pin the container so the returned context's reference stays
+        // valid past this function's stack frame. Without this, SwiftData
+        // crashes on the next op via the context (see `heldContainer`
+        // doc comment).
+        heldContainer = container
         return EnrolledIdentitiesStore(context: container.mainContext)
     }
 

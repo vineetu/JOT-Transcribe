@@ -48,12 +48,46 @@ SITENAME="jot-sony"
 
 # Stage the artifacts in a fresh temp dir + tar them. tar's `-C` flag
 # lets us strip the leading `dist/` so the archive's top-level entries
-# are `appcast.xml` and `Jot-sony.dmg` (what Simple Host expects).
+# are `appcast.xml`, `Jot-sony.dmg`, and `index.html` (what Simple Host
+# serves at the site root).
+#
+# Each PUT to /api/sites/<name> REPLACES the entire site content with
+# whatever's in the tarball — there is no merge semantics. So we have
+# to bundle every file the site needs every time, including the
+# human-facing landing page. We fetch the current `index.html` from
+# the live site first (preserving whatever the operator last edited),
+# falling back to a generated minimal page if the site is somehow
+# empty. Forgetting to include `index.html` is the bug that bricked
+# the v1.12 deploy on first attempt.
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 cp "$APPCAST" "$DMG" "$STAGE/"
+
+INDEX_FETCH_CODE=$(curl -sS -o "$STAGE/index.html" -w "%{http_code}" "$BASE_URL/sites/$USERNAME/$SITENAME/")
+if [[ "$INDEX_FETCH_CODE" == "200" ]]; then
+    echo "[push-sony-sparkle] preserved existing landing page ($(wc -c < "$STAGE/index.html" | tr -d ' ') bytes)"
+else
+    # Live site is empty or unreachable — generate a minimal placeholder
+    # so the root URL doesn't 404. The DMG/appcast version is read off
+    # the appcast we're about to ship.
+    cat > "$STAGE/index.html" <<HTML
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Jot for Sony — Update Feed</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:640px;margin:60px auto;padding:0 20px;color:#1a1a1a;line-height:1.5}h1{margin:0 0 8px 0}.sub{color:#666;margin-bottom:24px}a{color:#0066cc;text-decoration:none}a:hover{text-decoration:underline}</style>
+</head><body>
+<h1>Jot for Sony</h1>
+<p class="sub">Internal Sparkle auto-update feed.</p>
+<ul>
+<li><a href="appcast.xml">appcast.xml</a> — Sparkle feed</li>
+<li><a href="Jot-sony.dmg">Jot-sony.dmg</a> — DMG (latest)</li>
+</ul>
+</body></html>
+HTML
+    echo "[push-sony-sparkle] live site empty (HTTP $INDEX_FETCH_CODE) — using generated placeholder"
+fi
+
 TAR="$STAGE/upload.tar.gz"
-tar -czf "$TAR" -C "$STAGE" appcast.xml Jot-sony.dmg
+tar -czf "$TAR" -C "$STAGE" appcast.xml Jot-sony.dmg index.html
 echo "[push-sony-sparkle] staged $(du -h "$TAR" | cut -f1) archive"
 
 # PUT bumps the existing site's active_version. POST would also work but

@@ -20,6 +20,11 @@ struct AskJotView: View {
     @State private var composer: String = ""
     @State private var showingNewChatConfirmation = false
     @FocusState private var inputFocused: Bool
+    /// v1.13: first-open banner that appears once for users whose Ask Jot
+    /// routing changed in v1.13 (legacy `allowCloud == true` + cloud
+    /// provider). Computed on appear from `store.shouldShowCloudMigrationBanner()`
+    /// so the SwiftUI body doesn't re-read UserDefaults every render.
+    @State private var showCloudMigrationBanner: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +34,10 @@ struct AskJotView: View {
                 .padding(.bottom, 12)
 
             Divider().opacity(0.5)
+
+            if showCloudMigrationBanner {
+                cloudMigrationBanner
+            }
 
             messageRegion
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -63,6 +72,12 @@ struct AskJotView: View {
             store.prewarmIfNeeded()
             consumePendingPrefillIfNeeded()
             consumeFocusRequestIfNeeded()
+            // v1.13: surface the cloud-migration banner once per upgrading
+            // user. `shouldShowCloudMigrationBanner()` is a one-time gate;
+            // dismissal writes the sentinel and the banner never re-appears.
+            if showCloudMigrationBanner == false {
+                showCloudMigrationBanner = store.shouldShowCloudMigrationBanner()
+            }
         }
         .onChange(of: navigator.pendingPrefill) { _, _ in
             consumePendingPrefillIfNeeded()
@@ -124,6 +139,55 @@ struct AskJotView: View {
                 .accessibilityHidden(true)
             }
         }
+    }
+
+    // MARK: - v1.13 cloud-migration banner
+
+    /// One-time dismissible banner for users whose Ask Jot routing
+    /// changed in v1.13 (legacy `allowCloud == true` + non-Apple
+    /// provider). Dismissal is persisted in `UserDefaults` so it
+    /// never re-appears.
+    private var cloudMigrationBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(.tint)
+                .font(.system(size: 13))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Ask Jot now uses your configured AI provider directly.")
+                    .font(.system(size: 12, weight: .medium))
+                Text("To keep Ask Jot on Apple Intelligence, switch Settings → AI → Provider.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .textSelection(.enabled)
+
+            Spacer(minLength: 6)
+
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showCloudMigrationBanner = false
+                }
+                store.markCloudMigrationBannerDismissed()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss notice")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.regularMaterial)
+        .overlay(
+            Rectangle()
+                .fill(Color.primary.opacity(0.06))
+                .frame(height: 0.5),
+            alignment: .bottom
+        )
     }
 
     // MARK: - Message region

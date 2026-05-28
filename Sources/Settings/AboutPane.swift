@@ -22,19 +22,12 @@ struct AboutPane: View {
     /// browse in-app and only the actual donate step opens
     /// every.org in the system browser.
     @State private var isShowingDonations = false
-    /// Drives the in-app feedback composer sheet for the
-    /// general-feedback path (no log attached, just a plain
-    /// message). Distinct from `pendingBugReport` because the two
-    /// routes share the composer but enter it from different
-    /// buttons with different pre-fills.
-    @State private var isShowingFeedback = false
-
-    /// Drives the in-app feedback composer sheet for the bug-report
-    /// path. Non-nil = a pre-computed (redacted + raw) log footer
-    /// is being passed into the composer, switching it into
-    /// bug-report mode. Computed lazily on button press so a fresh
-    /// log file is read each time the user opens the sheet.
-    @State private var pendingBugReport: FeedbackBugReportContext?
+    /// Drives the in-app feedback composer sheet. Non-nil =
+    /// a pre-computed (redacted + raw) log footer is being passed
+    /// into the composer to be sent inline with the user's
+    /// message. Computed lazily on button press so a fresh log
+    /// file is read each time the user opens the sheet.
+    @State private var pendingFeedback: FeedbackContext?
 
     /// Whether Apple Intelligence is currently available on this Mac.
     /// Computed once on appearance; the Ask Jot row hides entirely
@@ -47,6 +40,11 @@ struct AboutPane: View {
     /// Donation state lives here so the "Thanks for donating" line and the
     /// "N months saved" badge update without relaunching the window.
     @ObservedObject private var donationStore = DonationStore.shared
+
+    /// v1.13: master toggle for the Advanced surface. When off, the
+    /// Ask Jot section is hidden so the About pane mirrors the sidebar
+    /// — no orphan entry points into a pane that's not in the sidebar.
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
 
     /// Cached `/summary` payload — shared with `DonationsView` via the
     /// same `@AppStorage` key so a fetch in either surface warms both.
@@ -66,7 +64,7 @@ struct AboutPane: View {
             identitySection
             updatesSection
             visionSection
-            if isAskJotAvailable {
+            if advancedEnabled && isAskJotAvailable {
                 askJotSection
             }
             donationSection
@@ -90,22 +88,18 @@ struct AboutPane: View {
             }
             Task { await refreshDonationsSummary() }
         }
-        .sheet(isPresented: $isShowingFeedback) {
-            FeedbackSheet()
-        }
         // In-app Donations page. Replaces the old `Link` that took
         // the user out to the website.
         .sheet(isPresented: $isShowingDonations) {
             DonationsView()
         }
-        // Bug-report variant: identical composer, but pre-filled
-        // with the (redacted) log + app-details block and an
-        // in-sheet toggle to swap to the original log. Driven by a
-        // `.sheet(item:)` because the binding carries the
-        // (redacted + raw) footers — `Bool` wouldn't carry that
-        // payload.
-        .sheet(item: $pendingBugReport) { context in
-            FeedbackSheet(bugReport: context)
+        // Feedback composer — always pre-filled with the redacted
+        // log + app-details block and an in-sheet toggle to swap to
+        // the original log. Driven by a `.sheet(item:)` because the
+        // binding carries the (redacted + raw) footers — `Bool`
+        // wouldn't carry that payload.
+        .sheet(item: $pendingFeedback) { context in
+            FeedbackSheet(context: context)
         }
         .sheet(isPresented: $isShowingLogViewer) {
             VStack(alignment: .leading, spacing: 0) {
@@ -367,7 +361,7 @@ struct AboutPane: View {
     /// "engage with the developer" actions.
     private var feedbackSection: some View {
         Section("Feedback") {
-            Text("Have thoughts, suggestions, or notice something off? Send a quick note — it goes straight to the developer. No logs are attached.")
+            Text("Have thoughts, suggestions, or notice something off? Send a quick note — it goes straight to the developer. Your app version and recent local log are attached so issues can be diagnosed; you can review them in the composer before sending.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -375,7 +369,7 @@ struct AboutPane: View {
 
             HStack(spacing: 10) {
                 Button {
-                    isShowingFeedback = true
+                    presentFeedback()
                 } label: {
                     Label("Send Feedback", systemImage: "envelope.fill")
                 }
@@ -403,7 +397,7 @@ struct AboutPane: View {
 
     private var troubleshootingSection: some View {
         Section("Troubleshooting") {
-            Text("Errors are logged locally to your Mac. Nothing is sent automatically. If you hit an issue, send a bug report — your log and app details are pre-filled and you can describe what happened above them before sending.")
+            Text("Errors are logged locally to your Mac. Nothing is sent automatically — when you Send Feedback above, the log is included with your message so the issue can be diagnosed. The buttons below let you inspect the local log directly if you want to see what's stored.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -415,20 +409,16 @@ struct AboutPane: View {
                     LogSharing.copyToClipboard(logText(useRedacted: false), pasteboard: pb)
                 }
                 Button("Reveal in Finder") { LogSharing.revealInFinder(ErrorLog.logFileURL) }
-                Button("Send bug report") {
-                    presentBugReport()
-                }
-                .buttonStyle(.borderedProminent)
                 Spacer()
             }
         }
     }
 
     /// Compose both the redacted and raw log footers, then present
-    /// the bug-report variant of `FeedbackSheet`. Reads the log file
-    /// fresh on every press so a bug encountered seconds before
+    /// the feedback composer with them pre-filled. Reads the log
+    /// file fresh on every press so a bug encountered seconds before
     /// opening the sheet is included.
-    private func presentBugReport() {
+    private func presentFeedback() {
         let raw = logText(useRedacted: false)
         let redacted = logText(useRedacted: true)
         let recordingsCount = 0
@@ -443,7 +433,7 @@ struct AboutPane: View {
             recordingsCount: recordingsCount,
             modelIdentifier: model
         )
-        pendingBugReport = FeedbackBugReportContext(
+        pendingFeedback = FeedbackContext(
             redactedFooter: redactedFooter,
             rawFooter: rawFooter
         )

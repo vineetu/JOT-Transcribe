@@ -72,7 +72,7 @@ struct DoneStep: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Advanced, for later")
                     .font(.system(size: 12, weight: .semibold))
-                Text("LLM cleanup, voice-driven rewrite (Rewrite with Voice), and custom vocabulary are ready whenever you're curious — in Settings, or by re-running this wizard from Settings → General.")
+                Text("More power-user options — including LLM cleanup, voice-driven rewrite, and custom vocabulary — live behind the Advanced toggle in Settings → General. Flip it on whenever you're curious; flip it off again to keep the surface minimal.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

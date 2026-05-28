@@ -48,6 +48,17 @@ final class NavigationHistory {
             self?.isNavigatingHistory = false
         }
     }
+
+    /// Drops back/forward entries that no longer satisfy `predicate`.
+    /// Preserves the relative order of survivors.
+    ///
+    /// v1.13: invoked by `JotAppWindow` when the user flips Advanced
+    /// off so the back-button doesn't take them to a pane (Ask Jot,
+    /// Vocabulary) that the sidebar no longer surfaces.
+    func filter(_ predicate: (AppSidebarSelection) -> Bool) {
+        back.removeAll { !predicate($0) }
+        forward.removeAll { !predicate($0) }
+    }
 }
 
 @MainActor

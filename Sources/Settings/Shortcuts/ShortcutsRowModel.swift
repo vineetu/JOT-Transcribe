@@ -95,6 +95,11 @@ struct ShortcutsRow: Identifiable, Hashable {
     /// the action's existing display name so legacy muscle-memory still
     /// hits the row.
     let searchKeywords: [String]
+    /// v1.13: when `true`, this row is hidden in `ShortcutsPane` while
+    /// the Advanced toggle is off. Existing bindings stay registered
+    /// with `KeyboardShortcuts` — Decision #2: a row hidden in Settings
+    /// does NOT deactivate the user's deliberate hotkey choice.
+    var isAdvanced: Bool = false
 
     /// Convenience: convert a `SingleKey.Action` into its row.
     static func forAction(_ action: SingleKey.Action) -> ShortcutsRow {
@@ -117,7 +122,8 @@ struct ShortcutsRow: Identifiable, Hashable {
                 subtitle: "Hold to record, release to stop and transcribe.",
                 firing: .alwaysActive,
                 helpAnchor: "push-to-talk",
-                searchKeywords: ["hold", "ptt", "walkie"]
+                searchKeywords: ["hold", "ptt", "walkie"],
+                isAdvanced: true
             )
         case .pasteLastTranscription:
             return ShortcutsRow(
@@ -127,7 +133,8 @@ struct ShortcutsRow: Identifiable, Hashable {
                 subtitle: "Re-paste the most recent transcript or rewrite at the cursor.",
                 firing: .alwaysActive,
                 helpAnchor: "dictation",
-                searchKeywords: ["paste", "last", "repeat", "transcript"]
+                searchKeywords: ["paste", "last", "repeat", "transcript"],
+                isAdvanced: true
             )
         case .rewriteWithVoice:
             return ShortcutsRow(

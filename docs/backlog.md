@@ -72,6 +72,15 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 - **Affects:** `Sources/SetupWizard/Steps/`, `Sources/SetupWizard/WizardStep.swift`
 - **Description:** The Setup Wizard currently has Cleanup and Rewrite-intro steps (plus two live Rewrite demos). Doesn't yet introduce the Prompt Library — new users finish the wizard without learning that 30+ bundled prompts ship with Jot. Add a small "Prompts" step (or extend the existing Rewrite-intro step) that previews the picker panel and the "Browse the library" affordance. Could be a static screenshot-style illustration or a live `PromptPickerPreview` SwiftUI component. Defer until after Shortcuts redesign lands — wizard step changes touch the exhaustive switches in `SetupWizardCoordinator` and `SetupWizardView` and should batch with any other wizard work.
 
+### features.recording-safety
+- **Status:** Planned
+- **Type:** UX/Feature
+- **Target:** After v1.13 Advanced mode testing — scope and design complete, awaiting owner go-ahead to implement
+- **Trigger:** Always
+- **Plan:** `docs/recording-safety/design.md` (PM spec), `docs/recording-safety/engineering-notes.md` (engineering companion)
+- **Affects:** `Sources/Overlay/` (pill subtitle render), `Sources/Recording/RecorderController.swift` + cancel-dispatch path, `Sources/Library/Recording.swift` (draft state — open: schema field vs `transcript == ""` convention), `Sources/Library/RecordingsListView.swift` + Home row template, `Sources/MenuBar/` (skip drafts in Copy Last / Recent Transcriptions / Paste Last Result), `Resources/help-content-base.md` + grounding string in `Sources/AskJot/HelpChatStore.swift`
+- **Description:** Two-feature bundle for recording panic. (1) **Pill subtitle showing the user's current stop hotkey** — small secondary-color line under the timer, reads dynamically from `KeyboardShortcuts.getShortcut(for: .toggleRecording)`, adapts to PTT users ("Release [PTT key]"), Transform/Rewrite states ("Esc to cancel"), and unbound state ("Set a hotkey in Settings → Shortcuts"). (2) **Esc panic-save** — Esc during recording stops audio capture, saves the WAV to Recents as a draft (empty transcript, no chime, no paste, no toast), pill transitions to idle silently. Drafts surface in Recents with the existing Retranscribe affordance; on-demand transcription only (no background). Drafts are skipped by menu-bar "Copy Last Transcription" / "Recent Transcriptions" / Paste Last Result; show normally in Recents row list and sparkline visuals. Sub-1s clips are naturally excluded by the recording layer's existing floor. Esc during Rewrite / Transform / voice-instruction capture is unchanged (cancels the LLM call, no audio to save). No migration; new behavior applies to all users immediately. Six "Decisions needed from you" deferred in the PM spec — all non-blocking with proposed defaults.
+
 ### features.hide-dock-icon
 - **Status:** Planned
 - **Type:** UX

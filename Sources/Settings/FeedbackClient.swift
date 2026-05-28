@@ -28,18 +28,32 @@ enum FeedbackClient {
     /// id on success; throws `FeedbackError` with a user-presentable
     /// `localizedDescription` on rate-limit / validation / transport
     /// errors so the sheet can surface them verbatim.
-    static func send(message: String, session: URLSession = .shared) async throws -> Int {
+    ///
+    /// `images` are base64 `data:image/jpeg;base64,…` URIs already
+    /// processed by `FeedbackImageEncoder` — the server caps the
+    /// combined base64 length at 5 MB and the count at 3, so the
+    /// caller is expected to have already enforced both. When the
+    /// array is empty the `images` key is omitted from the JSON
+    /// entirely, keeping the wire format identical to pre-v1.13
+    /// text-only feedback (synthesized `Encodable` skips nil
+    /// optionals).
+    static func send(
+        message: String,
+        images: [String] = [],
+        session: URLSession = .shared
+    ) async throws -> Int {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let body: [String: String] = [
-            "platform": "macos",
-            "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?",
-            "message": message
-        ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body, options: [])
+        let payload = FeedbackRequest(
+            platform: "macos",
+            version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?",
+            message: message,
+            images: images.isEmpty ? nil : images
+        )
+        request.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await session.data(for: request)
 
@@ -65,6 +79,18 @@ enum FeedbackClient {
 
         throw FeedbackError.transport("The server returned an unexpected response.")
     }
+}
+
+/// Encodable shape posted to the feedback endpoint. `images` is
+/// `Optional` so synthesized Codable conformance omits the key
+/// entirely when nil — keeps the wire format byte-for-byte
+/// compatible with the pre-screenshot text-only payload that the
+/// service has accepted since v1.0.
+private struct FeedbackRequest: Encodable {
+    let platform: String
+    let version: String
+    let message: String
+    let images: [String]?
 }
 
 /// Decodable shape that matches both the success and error responses

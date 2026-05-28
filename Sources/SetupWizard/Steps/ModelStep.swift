@@ -28,8 +28,48 @@ struct ModelStep: View {
     @State private var isBoostDownloading: Bool = false
     @State private var boostErrorMessage: String?
 
+    /// When false (default), the step shows only the recommended model
+    /// (Nemotron) so a first-time user has one choice presented and a
+    /// clear download button. Tapping "Show 3 more options" expands the
+    /// other models for users who need multilingual / Japanese / legacy
+    /// (deprecated v2). Auto-expanded on appear when the user's current
+    /// selection isn't the recommended one — so they can see their
+    /// active row without hunting.
+    @State private var showOtherModels: Bool = false
+
+    /// The single model surfaced as the default. All other models are
+    /// hidden behind the "Show 3 more options" disclosure.
+    private static let primaryRecommendation: ParakeetModelID = .nemotron_en
+
+    /// Models other than the primary recommendation, in `visibleCases`
+    /// order. With current order [v3_eou, ja, v2_deprecated, nemotron],
+    /// filtering out nemotron leaves v3_eou, ja, v2_deprecated — and
+    /// v2_deprecated correctly lands last.
+    private var otherModels: [ParakeetModelID] {
+        ParakeetModelID.visibleCases.filter { $0 != Self.primaryRecommendation }
+    }
+
     private var selectedModel: ParakeetModelID {
         holder.primaryModelID
+    }
+
+    private func makeOptionRow(_ model: ParakeetModelID) -> some View {
+        ModelOptionRow(
+            model: model,
+            isSelected: model == selectedModel,
+            isCached: cacheByID[model] ?? false,
+            isDownloading: downloadingModel == model,
+            downloadProgress: downloadingModel == model ? downloadProgress : 0,
+            anyDownloadInFlight: downloadingModel != nil,
+            errorMessage: errorByID[model],
+            onSelect: {
+                Task { await holder.setPrimary(model) }
+            },
+            onDownload: {
+                Task { await holder.setPrimary(model) }
+                startDownload(for: model)
+            }
+        )
     }
 
     var body: some View {
@@ -44,27 +84,47 @@ struct ModelStep: View {
             .textSelection(.enabled)
 
             VStack(spacing: 8) {
-                ForEach(ParakeetModelID.visibleCases, id: \.rawValue) { model in
-                    ModelOptionRow(
-                        model: model,
-                        isSelected: model == selectedModel,
-                        isCached: cacheByID[model] ?? false,
-                        isDownloading: downloadingModel == model,
-                        downloadProgress: downloadingModel == model ? downloadProgress : 0,
-                        anyDownloadInFlight: downloadingModel != nil,
-                        errorMessage: errorByID[model],
-                        onSelect: {
-                            Task { await holder.setPrimary(model) }
-                        },
-                        onDownload: {
-                            Task { await holder.setPrimary(model) }
-                            startDownload(for: model)
+                // Always-visible recommended model. Pre-selected on first
+                // appear (see `.onAppear` below) so a first-time user has
+                // exactly one row + one download button — no choice to
+                // make unless they expand the disclosure.
+                makeOptionRow(Self.primaryRecommendation)
+
+                // Hand-rolled disclosure: the whole row (chevron + text)
+                // is the click target so users don't have to land on the
+                // tiny chevron. `DisclosureGroup`'s default label-tap
+                // behavior on macOS is unreliable — the disclosure only
+                // toggles on the chevron itself.
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        showOtherModels.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: showOtherModels ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .medium))
+                            .frame(width: 10)
+                        Text(showOtherModels ? "Hide other models" : "Show \(otherModels.count) more options")
+                            .font(.system(size: 12))
+                        Spacer()
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+
+                if showOtherModels {
+                    VStack(spacing: 8) {
+                        ForEach(otherModels, id: \.rawValue) { model in
+                            makeOptionRow(model)
                         }
-                    )
+                    }
                 }
             }
 
-            Text("Four options. You can switch or add downloads later from Settings → Transcription.")
+            Text("Tap a model to choose. You can switch or add downloads later from Settings → Transcription.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -82,10 +142,29 @@ struct ModelStep: View {
             holder.refreshInstalled()
             refreshCache()
             updateChrome()
+            // Pre-select Nemotron for users who haven't picked yet. The
+            // signal is "key absent in UserDefaults" — TranscriberHolder
+            // initializes a stored value either way, but the key is only
+            // written via `setPrimary(_:)`. Absent → never touched.
+            if UserDefaults.standard.string(forKey: TranscriberHolder.defaultsKey) == nil {
+                Task { await holder.setPrimary(Self.primaryRecommendation) }
+            }
+            // Auto-expand "Show other models" when the user's selection
+            // isn't the recommended one — so their active row is
+            // visible without hunting (e.g., returning user on v3).
+            if holder.primaryModelID != Self.primaryRecommendation {
+                showOtherModels = true
+            }
         }
         .onChange(of: holder.primaryModelID) {
             refreshCache()
             updateChrome()
+            // Keep the disclosure honest: a user who picks a non-
+            // recommended model from inside the expanded list and later
+            // returns to this step should still see their selection.
+            if holder.primaryModelID != Self.primaryRecommendation {
+                showOtherModels = true
+            }
         }
     }
 
@@ -105,7 +184,7 @@ struct ModelStep: View {
                     .font(.system(size: 12, weight: .medium))
                 Spacer()
             }
-            Text("Extra on-device model that lets Jot prefer your own terms — product names, jargon, proper nouns. Needed only if you plan to use Settings → Vocabulary. You can download it later from that pane.")
+            Text("Extra on-device model that lets Jot prefer your own terms — product names, jargon, proper nouns. Needed only if you plan to use Jot's Custom Vocabulary feature. Custom Vocabulary lives behind the Advanced toggle in Settings → General; you can download this model later from there.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

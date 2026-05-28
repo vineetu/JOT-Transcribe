@@ -40,6 +40,14 @@ import FoundationModels
 @Observable
 final class HelpChatStore {
     private static let allowCloudPreferenceKey = "jot.askjot.allowCloud"
+    /// v1.13: one-time first-open banner sentinel. Set to `true` the
+    /// first time the banner is dismissed (or auto-shown once). Used to
+    /// surface the "Ask Jot now follows your global provider" notice to
+    /// users whose behavior actually changes — i.e. they had a cloud
+    /// provider configured AND the legacy "Allow Ask Jot to use this
+    /// provider" toggle was ON. Users who explicitly opted OUT before
+    /// keep their behavior and do not see this banner.
+    static let cloudMigrationBannerKey = "jot.askjot.cloudMigrationBannerShown"
 
     /// Conversation so far. `AskJotView` renders these as bubbles.
     var messages: [ChatMessage] = []
@@ -197,12 +205,49 @@ final class HelpChatStore {
 
     private static func isCloudAskJotEnabled(llmConfiguration: LLMConfiguration) -> Bool {
         let provider = llmConfiguration.provider
-        return provider != .appleIntelligence &&
-            UserDefaults.standard.bool(forKey: allowCloudPreferenceKey)
+        guard provider != .appleIntelligence else { return false }
+        // v1.13: Ask Jot now follows the global provider unconditionally
+        // — EXCEPT for users who explicitly set the (now-removed)
+        // "Allow Ask Jot to use this provider" toggle to false on a
+        // prior version. We preserve that explicit opt-out forever so
+        // we never silently flip a stated privacy preference.
+        //
+        // `UserDefaults.object(forKey:) != nil` is the load-bearing
+        // check — "value is explicitly false" vs "key is absent" both
+        // return `false` from `bool(forKey:)`, so we can't collapse
+        // this into a single read.
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: allowCloudPreferenceKey) != nil
+           && defaults.bool(forKey: allowCloudPreferenceKey) == false {
+            return false
+        }
+        return true
     }
 
     private func isCloudAskJotEnabled() -> Bool {
         Self.isCloudAskJotEnabled(llmConfiguration: llmConfiguration)
+    }
+
+    /// v1.13 first-open migration banner gate. `true` only for users
+    /// whose Ask Jot routing actually changed in v1.13 — i.e. they had
+    /// a non-Apple-Intelligence provider configured AND the (now-removed)
+    /// "Allow Ask Jot to use this provider" toggle had been turned ON.
+    /// Users who had explicitly opted OUT keep their privacy preference
+    /// and never see the banner.
+    func shouldShowCloudMigrationBanner() -> Bool {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: Self.cloudMigrationBannerKey) == false else { return false }
+        guard llmConfiguration.provider != .appleIntelligence else { return false }
+        // Banner only matters if the user had explicitly opted IN (toggle
+        // == true). An absent key means a fresh install — no behavior
+        // change to communicate.
+        guard defaults.object(forKey: Self.allowCloudPreferenceKey) != nil else { return false }
+        return defaults.bool(forKey: Self.allowCloudPreferenceKey) == true
+    }
+
+    /// Dismiss the migration banner permanently.
+    func markCloudMigrationBannerDismissed() {
+        UserDefaults.standard.set(true, forKey: Self.cloudMigrationBannerKey)
     }
 
     // MARK: - Prewarm
@@ -262,12 +307,14 @@ final class HelpChatStore {
         guard case .idle = state else { return }
 
         // Effective provider for THIS turn — not necessarily the same
-        // as `llmConfiguration.provider`. Ask Jot has its own provider
-        // policy (CLAUDE.md "Ask Jot has its own provider policy"):
-        // when the user's configured provider is non-Apple AND the
-        // "Allow Ask Jot to use this provider" toggle is OFF, Ask Jot
-        // stays on Apple Intelligence regardless of `provider`. This
-        // gate is what `isCloudAskJotEnabled()` encodes.
+        // as `llmConfiguration.provider`. v1.13 simplified Ask Jot's
+        // routing: it now follows the global provider unconditionally
+        // for both Apple Intelligence (default) and cloud providers.
+        // The one exception is the migration sentinel: users who had
+        // explicitly set the (now-removed) "Allow Ask Jot to use this
+        // provider" toggle to false on a prior version stay pinned to
+        // Apple Intelligence. The legacy `allowCloudPreferenceKey`
+        // sentinel is read inside `isCloudAskJotEnabled()`.
         //
         // Pinning the value once here (and threading it as
         // `effectiveProvider`) also addresses the Settings-mid-Send
@@ -660,8 +707,13 @@ final class HelpChatStore {
 
     /// Esc handler — cancel an in-flight stream, preserving the
     /// partial. No-op when idle.
+    ///
+    /// Idempotent: always cancels `lastStreamTask` if it's still alive,
+    /// regardless of the published `state`. Covers the microsecond window
+    /// where state has just transitioned to `.error(...)` but the task
+    /// reference hasn't been released yet — e.g. Advanced toggled off
+    /// mid-stream when the stream has just errored.
     func cancelStream() {
-        guard case .streaming = state else { return }
         lastStreamTask?.cancel()
         lastStreamTask = nil
     }
@@ -724,7 +776,7 @@ final class HelpChatStore {
         Lists are allowed when they genuinely clarify the answer; keep them short, sentence-led, and usually no more than 2–4 items.
         You MAY use one short bold run-in label when it genuinely sharpens the answer, for example: **Why it happens** the shortcut must use modifiers.
         Avoid filler openings like "Here's how", "In summary", or "You can do this by".
-        ALWAYS use exact UI names: "Settings → AI", "Home", "Library". DO NOT invent menu items.
+        ALWAYS use exact UI names: "Settings → AI", "Recents", "Library". DO NOT invent menu items.
         NEVER include shell commands in answers. For recording-wont-start and hotkey-stopped-working, cite the slug only.
         NEVER answer non-Jot questions. If the user asks about non-Jot topics, respond with ONE sentence redirecting them. DO NOT attempt the task.
 

@@ -253,6 +253,29 @@ struct SubRowDetail: View {
     let detail: SubRowDetailContent
     @Environment(\.setSidebarSelection) private var setSidebarSelection
     @Environment(\.helpNavigator) private var navigator
+    /// v1.13: when Advanced is off, the Settings → Vocabulary pane is
+    /// hidden from the sidebar and the sanitize boundary in
+    /// `JotAppWindow` will redirect a `.settings(.vocabulary)` selection
+    /// back to `.home`. Writing `pendingSettingsFieldAnchor` before that
+    /// redirect would leak a stale anchor (`custom-vocabulary`) into
+    /// subsequent navigations. Hide the "Open in Settings →" button
+    /// entirely for sub-rows that deep-link into a hidden pane — the
+    /// user has nothing to be redirected to.
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
+
+    /// True when this sub-row's settings link points at a pane that is
+    /// hidden when Advanced is off. Custom Vocabulary is currently the
+    /// only sub-row in that bucket; Push-to-Talk lives under
+    /// `.settings(.shortcuts)` which stays visible.
+    private func isHiddenPaneLink(_ link: SettingsLink) -> Bool {
+        guard !advancedEnabled else { return false }
+        switch link.pane {
+        case .vocabulary:
+            return true
+        default:
+            return false
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -274,7 +297,7 @@ struct SubRowDetail: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let settingsLink = detail.settingsLink {
+            if let settingsLink = detail.settingsLink, !isHiddenPaneLink(settingsLink) {
                 Button {
                     navigator.pendingSettingsFieldAnchor = settingsLink.anchor
                     setSidebarSelection(.settings(settingsLink.pane))
