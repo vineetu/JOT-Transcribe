@@ -285,6 +285,7 @@ HTML
     HTTP_CODE="$(curl -s -o /tmp/simple-host-upload.out -w "%{http_code}" \
         -X PUT "${JOT_SIMPLE_HOST_BASE_URL}/api/sites/${JOT_SIMPLE_HOST_SITENAME}" \
         -H "X-API-Key: ${JOT_SIMPLE_HOST_API_KEY}" \
+        -H "X-Skill-Version: 0.3.0" \
         -H "Content-Type: application/gzip" \
         --data-binary "@${ARCHIVE}")"
     rm -rf "${UPLOAD_DIR}" "${ARCHIVE}"
