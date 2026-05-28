@@ -4,12 +4,12 @@
         <title>Jot</title>
         <item>
             <title>1.13</title>
-            <pubDate>Thu, 28 May 2026 10:32:37 -0700</pubDate>
-            <sparkle:version>136</sparkle:version>
+            <pubDate>Thu, 28 May 2026 10:51:12 -0700</pubDate>
+            <sparkle:version>138</sparkle:version>
             <sparkle:shortVersionString>1.13</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <enclosure url="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" length="4936625" type="application/octet-stream" sparkle:edSignature="oCovWlS2AkR6uBCtIx3lJVkvUDSuZMGBVh3Wgm3mY+zaz6uQUEf15AyW2LVioGGgCSw5UcCaz7+Arf9/ifl0CA=="/>
+            <enclosure url="https://nurture-ai-playground.dev.kcloud.playstation.net/sites/jot.transcribe/jot-sony/Jot-sony.dmg" length="5018331" type="application/octet-stream" sparkle:edSignature="qYpxsrmoB5wbw891zyrgPMfre70OMvx7kDCbzAE8ZM2x7E6ebhcZKOTqJne3BpWq0sLj9TSrDQVyHRCkO+SCCw=="/>
         </item>
     </channel>
 </rss>
