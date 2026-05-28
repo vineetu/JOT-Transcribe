@@ -72,6 +72,14 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 - **Affects:** `Sources/SetupWizard/Steps/`, `Sources/SetupWizard/WizardStep.swift`
 - **Description:** The Setup Wizard currently has Cleanup and Rewrite-intro steps (plus two live Rewrite demos). Doesn't yet introduce the Prompt Library — new users finish the wizard without learning that 30+ bundled prompts ship with Jot. Add a small "Prompts" step (or extend the existing Rewrite-intro step) that previews the picker panel and the "Browse the library" affordance. Could be a static screenshot-style illustration or a live `PromptPickerPreview` SwiftUI component. Defer until after Shortcuts redesign lands — wizard step changes touch the exhaustive switches in `SetupWizardCoordinator` and `SetupWizardView` and should batch with any other wizard work.
 
+### features.sparkle-release-notes-link
+- **Status:** Planned
+- **Type:** Cleanup / Release-process
+- **Target:** v1.14 (small, can ride alongside anything)
+- **Trigger:** Always — surfaced during v1.13 release verification when the auto-update dialog showed no release-note body
+- **Affects:** `scripts/release.sh` (appcast generation), `appcast.xml`
+- **Description:** Sparkle's update dialog can render rich release notes if the appcast item carries `<sparkle:releaseNotesLink>` (Sparkle fetches the URL and renders it as HTML) or `<description><![CDATA[...]]></description>` (inline). `release.sh` currently emits neither, so users clicking Check for Updates see a barebones "v1.X is available" prompt with no body. Fix: inject `<sparkle:releaseNotesLink>https://github.com/vineetu/JOT-Transcribe/releases/tag/v<version></sparkle:releaseNotesLink>` into each appcast item during generation, AND ensure the GitHub release body is populated from `scripts/release-notes-template.md` (currently has to be patched manually via `gh release edit` after the script runs). ~5 LOC each. No migration risk; the v1.13 release body has already been patched post-hoc.
+
 ### features.recording-safety
 - **Status:** Planned
 - **Type:** UX/Feature
