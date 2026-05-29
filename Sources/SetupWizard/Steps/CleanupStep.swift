@@ -85,7 +85,7 @@ struct CleanupStep: View {
                     primaryTitle: "Continue",
                     canAdvance: true,
                     isPrimaryBusy: false,
-                    showsSkip: false
+                    showsSkip: true
                 )
             )
         }

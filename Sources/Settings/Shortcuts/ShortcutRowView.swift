@@ -52,17 +52,13 @@ struct ShortcutRowView: View {
     var body: some View {
         let _ = refreshToken
         HStack(alignment: .center, spacing: 12) {
-            // Left column: title + subtitle.
-            VStack(alignment: .leading, spacing: 4) {
-                Text(row.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
-
-                Text(row.subtitle)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            // v1.14: row subtitle removed — it duplicated the info popover
+            // and crowded the left column. The popover (rightmost dot) is
+            // where the feature description lives; the title carries the
+            // identity and the firing badge carries the gating context.
+            Text(row.title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.primary)
 
             Spacer(minLength: 12)
 
@@ -82,7 +78,7 @@ struct ShortcutRowView: View {
         .onHover { isHovered = $0 }
         .modifier(RowIDModifier(rowID: rowID))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("\(row.title). \(row.subtitle). \(row.firing.label)."))
+        .accessibilityLabel(Text("\(row.title). \(row.firing.label)."))
     }
 
     @ViewBuilder
@@ -200,7 +196,12 @@ struct ShortcutRowView: View {
 
         InfoPopoverButton(
             title: row.title,
-            body: "Press Escape to cancel an active recording, transform, or rewrite. Hardcoded and not configurable — only active while Jot is mid-capture.",
+            // v1.14 recording-safety contract: Esc no longer discards the
+            // recording. It stops, transcribes, and saves the result to
+            // Recents — the paste step is skipped. For an in-flight
+            // transform / rewrite (after the recording moment) Esc still
+            // aborts the operation outright.
+            body: "Press Esc to stop an in-flight recording — the transcript is saved to Recents without pasting. While Jot is transcribing or rewriting, Esc aborts the operation. Hardcoded to Esc, only listens while Jot is mid-capture.",
             helpAnchor: row.helpAnchor
         )
     }
@@ -215,19 +216,22 @@ struct ShortcutRowView: View {
         )
     }
 
+    /// v1.14: per-row popovers describe the *feature*, not the binding
+    /// mechanics. The chord-vs-single-key explanation lives only in the
+    /// top-level "Global shortcuts" popover in the pane header
+    /// (`ShortcutsPane.header`) where it isn't duplicated five times.
     private func popoverBody(for action: SingleKey.Action) -> String {
-        let chordDefinition = "A chord is a multi-key global hotkey — at least one modifier (⌘ ⌥ ⌃ ⇧) plus another key. Single-key bindings (Caps Lock, Fn, side modifiers) use NSEvent listening and require Accessibility permission."
         switch action {
         case .toggleRecording:
-            return "\(chordDefinition) Caps Lock is the recommended single-key — the keyboard LED becomes your recording indicator."
+            return "Tap to start dictating, tap again to stop. The transcript pastes at your cursor."
         case .pushToTalk:
-            return "\(chordDefinition) Hold the binding to record; release to stop and transcribe."
+            return "Hold the key to dictate, release to stop and paste — like a walkie-talkie. Useful when you want recording to stop the instant you let go."
         case .pasteLastTranscription:
-            return "\(chordDefinition) Single press re-pastes the most recent transcript or rewrite at the cursor."
+            return "Re-paste the most recent transcript or rewrite at the cursor. Useful for dropping the same text into a second app without dictating again."
         case .rewriteWithVoice:
-            return "\(chordDefinition) Select text in any app, press the binding to start dictating an instruction, press again to send. The selection is replaced with the LLM's response."
+            return "Select text in any app, press the key to start dictating an instruction, press again to send. Jot replaces the selection with the LLM's response."
         case .rewrite:
-            return "\(chordDefinition) Select text in any app, press the binding to apply the built-in Rewrite prompt. No voice instruction step."
+            return "Select text in any app, tap to apply the default Rewrite prompt. Hold to open the prompt picker and choose a different one."
         }
     }
 }

@@ -32,6 +32,14 @@ final class PillViewModel: ObservableObject {
         /// doesn't read as a failure. Auto-dismisses on the same cadence as
         /// `.success`. See `docs/plans/mic-disconnect-handling.md`.
         case notice(message: String)
+        /// v1.14: shown after a recording was stopped without pasting
+        /// (the in-app Record pill or Esc). Clickable — opens Recents.
+        /// Lingers ~5 s so the user can find the affordance even if
+        /// they were typing in another app and looked up late. The
+        /// click handler is stored on `PillViewModel.onSavedToRecentsTap`
+        /// rather than embedded in the case payload so `PillState`
+        /// stays `Equatable`.
+        case savedToRecents(preview: String)
         case error(message: String)
         /// Press-and-hold progress for the Prompt Picker entry. `progress`
         /// is 0.0 → 1.0 across the (threshold − grace) window — the pill
@@ -84,6 +92,25 @@ final class PillViewModel: ObservableObject {
     static let errorLinger: TimeInterval = 7.0
     /// Actionable errors should linger longer so a future labeled button has time to be noticed and used.
     static let actionableErrorLinger: TimeInterval = 15.0
+    /// v1.14: linger for the saved-to-Recents click affordance. Longer
+    /// than `successLinger` so a user who Esc'd from a deep focus state
+    /// has time to notice the pill and click.
+    static let savedToRecentsLinger: TimeInterval = 5.0
+
+    /// v1.14: click handler invoked when the user taps the saved-to-
+    /// Recents pill. Takes the audio filename captured at the moment
+    /// the pill was shown — that's the persistent identifier the
+    /// Recents view uses to look up the SwiftData row. AppDelegate sets
+    /// this during composition to a closure that opens Recents and
+    /// pushes the corresponding Recording detail onto the navigation
+    /// path.
+    var onSavedToRecentsTap: ((_ audioFileName: String?) -> Void)?
+
+    /// v1.14: paired with `state == .savedToRecents`. Set by
+    /// `showSavedToRecents(...)` and read by `invokeSavedToRecentsTap()`
+    /// when the pill is clicked. Cleared on the next pill transition so
+    /// a stale identifier can't outlive its session.
+    private var pendingSavedRecordingAudioFile: String?
 
     private var recordingStartedAt: Date?
     private var tickTimer: Timer?
@@ -226,7 +253,7 @@ final class PillViewModel: ObservableObject {
             transition(to: .holdProgress(progress: max(0.0, min(1.0, progress))))
             return true
         case .recording, .transcribing, .transforming, .rewriting,
-             .condensing, .success, .notice, .error:
+             .condensing, .success, .notice, .savedToRecents, .error:
             return false
         }
     }
@@ -272,7 +299,7 @@ final class PillViewModel: ObservableObject {
             // success/error/notice, leave that alone. If we're in recording or
             // transcribing, hide (e.g. a cancel).
             switch self.state {
-            case .success, .error, .notice, .hidden, .rewriting, .condensing, .holdProgress:
+            case .success, .error, .notice, .savedToRecents, .hidden, .rewriting, .condensing, .holdProgress:
                 break
             case .recording, .transcribing, .transforming:
                 transition(to: .hidden)
@@ -300,7 +327,7 @@ final class PillViewModel: ObservableObject {
         switch rewriteState {
         case .idle:
             switch self.state {
-            case .success, .error, .notice, .hidden, .condensing, .holdProgress:
+            case .success, .error, .notice, .savedToRecents, .hidden, .condensing, .holdProgress:
                 break
             case .recording, .transcribing, .rewriting, .transforming:
                 transition(to: .hidden)
@@ -361,6 +388,14 @@ final class PillViewModel: ObservableObject {
             // when the pill leaves recording entirely.
         } else {
             isPillExpanded = false
+        }
+        // v1.14: pending saved-recording id is only valid while the
+        // savedToRecents pill is on screen. Clear on any other transition
+        // so a stale id can't ride a future click handler invocation.
+        if case .savedToRecents = new {
+            // keep the id we just stored in `showSavedToRecents(...)`
+        } else {
+            pendingSavedRecordingAudioFile = nil
         }
         state = new
     }
@@ -438,6 +473,29 @@ final class PillViewModel: ObservableObject {
         stopTick()
         transition(to: .notice(message: trimmed))
         scheduleDismiss(after: Self.successLinger)
+    }
+
+    /// v1.14: surface the post-Esc / post-pill-click affordance. Renders
+    /// as a clickable pill that opens Recents when tapped. Yields to an
+    /// in-flight error so a real failure isn't masked; otherwise replaces
+    /// any other terminal state. The click handler must already be set
+    /// on `onSavedToRecentsTap` for the affordance to act on the click.
+    /// `audioFileName` is the identifier the click handler uses to
+    /// navigate to the specific Recording detail.
+    func showSavedToRecents(preview: String, audioFileName: String?) {
+        if case .error = state { return }
+        stopTick()
+        pendingSavedRecordingAudioFile = audioFileName
+        transition(to: .savedToRecents(preview: Self.previewText(preview)))
+        scheduleDismiss(after: Self.savedToRecentsLinger)
+    }
+
+    /// v1.14: called by the `PillView` when the saved-to-Recents pill
+    /// is tapped. Looks up the captured `pendingSavedRecordingAudioFile`
+    /// and forwards it to the installed `onSavedToRecentsTap` handler.
+    /// No-op if the handler hasn't been wired by composition.
+    func invokeSavedToRecentsTap() {
+        onSavedToRecentsTap?(pendingSavedRecordingAudioFile)
     }
 
     /// Format a duration as `mm:ss` — caps at `99:59`, which is fine because

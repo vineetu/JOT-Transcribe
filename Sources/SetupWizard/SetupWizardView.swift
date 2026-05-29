@@ -125,24 +125,48 @@ struct SetupWizardView: View {
 
             Spacer()
 
-            if coordinator.chrome.showsSkip {
-                Button("Skip") { coordinator.skip() }
-                    .buttonStyle(.borderless)
-            }
-
-            Button(action: handlePrimary) {
-                HStack(spacing: 6) {
-                    if coordinator.chrome.isPrimaryBusy {
-                        ProgressView().controlSize(.small)
+            // v1.14: when `skipIsPrimary` is set (`.done` step), the
+            // borderless button on the left becomes the primary action
+            // ("Continue") and the borderedProminent button on the right
+            // becomes Skip. Everywhere else, the conventional layout
+            // applies — primary on the right, optional borderless Skip
+            // to its left.
+            if coordinator.chrome.skipIsPrimary {
+                Button(action: handlePrimary) {
+                    HStack(spacing: 6) {
+                        if coordinator.chrome.isPrimaryBusy {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text(coordinator.chrome.primaryTitle)
                     }
-                    Text(coordinator.chrome.primaryTitle)
                 }
-                .frame(minWidth: 84)
+                .buttonStyle(.borderless)
+                .disabled(!coordinator.chrome.canAdvance || coordinator.chrome.isPrimaryBusy)
+
+                Button("Skip", action: handleSkip)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .keyboardShortcut(.defaultAction)
+            } else {
+                if coordinator.chrome.showsSkip {
+                    Button("Skip", action: handleSkip)
+                        .buttonStyle(.borderless)
+                }
+
+                Button(action: handlePrimary) {
+                    HStack(spacing: 6) {
+                        if coordinator.chrome.isPrimaryBusy {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text(coordinator.chrome.primaryTitle)
+                    }
+                    .frame(minWidth: 84)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!coordinator.chrome.canAdvance || coordinator.chrome.isPrimaryBusy)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .keyboardShortcut(.defaultAction)
-            .disabled(!coordinator.chrome.canAdvance || coordinator.chrome.isPrimaryBusy)
         }
     }
 
@@ -151,6 +175,14 @@ struct SetupWizardView: View {
             coordinator.finish()
         } else {
             coordinator.advance(given: wizardState)
+        }
+    }
+
+    private func handleSkip() {
+        if coordinator.chrome.skipExitsWizard {
+            coordinator.finish()
+        } else {
+            coordinator.skip()
         }
     }
 }

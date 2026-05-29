@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// v1.14: the Sound pane is no longer reachable from the sidebar
+/// (`AppSidebar` removed the entry; `JotAppWindow.sanitize` redirects
+/// `.settings(.sound)` to `.general`). The pane is left in the project
+/// so the per-event toggles persisted under their `@AppStorage` keys
+/// still bind to real defaults, and so any future re-introduction can
+/// reuse the layout without reconstructing it from scratch.
 struct SoundPane: View {
     @AppStorage("jot.sound.recordingStart") private var recordingStart: Bool = true
     @AppStorage("jot.sound.articulateStart") private var rewriteStart: Bool = true
@@ -11,6 +17,25 @@ struct SoundPane: View {
 
     var body: some View {
         Form {
+            Section {
+                HStack {
+                    Label("Volume", systemImage: "speaker.wave.1")
+                        .labelStyle(.titleOnly)
+                    Slider(value: $volume, in: 0...1)
+                    Image(systemName: "speaker.wave.3")
+                        .foregroundStyle(.secondary)
+                    InfoPopoverButton(
+                        title: "Chime volume",
+                        body: "Controls the loudness of every Jot chime relative to your system output. Applies uniformly to start, stop, cancel, complete, and error sounds.",
+                        helpAnchor: "sound-recording-chimes"
+                    )
+                }
+                Text("Applies to all Jot chimes.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
             Section {
                 chimeRow("Recording start", isOn: $recordingStart, effect: .recordingStart,
                          help: "Play a chime when recording begins.",
@@ -36,25 +61,6 @@ struct SoundPane: View {
                          help: "Play a chime when transcription fails.",
                          popoverBody: "A distinct error chime plays when transcription or delivery fails. When on: failures surface immediately instead of silently dropping.",
                          helpAnchor: "sound-error-chime")
-            }
-
-            Section {
-                HStack {
-                    Label("Volume", systemImage: "speaker.wave.1")
-                        .labelStyle(.titleOnly)
-                    Slider(value: $volume, in: 0...1)
-                    Image(systemName: "speaker.wave.3")
-                        .foregroundStyle(.secondary)
-                    InfoPopoverButton(
-                        title: "Chime volume",
-                        body: "Controls the loudness of every Jot chime relative to your system output. Applies uniformly to start, stop, cancel, complete, and error sounds.",
-                        helpAnchor: "sound-recording-chimes"
-                    )
-                }
-                Text("Applies to all Jot chimes.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
             }
         }
         .formStyle(.grouped)

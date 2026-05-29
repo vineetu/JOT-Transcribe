@@ -55,6 +55,15 @@ final class RecorderController: ObservableObject {
     /// pair land atomically — we set this immediately before `lastResult`.
     @Published private(set) var lastAudioRecording: AudioRecording?
 
+    /// v1.14 recording-safety contract. When `true`, the delivery bridge
+    /// in `AppDelegate` skips the paste step for the *next* successful
+    /// transcript only; the recording still persists to Recents via
+    /// `RecordingPersister`. Read-and-clear in the bridge — the flag is
+    /// session-scoped, not sticky. Set by `stopWithoutPaste()` (called
+    /// from the in-app Record pill) so clicking the pill again stops
+    /// the recording without pasting at the user's cursor.
+    @Published var skipNextPaste: Bool = false
+
     private let log = Logger(subsystem: "com.jot.Jot", category: "Recorder")
     private var autoRecoveryTask: Task<Void, Never>?
     private var transformTask: Task<Void, Never>?
@@ -117,6 +126,21 @@ final class RecorderController: ObservableObject {
         let notice = lastFallbackNotice
         if notice != nil { lastFallbackNotice = nil }
         return notice
+    }
+
+    /// v1.14: Stop the in-progress recording the same way the trigger
+    /// hotkey would — but with the paste step suppressed for the
+    /// resulting transcript. The recording still flows through
+    /// transcription → persistence; only the synthetic ⌘V is skipped.
+    ///
+    /// Called from the in-app Record pill's "click to stop" path. The
+    /// flag is read-and-cleared by `AppDelegate`'s delivery bridge so
+    /// it never bleeds into the next session. No-op when not currently
+    /// recording.
+    func stopWithoutPaste() async {
+        guard case .recording = state else { return }
+        skipNextPaste = true
+        await toggle()
     }
 
     /// Drop a recording in progress or cancel Transform. The flow task is

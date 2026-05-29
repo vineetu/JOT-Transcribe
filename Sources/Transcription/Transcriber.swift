@@ -211,7 +211,12 @@ public actor Transcriber: Transcribing {
         // double-edits and occasionally regresses correct casing.
         // v2 still benefits because its training is older and emits
         // rawer text.
-        let processedText: String
+        // v1.13.1: `PostProcessing.apply()` is now scoped to v2 alongside
+        // the rest of the deterministic cleanup chain. v3+ models (v3
+        // default, v3 int4, v3+Nemotron, v3+EOU, Japanese, Nemotron-only)
+        // already emit well-cased, filler-trimmed transcripts from their
+        // TDT/RNN-T heads — pure pass-through is the right default.
+        let cleaned: String
         if modelID == .tdt_0_6b_v2_en_streaming {
             let segmented: String
             if let timings = result.tokenTimings {
@@ -223,11 +228,11 @@ public actor Transcriber: Transcribing {
                 segmented = transcriptText
             }
             let dedupped = FillerWordCleaner.clean(segmented)
-            processedText = NumberNormalizer.normalize(dedupped)
+            let normalized = NumberNormalizer.normalize(dedupped)
+            cleaned = PostProcessing.apply(normalized, language: modelID)
         } else {
-            processedText = transcriptText
+            cleaned = transcriptText
         }
-        let cleaned = PostProcessing.apply(processedText, language: modelID)
         return TranscriptionResult(
             text: cleaned,
             rawText: result.text,
@@ -250,14 +255,10 @@ public actor Transcriber: Transcribing {
             throw TranscriberError.fluidAudio(error)
         }
 
-        // Nemotron emits native punctuation + capitalization and is
-        // trained on cleaner text — the regex cleanup chain (filler
-        // strip + number normalization) is redundant here and can hurt
-        // proper casing. Only PostProcessing's language-specific rules
-        // run.
-        let cleaned = PostProcessing.apply(raw, language: modelID)
+        // v1.13.1: Nemotron emits clean native punctuation + casing.
+        // Pure pass-through — no deterministic post-processing.
         return TranscriptionResult(
-            text: cleaned,
+            text: raw,
             rawText: raw,
             duration: TimeInterval(samples.count) / AudioFormat.sampleRate,
             processingTime: Date().timeIntervalSince(started),

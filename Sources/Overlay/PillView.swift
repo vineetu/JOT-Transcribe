@@ -21,6 +21,14 @@ struct PillView: View {
     @ObservedObject var model: PillViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// v1.14: the pill's subtitle (rendered below the capsule during
+    /// recording) reads the currently-bound dictation hotkey and frames
+    /// it as the **stop** key. The trigger and stop key are the same
+    /// shortcut — pressing it again stops the recording and pastes at
+    /// the user's cursor.
+    @AppStorage("jot.hotkey.toggleRecording.singleKey") private var toggleSingleKey: SingleKey = .none
+    @AppStorage("jot.hotkey.toggleRecording.triggerType") private var toggleTriggerTypeRaw: String = ""
+
     /// Pill surface geometry. Height is tight to the notch strip; corner
     /// radius equals height/2 so the bottom corners hug the notch curvature.
     static let pillHeight: CGFloat = 36
@@ -40,6 +48,25 @@ struct PillView: View {
     private static var cornerRadius: CGFloat { pillHeight / 2 }
 
     var body: some View {
+        VStack(spacing: 6) {
+            pillSurface
+
+            // v1.14: stop-hotkey hint rendered below the pill while
+            // recording. Same shortcut as the trigger — pressing it
+            // again stops AND pastes at cursor. Hidden in all other
+            // states; the layout collapses cleanly via `if` so the
+            // pill stays flush to the notch when idle / transcribing.
+            if isRecordingState {
+                stopHotkeyHint
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .animation(reduceMotion ? nil : pillSpring, value: model.state)
+    }
+
+    @ViewBuilder
+    private var pillSurface: some View {
         ZStack {
             switch model.state {
             case .hidden:
@@ -89,6 +116,13 @@ struct PillView: View {
                 pillBody {
                     NoticeContent(message: message)
                 }
+            case .savedToRecents(let preview):
+                pillBody {
+                    SavedToRecentsContent(
+                        preview: preview,
+                        onTap: { model.invokeSavedToRecentsTap() }
+                    )
+                }
             case .error(let message):
                 pillBody {
                     ErrorContent(message: message)
@@ -102,8 +136,39 @@ struct PillView: View {
         // Pin to the top of the hosting window so the pill's top edge lines
         // up with the window/screen top. Extra vertical space in the window
         // (for shadow rendering) lives below the pill.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .animation(reduceMotion ? nil : pillSpring, value: model.state)
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    private var isRecordingState: Bool {
+        if case .recording = model.state { return true }
+        return false
+    }
+
+    private var stopHotkeyHint: some View {
+        // Force the @AppStorage reads to participate in the view's
+        // dependency graph so a hotkey rebind from Settings live-updates
+        // the pill's subtitle on the next render.
+        _ = toggleSingleKey
+        _ = toggleTriggerTypeRaw
+        let label = SingleKeyMigration.effectiveBindingLabel(for: .toggleRecording) ?? "your hotkey"
+        return HStack(spacing: 6) {
+            Text("Press")
+                .foregroundStyle(.white.opacity(0.65))
+            Text(label)
+                .foregroundStyle(.white)
+                .fontWeight(.semibold)
+            Text("to stop")
+                .foregroundStyle(.white.opacity(0.65))
+        }
+        .font(.system(size: 11))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.65))
+                .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
+        )
+        .accessibilityLabel("Press \(label) to stop recording and paste at your cursor.")
     }
 
     private var pillSpring: Animation {
@@ -591,6 +656,45 @@ private struct NoticeContent: View {
         message
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+// MARK: - Saved to Recents (post-Esc / post-pill-click affordance)
+
+/// Rendered for `PillState.savedToRecents`. Clickable — tapping opens
+/// Recents in the main window so the user can find the recording they
+/// just chose not to paste.
+private struct SavedToRecentsContent: View {
+    let preview: String
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                Image(systemName: "tray.and.arrow.down.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(nsColor: .systemGreen))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Saved to Recents")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                    if !preview.isEmpty {
+                        Text(preview)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.65))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+                .frame(maxWidth: PillView.errorTextMaxWidth, alignment: .leading)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Recording saved to Recents. Click to open.")
+        .transition(.opacity.animation(.easeOut(duration: 0.14)))
     }
 }
 

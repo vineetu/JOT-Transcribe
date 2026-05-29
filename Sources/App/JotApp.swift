@@ -138,4 +138,12 @@ private struct NavigationHistoryCommands: Commands {
 // integration layer wires the observer inside `JotAppWindow`.
 extension Notification.Name {
     static let jotWindowSetSidebarSelection = Notification.Name("jot.window.setSidebarSelection")
+
+    /// v1.14: posted by the overlay pill's saved-to-Recents click handler.
+    /// `userInfo["audioFileName"]` carries the WAV filename that uniquely
+    /// identifies the just-saved Recording. `RecordingsListView` observes
+    /// this, looks up the matching Recording in SwiftData, and pushes it
+    /// onto its navigation path so the user lands on the transcript
+    /// detail rather than the bare Recents list.
+    static let jotRecentsOpenRecording = Notification.Name("jot.recents.openRecording")
 }

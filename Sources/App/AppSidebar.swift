@@ -12,14 +12,20 @@ import SwiftUI
 ///   `@AppStorage("jot.sidebar.settingsExpanded")`. Default expanded for
 ///   new and existing users; once collapsed it stays collapsed across
 ///   relaunches.
-/// - Per Decision #8, clicking the "Settings" header navigates to General
-///   but does NOT force-expand the group — matches macOS System Settings.
+/// - Clicking anywhere on the "Settings" row — label, icon, or chevron —
+///   toggles the disclosure. It does NOT navigate. Selection (and the
+///   visible pane) is preserved across the toggle, so the user can
+///   collapse the group without leaving the pane they were on.
 /// - No dividers between rows — the native source-list grouping reads
 ///   clean enough at this count.
 /// - Sub-item icons use the *subordinate* tint (secondary foreground on
 ///   the SF Symbol) to match System Settings' second-level rows.
 /// - The "General" sub-item uses `slider.horizontal.3` rather than
 ///   `gearshape` so it doesn't duplicate the parent's icon.
+/// - v1.14: Settings row click behavior switched from "navigate to
+///   General" to "toggle disclosure only" per owner direction — clicking
+///   the row should never take the user away from their current pane,
+///   only fold/unfold the Settings group in the sidebar.
 struct AppSidebar: View {
     @Binding var selection: AppSidebarSelection
     /// Whether Apple Intelligence is currently available on this Mac.
@@ -31,8 +37,9 @@ struct AppSidebar: View {
     let askJotAvailable: Bool
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
     /// v1.13: persisted across launches. Default expanded for both new
-    /// and existing users. Decision #8: clicking the header navigates
-    /// to General without changing this state — only the chevron toggles.
+    /// and existing users. v1.14: clicking anywhere on the Settings row
+    /// (header label, icon, or chevron) toggles this state. No navigation
+    /// side effect.
     @AppStorage("jot.sidebar.settingsExpanded") private var settingsExpanded: Bool = true
     /// v1.13: master toggle for the "Advanced" surface. Off hides the
     /// Vocabulary sub-row and the top-level Ask Jot row.
@@ -44,10 +51,19 @@ struct AppSidebar: View {
                 .tag(AppSidebarSelection.home)
 
             DisclosureGroup(isExpanded: $settingsExpanded) {
+                // v1.14 sidebar order: General → Shortcuts → Transcription
+                // → Vocabulary (Advanced only) → AI → Prompts. Sound was
+                // removed entirely — per-event chime tuning isn't useful
+                // to enough users to warrant a top-level pane.
                 subRow(
                     title: "General",
                     systemImage: "slider.horizontal.3",
                     tag: .settings(.general)
+                )
+                subRow(
+                    title: "Shortcuts",
+                    systemImage: "command",
+                    tag: .settings(.shortcuts)
                 )
                 subRow(
                     title: "Transcription",
@@ -76,43 +92,30 @@ struct AppSidebar: View {
                     )
                 }
                 subRow(
-                    title: "Prompts",
-                    systemImage: "text.bubble",
-                    tag: .settings(.prompts)
-                )
-                subRow(
-                    title: "Sound",
-                    systemImage: "speaker.wave.2",
-                    tag: .settings(.sound)
-                )
-                subRow(
                     title: "AI",
                     systemImage: "sparkles",
                     tag: .settings(.ai)
                 )
                 subRow(
-                    title: "Shortcuts",
-                    systemImage: "command",
-                    tag: .settings(.shortcuts)
+                    title: "Prompts",
+                    systemImage: "text.bubble",
+                    tag: .settings(.prompts)
                 )
             } label: {
-                // macOS 26.4 sidebar idiom: clicking the group header routes
-                // to the group's default child (General). `DisclosureGroup`
-                // on SwiftUI 7 (Xcode 26.4.1) has no selection semantics on its
-                // label, and `List(selection:)` only tracks tags on leaf rows,
-                // so we drive the behavior with a `Button(.plain)`. Button is
-                // chosen over a bare `.onTapGesture` so VoiceOver announces
-                // a button role, keyboard activation works (Space / Return),
-                // and focus traversal is standard — per Apple's SwiftUI 7
-                // guidance to prefer controls over tap gestures for
-                // button-like interactions. The disclosure chevron rendered
-                // as DisclosureGroup chrome on the trailing edge handles
-                // its own tap for users who want to collapse/expand the
-                // group; the header click is navigate-only per Decision #8
-                // so an incidental click doesn't re-expand a deliberately
-                // collapsed group.
+                // v1.14: clicking the Settings row toggles the disclosure;
+                // it does NOT navigate. Selection is preserved so the
+                // visible pane doesn't change. `DisclosureGroup`'s built-in
+                // chevron also toggles, so click target is "anywhere on
+                // the row" — label, icon, or chevron all flip the state.
+                // We use a `Button(.plain)` (not `.onTapGesture`) so
+                // VoiceOver announces a button role, keyboard activation
+                // (Space / Return) works, and focus traversal is standard.
+                // Animation comes for free from `@AppStorage` updating the
+                // `isExpanded` binding.
                 Button {
-                    selection = .settings(.general)
+                    withAnimation {
+                        settingsExpanded.toggle()
+                    }
                 } label: {
                     HStack(spacing: 0) {
                         Label("Settings", systemImage: "gearshape")
@@ -121,7 +124,9 @@ struct AppSidebar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("Opens Settings at General.")
+                .accessibilityHint(settingsExpanded
+                    ? "Collapses the Settings group."
+                    : "Expands the Settings group.")
             }
 
             Label("Help", systemImage: "questionmark.circle")

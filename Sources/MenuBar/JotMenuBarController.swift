@@ -598,6 +598,15 @@ final class JotMenuBarController: NSObject {
         openUnifiedWindow(selection: .home)
     }
 
+    /// v1.14: entry point for the overlay pill's saved-to-Recents tap
+    /// affordance. Same destination as the menu bar's "Open Jot…" item;
+    /// exposed as a public method so `AppDelegate` can wire it onto
+    /// `PillViewModel.onSavedToRecentsTap` during composition without
+    /// reaching into private helpers.
+    func openHomeFromOverlay() {
+        openUnifiedWindow(selection: .home)
+    }
+
     @objc private func checkForUpdates() {
         checkForUpdatesAction()
     }

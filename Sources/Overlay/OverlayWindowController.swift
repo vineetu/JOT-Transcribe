@@ -269,6 +269,11 @@ final class OverlayWindowController {
             // fallback message ("Recorded with system default — \(savedName)
             // was unavailable.") doesn't truncate to ellipsis.
             return errorPillWidth(for: message)
+        case .savedToRecents(let preview):
+            // v1.14: the saved-to-Recents affordance lays out as
+            // [icon | "Saved to Recents" + preview line | arrow]. Reuse
+            // the text-driven sizing so the preview can breathe.
+            return errorPillWidth(for: preview)
         case .recording(_, let streamingPartial):
             // Streaming option only: when the partial is non-empty,
             // widen the pill so the live preview text has room. A
@@ -313,7 +318,9 @@ final class OverlayWindowController {
             // click-through so a tap near the notch passes to whatever
             // app the user is working in.
             panel.ignoresMouseEvents = !model.isStreamingSessionActive
-        case .success, .error:
+        case .success, .error, .savedToRecents:
+            // v1.14: `.savedToRecents` is the click-to-open-Recents
+            // affordance — must be tappable for the whole linger window.
             panel.ignoresMouseEvents = false
         }
     }

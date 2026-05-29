@@ -203,15 +203,10 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         samples: [Float],
         processingTime: TimeInterval
     ) -> TranscriptionResult {
-        // Nemotron emits native punctuation + capitalization; the
-        // regex cleanup chain (filler strip + number normalization)
-        // is intentionally skipped because it double-edits text that's
-        // already clean and can regress proper casing. Only the
-        // language-specific PostProcessing rules apply. Mirrors the
-        // gating in `Transcriber.transcribeWithNemotron`.
-        let cleaned = PostProcessing.apply(raw, language: .nemotron_en)
+        // v1.13.1: Nemotron emits clean native punctuation + casing.
+        // Pure pass-through — no deterministic post-processing.
         return TranscriptionResult(
-            text: cleaned,
+            text: raw,
             rawText: raw,
             duration: TimeInterval(samples.count) / AudioFormat.sampleRate,
             processingTime: processingTime,

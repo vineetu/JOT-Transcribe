@@ -10,14 +10,23 @@ import SwiftUI
 /// configuration is always reachable later from Settings or by re-running
 /// this wizard.
 ///
-/// The step hides the standard Skip/Continue footer chrome and presents
-/// its own two buttons, because the semantics here are intentionally
-/// different from elsewhere: "Skip" here means "done, close the wizard,"
-/// not "skip this step and proceed to the next."
+/// v1.14: uses the unified footer with `skipIsPrimary: true` and
+/// `skipExitsWizard: true`. Skip is the borderedProminent blue button
+/// on the right (recommended action — most users want to start using
+/// Jot now), Continue is the subtle borderless button on the left
+/// (power-user path into the advanced flow).
 struct DoneStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
     @ObservedObject private var permissions = PermissionsService.shared
+
+    /// Reads the user's currently-bound dictation shortcut so the body
+    /// copy matches what they actually have. For fresh installs this
+    /// resolves to "Caps Lock"; returning users see whatever they
+    /// bound previously.
+    private var currentShortcutLabel: String {
+        SingleKeyMigration.effectiveBindingLabel(for: .toggleRecording) ?? "your hotkey"
+    }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -33,7 +42,7 @@ struct DoneStep: View {
                     .font(.title2.bold())
                     .multilineTextAlignment(.center)
 
-                Text("Press ⌥Space anywhere to dictate. Speech becomes text at your cursor. That's the whole feature.")
+                Text("Press \(currentShortcutLabel) anywhere to dictate. Speech becomes text at your cursor. That's the whole feature.")
                     .font(.body)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
@@ -45,18 +54,21 @@ struct DoneStep: View {
             advancedHintCard
 
             Spacer(minLength: 0)
-
-            buttons
         }
         .padding(.vertical, 16)
         .onAppear {
-            // Hide the footer — this step's two buttons replace it.
+            // v1.14: unified footer. `skipIsPrimary` flips the layout so
+            // Skip is the prominent blue button; `skipExitsWizard` makes
+            // it call `finish()` instead of advancing to the AI provider
+            // step.
             coordinator.setChrome(
                 WizardStepChrome(
-                    primaryTitle: "",
-                    canAdvance: false,
+                    primaryTitle: "Continue",
+                    canAdvance: true,
                     isPrimaryBusy: false,
-                    showsSkip: false
+                    showsSkip: true,
+                    skipIsPrimary: true,
+                    skipExitsWizard: true
                 )
             )
         }
@@ -84,33 +96,4 @@ struct DoneStep: View {
         .padding(.horizontal, 24)
     }
 
-    private var buttons: some View {
-        HStack(spacing: 12) {
-            // Continue to advanced. Bordered / secondary — power-user path.
-            Button {
-                coordinator.advance(given: WizardState(
-                    permissionGrants: permissions.statuses,
-                    installedModelIDs: transcriberHolder.installedModelIDs,
-                    primaryModelID: transcriberHolder.primaryModelID
-                ))
-            } label: {
-                Text("Continue")
-                    .frame(minWidth: 120, minHeight: 32)
-            }
-            .controlSize(.large)
-
-            // Skip = close the wizard. Suggested / primary — the
-            // recommended first-run action.
-            Button {
-                coordinator.finish()
-            } label: {
-                Text("Skip")
-                    .frame(minWidth: 120, minHeight: 32)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .keyboardShortcut(.defaultAction)
-        }
-        .padding(.horizontal, 24)
-    }
 }

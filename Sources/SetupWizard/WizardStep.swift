@@ -58,6 +58,34 @@ struct WizardStepChrome: Equatable {
     var canAdvance: Bool
     var isPrimaryBusy: Bool
     var showsSkip: Bool
+    /// v1.14: when `true`, the footer renders **Skip** as the prominent
+    /// blue button on the right and the primary action as a subtle
+    /// borderless button on the left. Used by the `.done` step (step 6)
+    /// where the recommended action is to exit the wizard, not to
+    /// continue into the advanced flow. Defaults to `false` so existing
+    /// steps render with the conventional layout.
+    var skipIsPrimary: Bool
+    /// v1.14: when `true`, tapping Skip calls `coordinator.finish()`
+    /// (exit the wizard) instead of `coordinator.skip()` (advance to the
+    /// next step). Used by `.done` so its Skip means "I'm done, close
+    /// the wizard" rather than "skip to the AI provider step."
+    var skipExitsWizard: Bool
+
+    init(
+        primaryTitle: LocalizedStringKey,
+        canAdvance: Bool,
+        isPrimaryBusy: Bool,
+        showsSkip: Bool,
+        skipIsPrimary: Bool = false,
+        skipExitsWizard: Bool = false
+    ) {
+        self.primaryTitle = primaryTitle
+        self.canAdvance = canAdvance
+        self.isPrimaryBusy = isPrimaryBusy
+        self.showsSkip = showsSkip
+        self.skipIsPrimary = skipIsPrimary
+        self.skipExitsWizard = skipExitsWizard
+    }
 
     static let empty = WizardStepChrome(
         primaryTitle: "Continue",

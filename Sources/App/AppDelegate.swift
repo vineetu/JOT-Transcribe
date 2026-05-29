@@ -208,15 +208,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // value.
         deliveryBridge = services.recorder.$lastResult
             .compactMap { $0 }
-            .sink { [weak recorder = services.recorder, weak delivery = services.delivery] _ in
-                Task { @MainActor [weak recorder, weak delivery] in
+            .sink { [weak recorder = services.recorder,
+                     weak delivery = services.delivery,
+                     weak overlay = services.overlay] _ in
+                Task { @MainActor [weak recorder, weak delivery, weak overlay] in
                     guard let text = recorder?.lastTranscript, !text.isEmpty else { return }
+                    // v1.14: read-and-clear `skipNextPaste`. When the
+                    // user stopped via the in-app Record pill or Esc
+                    // (rather than the trigger hotkey), the recording
+                    // still persists to Recents but the paste step is
+                    // suppressed. Cleared here so the next session's
+                    // default behavior is restored unconditionally.
+                    if let recorder, recorder.skipNextPaste {
+                        recorder.skipNextPaste = false
+                        // Surface the click-to-open-Recents pill so the
+                        // user can find what they just saved. Capture
+                        // the audio file name now (companion publisher
+                        // `lastAudioRecording` is set immediately before
+                        // `lastResult` per the documented ordering
+                        // invariant) so the click handler can navigate
+                        // to the specific Recording detail even after
+                        // the recorder has moved on to a new session.
+                        let audioFile = recorder.lastAudioRecording?.fileURL.lastPathComponent
+                        overlay?.pillViewModel.showSavedToRecents(
+                            preview: text,
+                            audioFileName: audioFile
+                        )
+                        return
+                    }
                     await delivery?.deliver(text)
                 }
             }
 
         services.menuBar.install()
         services.overlay.install()
+
+        // v1.14: wire the saved-to-Recents pill's click handler. Tapping
+        // the affordance opens the main window on the Recents pane AND
+        // navigates to the just-saved Recording detail. The audio file
+        // name is captured at pill-show time and forwarded through
+        // `invokeSavedToRecentsTap()` so a click here always references
+        // *that session's* recording, never a stale one.
+        services.overlay.pillViewModel.onSavedToRecentsTap = {
+            [weak menuBar = services.menuBar] audioFile in
+            menuBar?.openHomeFromOverlay()
+            guard let audioFile else { return }
+            // Small delay so the SwiftUI scene has materialized
+            // `RecordingsListView` before the notification posts.
+            // Without this, a cold-open hit races the view's
+            // `.onReceive` registration and the navigation drops on
+            // the floor.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                NotificationCenter.default.post(
+                    name: .jotRecentsOpenRecording,
+                    object: nil,
+                    userInfo: ["audioFileName": audioFile]
+                )
+            }
+        }
 
         // Install the hide-on-close proxy delegate the first time the
         // unified main window becomes key. Subscribing here (rather than
