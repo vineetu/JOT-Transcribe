@@ -73,6 +73,9 @@ struct JotAppWindow: View {
     /// the wizard's hotkey-driven `TestStep` can temporarily commandeer
     /// `.toggleRecording`.
     private let hotkeyRouter: HotkeyRouter
+    /// v1.14: held here so `HomePane` can observe state for the inline
+    /// Record pill and call `recorder.toggle()` from the click handler.
+    private let recorder: RecorderController
 
     @MainActor
     init(
@@ -128,6 +131,7 @@ struct JotAppWindow: View {
         self.audioCapture = audioCapture
         self.keychain = keychain
         self.hotkeyRouter = hotkeyRouter
+        self.recorder = recorder
         // Build the store tied to the same navigator instance we own
         // above so `ShowFeatureTool` → navigator → HelpPane routing
         // writes/reads the same observable.
@@ -271,6 +275,12 @@ struct JotAppWindow: View {
         _ raw: AppSidebarSelection,
         advancedEnabled: Bool
     ) -> AppSidebarSelection {
+        // v1.14: Sound pane was removed from the sidebar entirely.
+        // Any persisted/incoming selection pointing at `.sound` is
+        // redirected to General so the user never lands on an orphan.
+        if case .settings(.sound) = raw {
+            return .settings(.general)
+        }
         guard !advancedEnabled else { return raw }
         switch raw {
         case .askJot, .settings(.vocabulary):
@@ -288,7 +298,7 @@ struct JotAppWindow: View {
     private var detail: some View {
         switch selection {
         case .home:
-            HomePane()
+            HomePane(recorder: recorder)
         case .askJot:
             AskJotView(store: chatStore, voiceInput: voiceInput)
         case .settings(let sub):

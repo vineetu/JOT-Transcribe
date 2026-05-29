@@ -3,6 +3,14 @@ import SwiftUI
 struct WelcomeStep: View {
     @EnvironmentObject private var coordinator: SetupWizardCoordinator
 
+    /// Reads the user's currently-bound dictation shortcut and renders it
+    /// inline in the "Works in any app" bullet. For fresh installs this
+    /// resolves to "Caps Lock" (see `SingleKeyMigration.runIfNeeded`);
+    /// returning users see whatever they had bound previously.
+    private var currentShortcutLabel: String {
+        SingleKeyMigration.effectiveBindingLabel(for: .toggleRecording) ?? "your hotkey"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 8) {
@@ -17,12 +25,12 @@ struct WelcomeStep: View {
                 BulletRow(
                     symbol: "mic.fill",
                     title: "On-device dictation",
-                    detail: "Parakeet runs on the Apple Neural Engine. Audio never leaves your Mac."
+                    detail: "Uses negligible battery. Audio never leaves your Mac."
                 )
                 BulletRow(
                     symbol: "keyboard",
                     title: "Works in any app",
-                    detail: "The default shortcut is ⌥Space — press it anywhere to start a recording."
+                    detail: LocalizedStringKey("Your shortcut is \(currentShortcutLabel) — press it anywhere to start a recording.")
                 )
                 BulletRow(
                     symbol: "lock.shield",

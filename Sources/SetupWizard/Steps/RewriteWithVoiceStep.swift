@@ -61,7 +61,7 @@ struct RewriteWithVoiceStep: View {
                     primaryTitle: config.isLastStep ? "Done" : "Continue",
                     canAdvance: true,
                     isPrimaryBusy: false,
-                    showsSkip: false
+                    showsSkip: true
                 )
             )
             // Hotkey commandeer: pressing the user's rewrite hotkey on

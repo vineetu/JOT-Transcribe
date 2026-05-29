@@ -94,7 +94,7 @@ struct RewriteIntroStep: View {
                     primaryTitle: "Continue",
                     canAdvance: true,
                     isPrimaryBusy: false,
-                    showsSkip: false
+                    showsSkip: true
                 )
             )
             // Commandeer both rewrite hotkeys so they fire the wizard

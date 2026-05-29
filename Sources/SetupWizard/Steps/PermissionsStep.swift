@@ -6,6 +6,14 @@ struct PermissionsStep: View {
     @ObservedObject private var permissions = PermissionsService.shared
     @State private var showResetAlert = false
 
+    /// Reads the user's currently-bound dictation shortcut so the Input
+    /// Monitoring row reflects what they actually have (Caps Lock for
+    /// fresh installs, anything custom for returning users). Mirrors the
+    /// dynamic-shortcut fix on the Welcome step.
+    private var currentShortcutLabel: String {
+        SingleKeyMigration.effectiveBindingLabel(for: .toggleRecording) ?? "your global"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 6) {
@@ -28,7 +36,7 @@ struct PermissionsStep: View {
                 PermissionRow(
                     capability: .inputMonitoring,
                     title: "Input Monitoring",
-                    subtitle: "Lets the ⌥Space global hotkey fire from any app.",
+                    subtitle: "Lets the \(currentShortcutLabel) global hotkey fire from any app.",
                     status: permissions.statuses[.inputMonitoring] ?? .notDetermined,
                     primaryLabel: "Open System Settings",
                     extraInstructions: "If Jot isn't already listed, click the + button, then choose Applications → Jot."

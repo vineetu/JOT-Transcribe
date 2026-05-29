@@ -99,8 +99,21 @@ final class HotkeyRouter {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let rewrite = self.rewriteController, Self.isRewriteCancellable(rewrite.state) {
+                    // Rewrite cancel semantics unchanged — voice-instruction
+                    // captures are short and there's no transcript to keep.
                     await rewrite.cancel()
+                } else if case .recording = self.recorder.state {
+                    // v1.14 recording-safety contract: Esc while recording
+                    // stops AND saves to Recents but skips the paste step.
+                    // Same path as the in-app Record pill's click-to-stop
+                    // — both reach `stopWithoutPaste()`. Esc no longer
+                    // discards the recording; the user can delete from
+                    // Recents if they meant to throw it away.
+                    await self.recorder.stopWithoutPaste()
                 } else {
+                    // Transcribing / transforming / error — genuine abort.
+                    // Past the "stop recording" moment, so the cancel-and-
+                    // discard semantics still match user intent here.
                     await self.recorder.cancel()
                 }
             }

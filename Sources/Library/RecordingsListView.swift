@@ -133,7 +133,26 @@ struct RecordingsListView: View {
         NavigationStack(path: $path) {
             list
                 .navigationTitle(navigationTitle)
-                .searchable(text: $searchText, placement: .toolbar, prompt: "Search library")
+                // v1.14: searchable moved out of the toolbar into a
+                // list-row filter just above the rows (see `inlineSearch`
+                // in `list`). The toolbar position read as a global app
+                // command; placing it inline against the list makes it
+                // unambiguous that it filters the list below.
+                .onReceive(NotificationCenter.default.publisher(for: .jotRecentsOpenRecording)) { note in
+                    // v1.14: the overlay pill's "Saved to Recents" tap
+                    // posts this. Look up the Recording by its audio
+                    // filename (set by `RecordingPersister.persist`) and
+                    // push it onto the navigation path so the user lands
+                    // on the transcript detail.
+                    guard let audioFile = note.userInfo?["audioFileName"] as? String else { return }
+                    var descriptor = FetchDescriptor<Recording>(
+                        predicate: #Predicate { $0.audioFileName == audioFile }
+                    )
+                    descriptor.fetchLimit = 1
+                    if let row = try? context.fetch(descriptor).first {
+                        path.append(row)
+                    }
+                }
                 .navigationDestination(for: Recording.self) { r in
                     RecordingDetailView(recording: r)
                 }
@@ -196,65 +215,109 @@ struct RecordingsListView: View {
                 }
             }
 
+            // v1.14: inline search just above the rows. Renders as a
+            // list row with no separator so it visually anchors the
+            // list below it. The toolbar `.searchable` was removed
+            // because it read as a window-level command rather than a
+            // list filter.
+            auxiliaryRow {
+                inlineSearch
+            }
+
             if filteredItems.isEmpty {
                 auxiliaryRow {
                     emptyState
                 }
             } else {
-                ForEach(RecordingStore.grouped(libraryItems: filteredItems), id: \.0.id) { (group, rows) in
-                    Section(group.title) {
-                        ForEach(rows) { item in
-                            // Why an outer HStack with the Button + Copy +
-                            // Menu as siblings (instead of `Button { } label: {
-                            // entireRow }`): SwiftUI's `.plain` button style
-                            // on macOS sends every click in its bounds to
-                            // the Button's action. If Copy is a *child* of
-                            // the Button's label, the click is eaten before
-                            // CopyTranscriptButton ever sees it. Pulling
-                            // Copy and the ellipsis Menu out so they sit
-                            // next to the Button (not inside it) means each
-                            // gets its own native click. The Menu used to
-                            // happen to work as a child because it
-                            // registers an AppKit-level NSMenu handler that
-                            // beats the SwiftUI Button gesture system, but
-                            // there's no equivalent escape hatch for a
-                            // plain action button — the only reliable fix
-                            // is to stop nesting them.
-                            HStack(spacing: 0) {
-                                Button {
-                                    switch item {
-                                    case .recording(let r): path.append(r)
-                                    case .rewrite(let s): path.append(s)
-                                    }
-                                } label: {
-                                    RecordingRowView(
-                                        item: item,
-                                        onRetranscribe: {
-                                            if case .recording(let r) = item { retranscribe(r) }
-                                        },
-                                        onReveal: {
-                                            if case .recording(let r) = item { reveal(r) }
-                                        },
-                                        onDelete: {
-                                            switch item {
-                                            case .recording(let r): pendingDelete = r
-                                            case .rewrite(let s): pendingDeleteRewrite = s
-                                            }
-                                        }
-                                    )
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-
-                                rowTrailingControls(for: item)
-                                    .padding(.leading, 4)
+                // v1.14: flat list — no Today / Yesterday / Earlier
+                // dividers. Date is rendered per-row in
+                // `rowTrailingControls` next to the duration.
+                ForEach(filteredItems) { item in
+                    // Why an outer HStack with the Button + Copy +
+                    // Menu as siblings (instead of `Button { } label: {
+                    // entireRow }`): SwiftUI's `.plain` button style
+                    // on macOS sends every click in its bounds to
+                    // the Button's action. If Copy is a *child* of
+                    // the Button's label, the click is eaten before
+                    // CopyTranscriptButton ever sees it. Pulling
+                    // Copy and the ellipsis Menu out so they sit
+                    // next to the Button (not inside it) means each
+                    // gets its own native click. The Menu used to
+                    // happen to work as a child because it
+                    // registers an AppKit-level NSMenu handler that
+                    // beats the SwiftUI Button gesture system, but
+                    // there's no equivalent escape hatch for a
+                    // plain action button — the only reliable fix
+                    // is to stop nesting them.
+                    HStack(spacing: 0) {
+                        Button {
+                            switch item {
+                            case .recording(let r): path.append(r)
+                            case .rewrite(let s): path.append(s)
                             }
+                        } label: {
+                            RecordingRowView(
+                                item: item,
+                                onRetranscribe: {
+                                    if case .recording(let r) = item { retranscribe(r) }
+                                },
+                                onReveal: {
+                                    if case .recording(let r) = item { reveal(r) }
+                                },
+                                onDelete: {
+                                    switch item {
+                                    case .recording(let r): pendingDelete = r
+                                    case .rewrite(let s): pendingDeleteRewrite = s
+                                    }
+                                }
+                            )
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+
+                        rowTrailingControls(for: item)
+                            .padding(.leading, 4)
                     }
                 }
             }
         }
         .listStyle(.inset)
+    }
+
+    /// Inline search field rendered as a list row, sitting just above
+    /// the recording rows so it reads as a list filter rather than a
+    /// global app command. Resting fill matches the Dictate pill's
+    /// `Color.primary.opacity(0.06)` tone so the two "light affordance"
+    /// elements above the list read as a coherent set.
+    private var inlineSearch: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+            TextField("Search recordings", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        )
     }
 
     /// Per-item trailing widgets (Copy + ellipsis Menu) rendered as a
@@ -278,6 +341,14 @@ struct RecordingsListView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
 
+                Text("·")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+
+                Text(Self.shortDate(r.createdAt))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
                 CopyTranscriptButton(text: r.transcript)
 
                 Menu {
@@ -294,6 +365,10 @@ struct RecordingsListView: View {
                 .fixedSize()
 
             case .rewrite(let s):
+                Text(Self.shortDate(s.createdAt))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
                 CopyTranscriptButton(
                     text: s.output,
                     accessibilityLabel: "Copy output",
@@ -314,6 +389,20 @@ struct RecordingsListView: View {
                 .fixedSize()
             }
         }
+    }
+
+    /// Compact absolute date used in the per-row metadata. Same year
+    /// drops the year for brevity ("May 28"); cross-year shows the year
+    /// ("May 28 '25") so an old recording reads correctly.
+    private static func shortDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        if calendar.component(.year, from: date) == calendar.component(.year, from: Date()) {
+            formatter.setLocalizedDateFormatFromTemplate("MMM d")
+        } else {
+            formatter.setLocalizedDateFormatFromTemplate("MMM d yyyy")
+        }
+        return formatter.string(from: date)
     }
 
     private func copyRewriteOutput(_ s: RewriteSession) {

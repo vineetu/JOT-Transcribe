@@ -8,6 +8,18 @@ struct TranscriptionPane: View {
     @AppStorage("jot.preserveClipboard") private var preserveClipboard: Bool = true
     @AppStorage("jot.speakerLabels.enabled") private var speakerLabelsEnabled: Bool = true
 
+    /// v1.14: collapse non-primary model rows behind a disclosure.
+    /// Persisted so the user's preference (open/closed) survives relaunch.
+    @AppStorage("jot.settings.transcription.otherModelsExpanded")
+    private var otherModelsExpanded: Bool = false
+
+    /// v1.14: paste / press-return / keep-clipboard toggles are gated
+    /// behind the **global** Advanced features flag in Settings →
+    /// General — not behind a per-pane disclosure. When Advanced is off
+    /// these knobs are hidden entirely; sensible defaults take over.
+    @AppStorage(AdvancedFlag.storageKey)
+    private var advancedEnabled: Bool = false
+
     @Environment(\.setSidebarSelection) private var setSidebarSelection
 
     /// Per-row download state, keyed by `ParakeetModelID`. Persists across
@@ -24,12 +36,26 @@ struct TranscriptionPane: View {
 
     var body: some View {
         Form {
+            // v1.14: only the primary model is shown by default. Any
+            // additional installed/available models live behind the
+            // "Show other models" disclosure so the pane reads as a
+            // single decision ("which model is in use") rather than a
+            // four-row choose-one menu.
             Section {
-                ForEach(ParakeetModelID.visibleCases, id: \.rawValue) { model in
-                    modelRow(model)
+                modelRow(holder.primaryModelID)
+                if !otherVisibleModels.isEmpty {
+                    DisclosureGroup(isExpanded: $otherModelsExpanded) {
+                        ForEach(otherVisibleModels, id: \.rawValue) { model in
+                            modelRow(model)
+                        }
+                    } label: {
+                        Text(otherModelsExpanded ? "Hide other models" : "Show other models")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } header: {
-                Text("Speech recognition models")
+                Text("Speech recognition model")
             } footer: {
                 Text("Each model is downloaded once and runs on the Apple Neural Engine. Multiple models can be installed; only the primary is hot in memory.")
             }
@@ -44,54 +70,62 @@ struct TranscriptionPane: View {
                 speakerLabelsCard
             }
 
-            Section {
-                HStack {
-                    Toggle("Automatically paste transcription", isOn: $autoPaste)
-                        .help("Paste the transcript at your cursor via synthetic ⌘V. When off, the transcript is copied to your clipboard instead.")
-                    Spacer()
-                    InfoPopoverButton(
-                        title: "Automatically paste transcription",
-                        body: "Paste the transcript at your cursor via synthetic ⌘V. When on: Jot drops the text right where you were typing. When off: the transcript is placed on your clipboard for manual paste.",
-                        helpAnchor: "dictation"
-                    )
+            // v1.14: when the global Advanced flag is OFF, the
+            // paste/clipboard knobs aren't shown at all — defaults
+            // (auto-paste on, press-return off, keep-clipboard on)
+            // handle the unsurprising case. When the user flips
+            // Advanced on from Settings → General, the knobs appear
+            // here as plain rows (no per-pane disclosure).
+            if advancedEnabled {
+                Section {
+                    HStack {
+                        Toggle("Automatically paste transcription", isOn: $autoPaste)
+                            .help("Paste the transcript at your cursor via synthetic ⌘V. When off, the transcript is copied to your clipboard instead.")
+                        Spacer()
+                        InfoPopoverButton(
+                            title: "Automatically paste transcription",
+                            body: "Paste the transcript at your cursor via synthetic ⌘V. When on: Jot drops the text right where you were typing. When off: the transcript is placed on your clipboard for manual paste.",
+                            helpAnchor: "dictation"
+                        )
+                    }
+                    HStack {
+                        Toggle("Press Return after pasting", isOn: $autoPressEnter)
+                            .disabled(!autoPaste)
+                            .help("Send a Return keystroke after pasting. Useful for chat apps and terminal prompts.")
+                        Spacer()
+                        InfoPopoverButton(
+                            title: "Press Return after pasting",
+                            body: "Send a Return keystroke right after the transcript is pasted. When on: chat apps and terminal prompts auto-submit. Requires Automatically paste transcription.",
+                            helpAnchor: "dictation"
+                        )
+                    }
+                    if !autoPaste {
+                        Text("Requires Automatically paste transcription.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                 }
-                HStack {
-                    Toggle("Press Return after pasting", isOn: $autoPressEnter)
-                        .disabled(!autoPaste)
-                        .help("Send a Return keystroke after pasting. Useful for chat apps and terminal prompts.")
-                    Spacer()
-                    InfoPopoverButton(
-                        title: "Press Return after pasting",
-                        body: "Send a Return keystroke right after the transcript is pasted. When on: chat apps and terminal prompts auto-submit. Requires Automatically paste transcription.",
-                        helpAnchor: "dictation"
-                    )
-                }
-                if !autoPaste {
-                    Text("Requires Automatically paste transcription.")
+
+                Section {
+                    HStack {
+                        Toggle("Keep last transcript on clipboard", isOn: Binding(
+                            get: { !preserveClipboard },
+                            set: { preserveClipboard = !$0 }
+                        ))
+                        .help("Leave the transcript on your clipboard after pasting. When off, Jot restores whatever was on your clipboard before the transcription.")
+                        Spacer()
+                        InfoPopoverButton(
+                            title: "Keep last transcript on clipboard",
+                            body: "Leave the transcribed text on your clipboard after pasting. When on: you can ⌘V the transcript again elsewhere. When off: Jot restores whatever you had on the clipboard before recording.",
+                            helpAnchor: "dictation"
+                        )
+                    }
+                    Text("When off, Jot restores your previous clipboard after pasting.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-            }
-
-            Section {
-                HStack {
-                    Toggle("Keep last transcript on clipboard", isOn: Binding(
-                        get: { !preserveClipboard },
-                        set: { preserveClipboard = !$0 }
-                    ))
-                    .help("Leave the transcript on your clipboard after pasting. When off, Jot restores whatever was on your clipboard before the transcription.")
-                    Spacer()
-                    InfoPopoverButton(
-                        title: "Keep last transcript on clipboard",
-                        body: "Leave the transcribed text on your clipboard after pasting. When on: you can ⌘V the transcript again elsewhere. When off: Jot restores whatever you had on the clipboard before recording.",
-                        helpAnchor: "dictation"
-                    )
-                }
-                Text("When off, Jot restores your previous clipboard after pasting.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
             }
 
             Section {
@@ -114,6 +148,12 @@ struct TranscriptionPane: View {
         }
         .formStyle(.grouped)
         .onAppear { holder.refreshInstalled() }
+    }
+
+    /// All visible models other than the current primary, preserving the
+    /// canonical order from `ParakeetModelID.visibleCases`.
+    private var otherVisibleModels: [ParakeetModelID] {
+        ParakeetModelID.visibleCases.filter { $0 != holder.primaryModelID }
     }
 
     @ViewBuilder
