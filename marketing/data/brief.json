@@ -1,0 +1,41 @@
+{
+  "date": "2026-06-11",
+  "downloads": { "total": 97, "delta": 0, "avg7": null, "goal": 100 },
+  "drafts": [
+    {
+      "channel": "linkedin",
+      "text": "I type for a living, but I think faster than I type. So I built Jot — a free, open-source dictation app for Mac.\n\nPress a hotkey, speak, and the words land wherever your cursor is — email, Slack, your code editor. No window switching, no copy-paste.\n\nWhat makes it different:\n• 100% on-device — transcription runs on the Apple Neural Engine. Your voice never leaves your Mac.\n• $0. No subscription, no account, no telemetry.\n• Optional AI cleanup and rewrite, on-device with Apple Intelligence.\n\nThe paid alternatives charge $8–15/month for this. Jot is free because dictation on a Mac shouldn't need a server.\n\nTry it (free, Apple Silicon, macOS 14+):",
+      "utm_url": "https://jot.ideaflow.page/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-11",
+      "publish_window_pt": "7:00–8:30am PT",
+      "recommended": true,
+      "note": "The link preview card renders automatically — run the URL through LinkedIn's Post Inspector once before your first post so it picks up the fresh OG image."
+    },
+    {
+      "channel": "x",
+      "text": "I built a free, open-source dictation app for Mac.\n\nHotkey → speak → text appears at your cursor. Works in any app.\n\n100% on-device (Apple Neural Engine). No account. No subscription. No telemetry.",
+      "utm_url": "https://jot.ideaflow.page/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-11",
+      "publish_window_pt": "6:30–9:00am PT",
+      "recommended": true,
+      "note": "Attach a 10–15s screen recording if you have one — posts with video get ~3x the reach of plain text."
+    },
+    {
+      "channel": "reddit",
+      "text": "Jot — free, open-source, fully on-device dictation for macOS (I built it)\n\nI got frustrated paying monthly for Mac dictation apps while Apple's built-in dictation kept fumbling punctuation, so I built my own and open-sourced it.\n\nJot sits in the menu bar. Press a hotkey, talk, and the transcript pastes at your cursor in whatever app you're in. Transcription runs entirely on-device on the Neural Engine (Parakeet model), so it works offline and your audio never leaves the machine. No account, no telemetry, free.\n\nThere's optional AI cleanup/rewrite — it defaults to Apple Intelligence on-device, or you can point it at Ollama or your own API key.\n\nNeeds Apple Silicon + macOS 14+. Would love feedback, especially on the rewrite-with-voice flow.",
+      "utm_url": "https://jot.ideaflow.page/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-11",
+      "publish_window_pt": "6:00–8:00am PT",
+      "recommended": true,
+      "note": "Post to r/macapps (self-promo is welcome there if you engage with comments). First line is the post title, the rest is the body. Don't repost to another subreddit for at least 4–5 days."
+    },
+    {
+      "channel": "instagram",
+      "text": "Talk instead of type. Press a hotkey, speak, and the words land at your cursor — in any app on your Mac.\n\nJot is free, open-source, and runs 100% on-device on the Apple Neural Engine. No account. No subscription. Your voice never leaves your Mac.\n\nFree download — link in bio. 🎙️\n\n#macos #dictation #opensource #productivity #speechtotext #macapps #indiedev #buildinpublic",
+      "utm_url": "https://jot.ideaflow.page/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-11",
+      "publish_window_pt": "11am–1pm PT",
+      "recommended": true,
+      "visual": "10–15s screen recording as a Reel: press the hotkey, the pill appears under the notch, speak one sentence, the text lands in Notes. Text overlay: 'free · open source · on-device'. Screen recordings of the pill animation are the most Instagram-able thing Jot has.",
+      "note": "Instagram doesn't make caption links clickable — put the UTM link in your bio (you can use the bare jot.ideaflow.page?utm_source=instagram link there permanently)."
+    }
+  ],
+  "opportunities": [],
+  "notes": "Day-zero brief written by hand to seed the system; from tomorrow the 5:30am PT agent takes over with fresh angles daily plus Reddit/HN reply opportunities. Suggested order today: LinkedIn and X this morning, Reddit tomorrow morning in its window (don't launch everything in one hour — spread the first wave across 2 days so each post gets your full attention in the comments)."
+}
