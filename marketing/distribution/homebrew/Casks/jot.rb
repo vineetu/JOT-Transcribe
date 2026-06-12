@@ -6,7 +6,7 @@ cask "jot" do
       verified: "github.com/vineetu/JOT-Transcribe/"
   name "Jot"
   desc "Free, open-source, on-device dictation utility"
-  homepage "https://jot.ideaflow.page/"
+  homepage "https://jot-transcribe.com/"
 
   livecheck do
     url :url

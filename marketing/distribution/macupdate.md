@@ -41,6 +41,6 @@ Highlights:
 
 **Developer:** Vineet Sriram
 
-**Homepage:** https://jot.ideaflow.page/
+**Homepage:** https://jot-transcribe.com/
 
 **Download URL:** https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg
