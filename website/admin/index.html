@@ -473,7 +473,7 @@ function CardPreview() {
 
 // ── Traffic ──
 function Traffic() {
-  const code = localStorage.getItem('jot-gc-code') || '';
+  const code = localStorage.getItem('jot-gc-code') || 'jot-transcribe';
   const [val, setVal] = useState(code);
   const [saved, setSaved] = useState(!!code);
   if (saved && val) {
