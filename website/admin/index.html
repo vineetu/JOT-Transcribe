@@ -160,6 +160,18 @@ textarea { min-height: 130px; line-height: 1.55; }
 .opp .reply { white-space: pre-wrap; color: var(--text-2); margin-top: 6px; background: var(--panel-2); border-radius: 6px; padding: 8px 10px; }
 .notes { font-size: 0.8rem; color: var(--text-2); margin-top: 12px; border-left: 2px solid var(--accent); padding-left: 10px; }
 
+/* Creative studio */
+.cre-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-top: 12px; background: var(--panel-2); }
+.cre-card img { display: block; width: 100%; }
+.cre-card .meta { padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.cre-card .meta .t { font-size: 0.84rem; font-weight: 600; }
+.cre-card .meta .u { font-size: 0.74rem; color: var(--text-3); margin-top: 2px; }
+table.shots { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 8px; }
+table.shots td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.shots tr:last-child td { border-bottom: none; }
+table.shots td.t { font-family: var(--mono); color: var(--accent); white-space: nowrap; }
+table.shots td.ov { color: var(--text-2); font-style: italic; white-space: nowrap; }
+
 .err { color: #f08080; font-size: 0.82rem; }
 .loading { color: var(--text-3); font-size: 0.82rem; }
 .spacer { height: 14px; }
@@ -251,6 +263,96 @@ function Releases({ gh }) {
     </table>
     <div class="hint">Live from the GitHub API — every DMG pulled through the website lands here. Tag releases with UTM-tracked posts to attribute spikes.</div>
   </div>`;
+}
+
+// ── Creative studio ──
+const RAWROOT = `https://raw.githubusercontent.com/${REPO}/main/`;
+
+async function rasterize(url, scale = 2) {
+  const svg = await fetch(url, { cache: 'no-store' }).then(r => r.text());
+  const blobUrl = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  try {
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = blobUrl; });
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth * scale; c.height = img.naturalHeight * scale;
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return { data: c.toDataURL('image/png'), w: c.width, h: c.height };
+  } finally { URL.revokeObjectURL(blobUrl); }
+}
+
+async function downloadPng(file) {
+  const png = await rasterize(RAWROOT + file);
+  const a = document.createElement('a');
+  a.href = png.data;
+  a.download = file.split('/').pop().replace(/\.svg$/, '.png');
+  a.click();
+}
+
+async function downloadPdf(files, name) {
+  const { jsPDF } = await import('https://esm.sh/jspdf@2.5.1');
+  let doc;
+  for (const f of files) {
+    const png = await rasterize(RAWROOT + f);
+    const fmt = [png.w, png.h], ori = png.h >= png.w ? 'portrait' : 'landscape';
+    if (!doc) doc = new jsPDF({ orientation: ori, unit: 'px', format: fmt, hotfixes: ['px_scaling'] });
+    else doc.addPage(fmt, ori);
+    doc.addImage(png.data, 'PNG', 0, 0, png.w, png.h);
+  }
+  doc.save(name);
+}
+
+function CreativeStudio({ m }) {
+  const [busy, setBusy] = useState('');
+  const run = (key, fn) => { setBusy(key); fn().catch(e => alert('Export failed: ' + e)).finally(() => setBusy('')); };
+  let body;
+  if (m.loading) {
+    body = h`<div class="loading">Loading…</div>`;
+  } else if (!m.brief?.creative) {
+    body = h`<div class="hint" style=${{ marginTop: 0 }}>
+      No visuals yet for today. The agent delivers cards, carousels, and a video storyboard
+      with every morning brief — they appear here with one-click PNG / PDF export.
+    </div>`;
+  } else {
+    const c = m.brief.creative;
+    const slides = (c.carousel || []).map(s => (typeof s === 'string' ? s : s.file));
+    body = h`<div>
+      ${c.concept && h`<div class="hint" style=${{ marginTop: 0 }}>${c.concept}</div>`}
+      ${(c.cards || []).map(card => h`<div class="cre-card" key=${card.file}>
+        <img src=${RAWROOT + card.file} alt=${card.title} />
+        <div class="meta">
+          <div>
+            <div class="t">${card.title}</div>
+            <div class="u">${card.use}</div>
+          </div>
+          <button class="btn" disabled=${busy === card.file} onClick=${() => run(card.file, () => downloadPng(card.file))}>
+            ${busy === card.file ? 'Exporting…' : 'PNG ↓'}
+          </button>
+        </div>
+      </div>`)}
+      ${slides.length > 0 && h`<div class="cre-card">
+        <div style=${{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '6px', padding: '10px' }}>
+          ${slides.map(f => h`<img key=${f} src=${RAWROOT + f} style=${{ borderRadius: '6px', border: '1px solid var(--border)' }} />`)}
+        </div>
+        <div class="meta">
+          <div><div class="t">Carousel · ${slides.length} slides</div><div class="u">Post as a LinkedIn document (PDF) — carousels get the highest dwell time of any format</div></div>
+          <button class="btn" disabled=${busy === 'pdf'} onClick=${() => run('pdf', () => downloadPdf(slides, `jot-carousel-${m.brief.date}.pdf`))}>
+            ${busy === 'pdf' ? 'Building…' : 'PDF ↓'}
+          </button>
+        </div>
+      </div>`}
+      ${c.storyboard && h`<div style=${{ marginTop: '14px' }}>
+        <div style=${{ fontSize: '0.84rem', fontWeight: 600 }}>🎬 ${c.storyboard.title} <span style=${{ color: 'var(--text-3)', fontWeight: 400 }}>· ${c.storyboard.duration_s}s · ${c.storyboard.use}</span></div>
+        <table class="shots"><tbody>
+          ${(c.storyboard.shots || []).map((s, i) => h`<tr key=${i}>
+            <td class="t">${s.t}</td><td>${s.visual}</td><td class="ov">${s.overlay}</td>
+          </tr>`)}
+        </tbody></table>
+        <div class="hint">Record once with QuickTime (⌘⇧5), trim to the shot list — this one clip covers the Reel, X video, and a GIF.</div>
+      </div>`}
+    </div>`;
+  }
+  return h`<div class="panel"><h2><span class="dot"></span>Creative studio</h2>${body}</div>`;
 }
 
 // ── Agent brief ──
@@ -551,6 +653,8 @@ function App() {
         <${AgentBrief} m=${mk} />
       </div>
       <div>
+        <${CreativeStudio} m=${mk} />
+        <div class="spacer"></div>
         <${Composer} />
         <div class="spacer"></div>
         <${PublishCalendar} />
