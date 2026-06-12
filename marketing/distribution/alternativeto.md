@@ -13,7 +13,7 @@ Traffic shows up in GoatCounter as referrer `alternativeto.net` — no UTM neede
 
 **Name:** Jot
 
-**Official website:** https://jot.ideaflow.page/
+**Official website:** https://jot-transcribe.com/
 
 **Short description (tagline):**
 Free, open-source dictation for Mac. Press a hotkey, speak, and the text is

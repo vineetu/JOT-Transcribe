@@ -31,7 +31,7 @@ no subscription, no telemetry. Free and open source.
 
 **Topics:** Mac, Productivity, Open Source, Privacy, Artificial Intelligence
 
-**Links:** https://jot.ideaflow.page/ + GitHub repo
+**Links:** https://jot-transcribe.com/ + GitHub repo
 
 **Pricing:** Free
 
