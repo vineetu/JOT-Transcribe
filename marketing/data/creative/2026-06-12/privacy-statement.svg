@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- notch + pill motif -->
+  <rect x="380" y="0" width="320" height="46" rx="14" fill="#161618"/>
+  <rect x="465" y="78" width="150" height="44" rx="22" fill="#161618" stroke="#2a2a2e" stroke-width="2"/>
+  <circle cx="540" cy="100" r="9" fill="#CE231D"/>
+
+  <text x="540" y="420" fill="#f0f0f0" font-size="92" font-weight="800" text-anchor="middle">Your voice</text>
+  <text x="540" y="540" fill="#f0f0f0" font-size="92" font-weight="800" text-anchor="middle">never leaves</text>
+  <text x="540" y="660" fill="#f0f0f0" font-size="92" font-weight="800" text-anchor="middle">your Mac<tspan fill="#CE231D">.</tspan></text>
+
+  <text x="540" y="780" fill="#9a9a9f" font-size="34" text-anchor="middle">Free, open-source dictation — transcribed on-device</text>
+  <text x="540" y="828" fill="#9a9a9f" font-size="34" text-anchor="middle">on the Apple Neural Engine</text>
+
+  <circle cx="424" cy="1000" r="7" fill="#CE231D"/>
+  <text x="446" y="1010" fill="#9a9a9f" font-size="30">jot-transcribe.com</text>
+</svg>

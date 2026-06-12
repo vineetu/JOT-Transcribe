@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+  <text x="80" y="130" fill="#9a9a9f" font-size="30" letter-spacing="6" font-weight="600">DICTATION ON YOUR MAC</text>
+
+  <!-- Wispr Flow -->
+  <rect x="80" y="200" width="920" height="150" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="2"/>
+  <text x="130" y="270" fill="#f0f0f0" font-size="44" font-weight="600">Wispr Flow</text>
+  <text x="130" y="318" fill="#9a9a9f" font-size="27">cloud — your audio leaves your Mac</text>
+  <text x="950" y="290" fill="#f0f0f0" font-size="50" font-weight="700" text-anchor="end">$15/mo</text>
+
+  <!-- Superwhisper -->
+  <rect x="80" y="380" width="920" height="150" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="2"/>
+  <text x="130" y="450" fill="#f0f0f0" font-size="44" font-weight="600">Superwhisper</text>
+  <text x="130" y="498" fill="#9a9a9f" font-size="27">on-device</text>
+  <text x="950" y="470" fill="#f0f0f0" font-size="50" font-weight="700" text-anchor="end">$85/yr</text>
+
+  <!-- MacWhisper -->
+  <rect x="80" y="560" width="920" height="150" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="2"/>
+  <text x="130" y="630" fill="#f0f0f0" font-size="44" font-weight="600">MacWhisper Pro</text>
+  <text x="130" y="678" fill="#9a9a9f" font-size="27">on-device</text>
+  <text x="950" y="650" fill="#f0f0f0" font-size="50" font-weight="700" text-anchor="end">$59</text>
+
+  <!-- Jot -->
+  <rect x="80" y="740" width="920" height="170" rx="18" fill="#1d1d20" stroke="#CE231D" stroke-width="3"/>
+  <text x="130" y="815" fill="#f0f0f0" font-size="48" font-weight="700">Jot</text>
+  <text x="130" y="866" fill="#9a9a9f" font-size="27">on-device · open source · no account</text>
+  <text x="950" y="840" fill="#CE231D" font-size="64" font-weight="800" text-anchor="end">$0</text>
+
+  <circle cx="86" cy="1006" r="7" fill="#CE231D"/>
+  <text x="108" y="1016" fill="#9a9a9f" font-size="30">jot-transcribe.com</text>
+</svg>
