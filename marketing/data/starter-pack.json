@@ -1,0 +1,51 @@
+{
+  "title": "Starter pack — your first teaser posts",
+  "subtitle": "Five short posts to introduce Jot. One a day, any order. Copy, attach the visual, post in the window. Done.",
+  "items": [
+    {
+      "id": "hook",
+      "channel": "x",
+      "label": "The hook",
+      "text": "I stopped typing.\n\nHotkey → speak → it's written. Any app on your Mac.\n\nFree. On-device. Open source.",
+      "attach": "marketing/data/creative/2026-06-12/privacy-statement.svg",
+      "window": "6:30–9:00am PT",
+      "note": "Link goes in the first reply, never the post."
+    },
+    {
+      "id": "price",
+      "channel": "x",
+      "label": "The price punch",
+      "text": "$15/month.\n$85/year.\n$0.\n\nSame feature.",
+      "attach": "marketing/data/creative/2026-06-12/price-comparison.svg",
+      "window": "6:30–9:00am PT",
+      "note": "The card does all the talking — don't add more words. Link in first reply."
+    },
+    {
+      "id": "story",
+      "channel": "linkedin",
+      "label": "The builder intro",
+      "text": "I think faster than I type. So I built Jot — a free, open-source dictation app for the Mac.\n\nPress a hotkey, speak, and the words land at your cursor. Your voice never leaves the machine.\n\nWhat's the first thing you'd dictate instead of type?",
+      "attach": "marketing/data/creative/2026-06-12/privacy-statement.svg",
+      "window": "7:00–8:30am PT",
+      "note": "Ends with a question on purpose — answer every comment in hour one. Link in FIRST COMMENT."
+    },
+    {
+      "id": "poll",
+      "channel": "x",
+      "label": "The argument starter",
+      "text": "Would you let an app stream your voice to its cloud just so you can type faster?\n\n(Run this as a poll: Yes / No / I'd want it on-device)",
+      "attach": null,
+      "window": "6:30–9:00am PT",
+      "note": "Polls get the cheapest engagement on X. Reply to your own poll next day with the privacy card + link."
+    },
+    {
+      "id": "reel",
+      "channel": "instagram",
+      "label": "The 15-second proof",
+      "text": "Talk instead of type 🎙️ Free, open source, and your voice never leaves your Mac. Link in bio.\n\n#macos #dictation #opensource #productivity #macapps",
+      "attach": "storyboard",
+      "window": "11am–1pm PT",
+      "note": "Needs the one 15s screen recording — shot list is in Creative Studio. That clip also works on X."
+    }
+  ]
+}
