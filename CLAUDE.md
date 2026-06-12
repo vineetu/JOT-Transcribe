@@ -151,7 +151,7 @@ To release the Sony flavor: `./scripts/release-sony.sh <version>`.
 
 **Auto-update:** Sparkle 2.x checks `appcast.xml` at repo root (served via GitHub raw content). EdDSA private key is in the local Keychain — do not export it. Public key is in Info.plist (`SUPublicEDKey`).
 
-**Website:** https://jot.ideaflow.page/ — static site at `website/index.html`. Download links use GitHub's `releases/latest/download/Jot.dmg` pattern, so the site auto-points at the newest non-prerelease without a redeploy. The DMG mirrored on the site is what `release.sh` uploads via scp.
+**Website:** https://jot-transcribe.com/ — static site at `website/index.html`. Download links use GitHub's `releases/latest/download/Jot.dmg` pattern, so the site auto-points at the newest non-prerelease without a redeploy. The DMG mirrored on the site is what `release.sh` uploads via scp.
 
 ---
 

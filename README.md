@@ -44,7 +44,7 @@ Swift · SwiftUI + AppKit · FluidAudio (Parakeet TDT 0.6B v3 on Apple Neural En
 
 Jot is MIT-licensed and free. No ads, no account, no tracking.
 
-If you'd like to give back, **every donation goes directly to charity via Every.org** — pick from a curated list of causes the project supports at [jot.ideaflow.page/donations](https://jot.ideaflow.page/donations). If you'd rather send something directly to the creator, you can also [buy me a coffee ☕](https://ko-fi.com/vineetsriram).
+If you'd like to give back, **every donation goes directly to charity via Every.org** — pick from a curated list of causes the project supports at [jot-transcribe.com/donations](https://jot-transcribe.com/donations). If you'd rather send something directly to the creator, you can also [buy me a coffee ☕](https://ko-fi.com/vineetsriram).
 
 ## License
 

@@ -1,6 +1,6 @@
 # Jot Website — Design Specification
 
-Design system and page spec for https://jot.ideaflow.page/, shipped June 2026
+Design system and page spec for https://jot-transcribe.com/, shipped June 2026
 (full redesign; replaced the original blue-accent single-page site). The site
 is static — `website/index.html` (public) and `website/admin/index.html`
 (Mission Control dashboard) — with all CSS inline. If the pages and this doc

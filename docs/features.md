@@ -344,15 +344,15 @@ Full website v2 redesign landed in `website/` (commit `e947729`; design spec in 
 
 **TODOs:**
 
-- **Deploy is blocked — site is NOT live yet.** `jot.ideaflow.page` is served by a legacy deployment outside the Simple Host v1 platform (different serving stack; `/donations/` exists there but in no platform site record). The new site is uploaded and waiting as platform site `jot` v2. Needs the ideaflow.page operator to repoint the subdomain, or the legacy deploy path located.
+- ~~Deploy blocked~~ **Resolved 2026-06-12:** the public site is live at **https://jot-transcribe.com/** (custom domain serving the platform `jot` site; `/admin/` and `/donations/` both resolve). All site/doc references synced to the new domain. The old `jot.ideaflow.page` still serves the legacy deployment — retire or redirect it eventually.
 - Reassign the Simple Host `jot` site record from `jamychatterjee@gmail.com` (created there by accident) to `vineetu@gmail.com`.
 - Analytics: create a GoatCounter account, uncomment the script tag at the bottom of `website/index.html` with the site code, and connect the same code in the `/admin/` traffic panel.
 - Replace the CSS typing demo in the hero with a real 5–8 s muted screen-recording loop of an actual dictation (<2 MB MP4/WebM, poster fallback on mobile) — research says real capture beats simulation for credibility.
 - Icon unification: Mac app icon (black + red dot) and iPhone app icon (blue + white wave) still differ; the website defines the target mark (black j + blue wave). Regenerate the OG card and favicon once the icons converge.
-- Run the LinkedIn Post Inspector on `https://jot.ideaflow.page/` before the first launch post (LinkedIn caches link previews ~7 days).
+- Run the LinkedIn Post Inspector on `https://jot-transcribe.com/` before the first launch post (LinkedIn caches link previews ~7 days).
 - Build the competitor matrix from `docs/research/website-redesign-2026.md` (Google AI Edge Eloquent / Wispr Flow / Superwhisper / VoiceInk / Handy / hardware devices — raw tables are ready there).
 - Product idea surfaced during marketing review: **auto-categorize dictations** (LLM tag pass — email / note / prompt / message — fits the existing Transform pipeline). Must ship in the app before the website can market it.
-- Consider a short custom domain for phone→Mac recall from social posts.
+- ~~Short custom domain~~ **Done 2026-06-12:** `jot-transcribe.com`.
 - `/admin/` can't show iPhone install counts (App Store Connect has no public API) — consider an outbound link to App Store Connect analytics.
 
 ### Bugs
