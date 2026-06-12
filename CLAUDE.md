@@ -151,7 +151,13 @@ To release the Sony flavor: `./scripts/release-sony.sh <version>`.
 
 **Auto-update:** Sparkle 2.x checks `appcast.xml` at repo root (served via GitHub raw content). EdDSA private key is in the local Keychain — do not export it. Public key is in Info.plist (`SUPublicEDKey`).
 
-**Website:** https://jot-transcribe.com/ — static site at `website/index.html`. Download links use GitHub's `releases/latest/download/Jot.dmg` pattern, so the site auto-points at the newest non-prerelease without a redeploy. The DMG mirrored on the site is what `release.sh` uploads via scp.
+**Website:** ALL website and donations-service changes live in the separate repo `vineetu/jot-website`, cloned at `~/code/jot-website` — do NOT edit `website/` in this repo; it's a legacy copy.
+
+- `~/code/jot-website/jot-transcribe.com/` — the marketing site at **https://jot-transcribe.com/** (primary domain, June 2026 on). Pure static; deploy by running `vercel deploy --prod --yes` inside that folder (Vercel project `jot-transcribe`, already linked via `.vercel/`).
+- `~/code/jot-website/website/` — the older site still served at https://jot.ideaflow.page/ plus the live **donations page** (`donations.html`, linked from jot-transcribe.com). Served from disk on the ideaflow workspace box via `cortex-runports` (see that repo's README runbook); edits go live only when that box pulls.
+- `~/code/jot-website/webhook-service/` — Go donations service behind https://jot-donations.ideaflow.page/ (Every.org webhooks + summary API).
+
+Download links everywhere use GitHub's `releases/latest/download/Jot.dmg` pattern, so sites auto-point at the newest non-prerelease without a redeploy.
 
 ---
 
