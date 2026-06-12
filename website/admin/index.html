@@ -14,14 +14,15 @@
 :root {
   --accent: #CE231D;
   --wave: #1496F0;
-  --bg: #0d0d0e;
-  --panel: #161618;
-  --panel-2: #1d1d20;
-  --border: #2a2a2e;
-  --text: #f0f0f0;
-  --text-2: #9a9a9f;
-  --text-3: #66666b;
-  --green: #3fb950;
+  --bg: #f6f5f3;
+  --panel: #ffffff;
+  --panel-2: #f1f0ee;
+  --border: #e4e3e0;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #9d9da2;
+  --green: #1f883d;
+  --btn-fg: #ffffff;
   --sans: 'DM Sans', -apple-system, sans-serif;
   --mono: 'DM Mono', ui-monospace, monospace;
 }
@@ -66,7 +67,7 @@ nav.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
 .panel {
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
-  padding: 18px 20px;
+  padding: 18px 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
 }
 .panel h2 {
   font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
@@ -98,7 +99,7 @@ textarea { min-height: 130px; line-height: 1.55; }
 
 .btn {
   display: inline-flex; align-items: center; gap: 7px;
-  background: var(--text); color: #111; border: none; border-radius: 8px;
+  background: var(--text); color: var(--btn-fg); border: none; border-radius: 8px;
   padding: 8px 14px; font-family: var(--sans); font-size: 0.82rem; font-weight: 600;
   cursor: pointer; text-decoration: none; transition: opacity 0.15s;
 }
@@ -172,7 +173,24 @@ table.shots tr:last-child td { border-bottom: none; }
 table.shots td.t { font-family: var(--mono); color: var(--accent); white-space: nowrap; }
 table.shots td.ov { color: var(--text-2); font-style: italic; white-space: nowrap; }
 
-.err { color: #f08080; font-size: 0.82rem; }
+.err { color: #c0392b; font-size: 0.82rem; }
+
+/* Starter pack */
+.starter { margin-bottom: 14px; }
+.starter .row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  margin-top: 8px; background: var(--panel);
+}
+.starter .row.done { opacity: 0.45; }
+.starter .row .chip {
+  flex: none; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; background: var(--panel-2);
+}
+.starter .row .what { flex: 1; min-width: 0; }
+.starter .row .what .l { font-size: 0.86rem; font-weight: 600; }
+.starter .row .what .p { font-size: 0.76rem; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.starter .row .win { font-family: var(--mono); font-size: 0.7rem; color: var(--text-3); white-space: nowrap; }
 .loading { color: var(--text-3); font-size: 0.82rem; }
 .spacer { height: 14px; }
 </style>
@@ -223,8 +241,8 @@ function useMarketing() {
   const [data, setData] = useState({ loading: true });
   useEffect(() => {
     const get = f => fetch(RAW + f, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
-    Promise.all([get('snapshots.json'), get('brief.json')])
-      .then(([snaps, brief]) => setData({ loading: false, snaps, brief }));
+    Promise.all([get('snapshots.json'), get('brief.json'), get('starter-pack.json')])
+      .then(([snaps, brief, starter]) => setData({ loading: false, snaps, brief, starter }));
   }, []);
   return data;
 }
@@ -355,6 +373,37 @@ function CreativeStudio({ m }) {
   return h`<div class="panel"><h2><span class="dot"></span>Creative studio</h2>${body}</div>`;
 }
 
+// ── Starter pack ──
+function StarterPack({ m }) {
+  const [done, setDone] = useState(() => JSON.parse(localStorage.getItem('jot-starter') || '{}'));
+  const [copied, setCopied] = useState('');
+  if (m.loading || !m.starter) return null;
+  const s = m.starter;
+  const items = s.items || [];
+  const left = items.filter(i => !done[i.id]).length;
+  if (left === 0) return null;
+  const toggle = id => { const d = { ...done, [id]: !done[id] }; setDone(d); localStorage.setItem('jot-starter', JSON.stringify(d)); };
+  const copy = it => {
+    navigator.clipboard.writeText(it.text).then(() => { setCopied(it.id); setTimeout(() => setCopied(''), 1500); });
+  };
+  return h`<div class="panel starter">
+    <h2><span class="dot"></span>${s.title} · ${left} left</h2>
+    <div class="hint" style=${{ marginTop: 0 }}>${s.subtitle}</div>
+    ${items.map(it => h`<div key=${it.id} class=${'row' + (done[it.id] ? ' done' : '')}>
+      <input type="checkbox" checked=${!!done[it.id]} onChange=${() => toggle(it.id)} />
+      <span class="chip">${CHANNELS[it.channel]?.name || it.channel}</span>
+      <div class="what">
+        <div class="l">${it.label}</div>
+        <div class="p" title=${it.note}>${it.text.split('\n')[0]}</div>
+      </div>
+      <span class="win">${it.window}</span>
+      <button class="btn ghost" onClick=${() => copy(it)}>${copied === it.id ? '✓' : 'Copy'}</button>
+      ${it.attach && it.attach !== 'storyboard' && h`<button class="btn ghost" onClick=${() => downloadPng(it.attach)}>PNG</button>`}
+      ${CHANNELS[it.channel] && h`<a class="btn" href=${CHANNELS[it.channel].share(`${SITE}?utm_source=${it.channel}&utm_medium=social&utm_campaign=starter-${it.id}`, it.text)} target="_blank" rel="noopener">Open →</a>`}
+    </div>`)}
+  </div>`;
+}
+
 // ── Agent brief ──
 function loadDraft(d) {
   localStorage.setItem('jot-draft-live', d.text);
@@ -380,17 +429,18 @@ function AgentBrief({ m }) {
     body = h`<div>
       <div class="brief-meta">${b.date} · +${dl.delta ?? 0} downloads · pace ${dl.avg7 ?? '—'}/day · goal ${dl.goal ?? 100}/day</div>
       ${posts.length === 0 && h`<div class="hint" style=${{ marginTop: 0 }}>No posts today — work the opportunities below.</div>`}
-      ${posts.map((d, i) => h`<div key=${d.channel || i} style=${{ marginTop: i ? '16px' : 0 }}>
-        <div class="brief-meta" style=${{ marginBottom: '6px' }}>
-          ${CHANNELS[d.channel]?.name || d.channel} · publish ${d.publish_window_pt}${d.recommended === false ? ' · hold today' : ''}
-        </div>
-        <div class="brief-draft">${d.text}</div>
+      ${posts.map((d, i) => h`<details key=${d.channel || i} open=${i === 0 && d.recommended !== false} style=${{ marginTop: i ? '10px' : 0 }}>
+        <summary style=${{ cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}>
+          ${CHANNELS[d.channel]?.name || d.channel}
+          <span style=${{ color: 'var(--text-3)', fontWeight: 400 }}> · ${d.publish_window_pt}${d.recommended === false ? ' · hold today' : ''}</span>
+        </summary>
+        <div class="brief-draft" style=${{ marginTop: '8px' }}>${d.text}</div>
         <div class="btn-row">
           <button class="btn" onClick=${() => loadDraft(d)}>Load into composer →</button>
         </div>
         ${d.visual && h`<div class="hint">Visual: ${d.visual}</div>`}
         ${d.note && h`<div class="hint">${d.note}</div>`}
-      </div>`)}
+      </details>`)}
       ${(b.opportunities || []).map((o, i) => h`<div class="opp" key=${i}>
         <div class="t"><a href=${o.url} target="_blank" rel="noopener">${o.title}</a></div>
         <div class="why">${o.why}</div>
@@ -649,16 +699,19 @@ function App() {
     </nav>
     <div class="section-sub">${TABS[tab].sub}</div>
 
-    ${tab === 'today' && h`<div class="cols">
-      <div>
-        <${AgentBrief} m=${mk} />
-      </div>
-      <div>
-        <${CreativeStudio} m=${mk} />
-        <div class="spacer"></div>
-        <${Composer} />
-        <div class="spacer"></div>
-        <${PublishCalendar} />
+    ${tab === 'today' && h`<div>
+      <${StarterPack} m=${mk} />
+      <div class="cols">
+        <div>
+          <${AgentBrief} m=${mk} />
+        </div>
+        <div>
+          <${CreativeStudio} m=${mk} />
+          <div class="spacer"></div>
+          <${Composer} />
+          <div class="spacer"></div>
+          <${PublishCalendar} />
+        </div>
       </div>
     </div>`}
 
