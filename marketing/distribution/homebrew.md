@@ -6,11 +6,12 @@ once the project is "notable" by their audit metrics (roughly ≥75 GitHub stars
 
 ## Path 1 — our own tap (live now)
 
-The tap repo holds `Casks/jot.rb` (master copy: `marketing/distribution/homebrew/Casks/jot.rb`).
+The tap repo holds `Casks/mac.rb` (master copy: `marketing/distribution/homebrew/Casks/mac.rb`).
+The cask token is `mac` so the marketed command reads as "vineetu's jot for mac".
 Users install with:
 
 ```
-brew install --cask <tap-owner>/jot/jot
+brew install --cask vineetu/jot/mac
 ```
 
 Once the tap exists under the brand account, put that one-liner on the website
@@ -34,7 +35,7 @@ The cask pins a version + sha256, so every release needs a tap bump:
 ```
 curl -sL -o /tmp/Jot.dmg "https://github.com/vineetu/JOT-Transcribe/releases/download/v<VER>/Jot.dmg"
 shasum -a 256 /tmp/Jot.dmg
-# edit Casks/jot.rb in the tap: version "<VER>", sha256 "<NEW>"
+# edit Casks/mac.rb in the tap: version "<VER>", sha256 "<NEW>"
 git -C <tap> commit -am "jot <VER>" && git -C <tap> push
 ```
 
@@ -47,7 +48,9 @@ When stars cross ~75:
 
 ```
 brew tap homebrew/cask
-cp marketing/distribution/homebrew/Casks/jot.rb $(brew --repository homebrew/cask)/Casks/j/jot.rb
+cp marketing/distribution/homebrew/Casks/mac.rb $(brew --repository homebrew/cask)/Casks/j/jot.rb
+# rename the token back: cask "mac" → cask "jot" (a generic token like "mac"
+# would never be accepted in the main repo; "jot" was free as of 2026-06-11)
 brew audit --cask --new jot && brew style --fix jot
 # then: fork homebrew/homebrew-cask, commit to a branch, open PR titled "Add jot 1.x"
 ```

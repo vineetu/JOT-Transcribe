@@ -1,4 +1,4 @@
-cask "jot" do
+cask "mac" do
   version "1.13.1"
   sha256 "21ecb0624d25e879488d467a075a41918c883c468d702862a3fdc4ad0d76e0f3"
 
@@ -15,7 +15,7 @@ cask "jot" do
 
   auto_updates true
   depends_on arch: :arm64
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Jot.app"
 
