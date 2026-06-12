@@ -77,3 +77,7 @@ mic-test/
 # Streaming-vs-batch Parakeet sandbox — local debugging only, never committed.
 streaming-test/
 .simple-host-*.json
+
+# Vercel CLI project link
+.vercel/
+website/.vercel/
