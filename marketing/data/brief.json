@@ -36,6 +36,25 @@
       "note": "recommended:false — last recommended instagram post was yesterday (2026-06-11); needs 3+ days. Caption links aren't clickable — put the utm_url (utm_source=instagram) in your bio permanently. The rewrite-with-voice Reel is more visually demonstrable than straight dictation."
     }
   ],
+  "creative": {
+    "concept": "Price honesty — one picture, four numbers, theirs vs ours. Plus a bold privacy statement card. Fewer words than any competitor can argue with.",
+    "cards": [
+      { "file": "marketing/data/creative/2026-06-12/price-comparison.svg", "title": "Price comparison — $0 vs the market", "use": "Attach to today's X post (the image replaces the text list — cut the post to one line + image) or LinkedIn. Posts with an image get ~2x engagement." },
+      { "file": "marketing/data/creative/2026-06-12/privacy-statement.svg", "title": "Privacy statement — bold claim card", "use": "Instagram feed post or LinkedIn. Caption under 20 words: let the card talk." }
+    ],
+    "carousel": [],
+    "storyboard": {
+      "title": "Rewrite-with-voice in 15 seconds",
+      "duration_s": 15,
+      "use": "Instagram Reel / X video / GIF for Reddit comments",
+      "shots": [
+        { "t": "0–3s", "visual": "Tight close-up: pill appears under the notch as the hotkey is pressed", "overlay": "Watch this." },
+        { "t": "3–7s", "visual": "A wordy paragraph in Notes gets selected, hotkey pressed, pill glows", "overlay": "Select. Speak." },
+        { "t": "7–12s", "visual": "Voice says 'make this concise' — text rewrites in place", "overlay": "\"Make this concise\"" },
+        { "t": "12–15s", "visual": "Cut to clean result, pill vanishes", "overlay": "Free · on-device · jot-transcribe.com" }
+      ]
+    }
+  },
   "opportunities": [],
   "outreach": [
     {
