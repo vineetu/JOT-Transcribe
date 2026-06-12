@@ -338,6 +338,23 @@ Items queued for upcoming releases — UX gaps, bug-shaped product issues, and f
 - **Shortcuts pane redesign** *(targets v1.13)* — the current Settings → Shortcuts pane shows three rows per action (a trigger-type picker, a recorder, and a footer description) for each of five user-bindable actions. ~16+ control rows of vertical scroll; almost no comparable app uses this multi-row pattern. The redesign collapses to a single binding per action with the trigger type inferred from input, groups actions by purpose (Recording / Rewrite / Capture), adds visible "when this fires" badges, and introduces a search field that scales as shortcuts grow. Internal plan: `docs/plans/shortcuts-pane-redesign.md`. HTML mockup comparing four options lives at `/tmp/jot-shortcuts-mockups/index.html` during the design phase.
 - **Ollama detection + local model picker** *(targets v1.13)* — when Ollama is the selected AI provider, replace the freeform "Model" text field with a probe that detects Ollama's state and populates a picker. Four states surface distinct copy: running with models (auto-populated picker by model name + size + parameter family), running with no models (link to `ollama.com/library`), installed but not running ("Open Ollama" button), not installed (link to `ollama.com/download`). Probe is a 2s timeout `GET 127.0.0.1:11434/api/tags`; result cached in `@AppStorage` for warm-boot picker. Internal plan: `docs/plans/ollama-detection.md`.
 
+### Website & marketing *(redesign shipped to repo 2026-06-11)*
+
+Full website v2 redesign landed in `website/` (commit `e947729`; design spec in `docs/website-design.md`, research in `docs/research/website-redesign-2026.md`, local-only): text wordmark (black dotless-j + blue wave tittle from the iPhone icon, red reserved for recording cues), golden-ratio type scale + Fibonacci spacing, animated recording-pill demo, hover-highlighted feature rows, device-aware dual Mac/iPhone download CTAs, LinkedIn-ready OG card, and an unlisted `/admin/` Mission Control dashboard (live GitHub download metrics, post composer with UTM links + share intents, LinkedIn card preview, GoatCounter hookup).
+
+**TODOs:**
+
+- **Deploy is blocked — site is NOT live yet.** `jot.ideaflow.page` is served by a legacy deployment outside the Simple Host v1 platform (different serving stack; `/donations/` exists there but in no platform site record). The new site is uploaded and waiting as platform site `jot` v2. Needs the ideaflow.page operator to repoint the subdomain, or the legacy deploy path located.
+- Reassign the Simple Host `jot` site record from `jamychatterjee@gmail.com` (created there by accident) to `vineetu@gmail.com`.
+- Analytics: create a GoatCounter account, uncomment the script tag at the bottom of `website/index.html` with the site code, and connect the same code in the `/admin/` traffic panel.
+- Replace the CSS typing demo in the hero with a real 5–8 s muted screen-recording loop of an actual dictation (<2 MB MP4/WebM, poster fallback on mobile) — research says real capture beats simulation for credibility.
+- Icon unification: Mac app icon (black + red dot) and iPhone app icon (blue + white wave) still differ; the website defines the target mark (black j + blue wave). Regenerate the OG card and favicon once the icons converge.
+- Run the LinkedIn Post Inspector on `https://jot.ideaflow.page/` before the first launch post (LinkedIn caches link previews ~7 days).
+- Build the competitor matrix from `docs/research/website-redesign-2026.md` (Google AI Edge Eloquent / Wispr Flow / Superwhisper / VoiceInk / Handy / hardware devices — raw tables are ready there).
+- Product idea surfaced during marketing review: **auto-categorize dictations** (LLM tag pass — email / note / prompt / message — fits the existing Transform pipeline). Must ship in the app before the website can market it.
+- Consider a short custom domain for phone→Mac recall from social posts.
+- `/admin/` can't show iPhone install counts (App Store Connect has no public API) — consider an outbound link to App Store Connect analytics.
+
 ### Bugs
 
 *(none currently logged)*
