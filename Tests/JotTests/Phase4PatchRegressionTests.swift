@@ -42,7 +42,7 @@ struct Phase4PatchRegressionTests {
         let holder = TranscriberHolder(
             cache: .shared,
             defaults: defaults,
-            transcriberFactory: { _ in stub },
+            transcriberFactory: { _, _ in stub },
             installedModelIDs: [.tdt_0_6b_v3, .tdt_0_6b_ja]
         )
 

@@ -29,6 +29,13 @@ import Foundation
 final class TranscriberHolder: ObservableObject {
 
     @Published private(set) var primaryModelID: ParakeetModelID
+    /// The active transcription language (design §5.4). Additive to
+    /// `primaryModelID`: it drives the FluidAudio script hint and the
+    /// language-picker UI, while `primaryModelID` stays the authoritative
+    /// stored-model source of truth. They can disagree (a grandfathered v3 /
+    /// Nemotron user whose language is `.english`) — `primaryModelID` wins so
+    /// we never trigger a surprise download (design §5.4.1).
+    @Published private(set) var activeLanguage: LanguageChoice
     @Published private(set) var transcriber: any Transcribing
     @Published private(set) var installedModelIDs: Set<ParakeetModelID>
     @Published private(set) var migrationDownloadProgress: Double?
@@ -36,15 +43,26 @@ final class TranscriberHolder: ObservableObject {
 
     private let cache: ModelCache
     private let defaults: UserDefaults
-    private let transcriberFactory: (ParakeetModelID) -> any Transcribing
+    /// Factory takes both the model id AND the active language so the
+    /// constructed `Transcriber` can thread the FluidAudio hint through
+    /// (design §5.4). Production's factory passes the language into
+    /// `Transcriber(modelID:language:)`.
+    private let transcriberFactory: (ParakeetModelID, LanguageChoice) -> any Transcribing
     private var migrationDownloadStarted = false
 
     static let defaultsKey = "jot.defaultModelID"
 
+    /// New additive key (design §6.3): the raw `LanguageChoice`. Read at boot
+    /// to seed `activeLanguage`; written by `setLanguage(_:)` and by the
+    /// one-shot language migration. `jot.defaultModelID` remains the model
+    /// source of truth.
+    static let languageKey = "jot.transcriptionLanguage"
+
     init(
         cache: ModelCache = .shared,
         defaults: UserDefaults = .standard,
-        transcriberFactory: @escaping (ParakeetModelID) -> any Transcribing = { Transcriber(modelID: $0) },
+        transcriberFactory: @escaping (ParakeetModelID, LanguageChoice) -> any Transcribing
+            = { Transcriber(modelID: $0, language: $1) },
         installedModelIDs: Set<ParakeetModelID>? = nil
     ) {
         self.cache = cache
@@ -54,13 +72,31 @@ final class TranscriberHolder: ObservableObject {
         let stored = defaults.string(forKey: Self.defaultsKey)
             .flatMap(ParakeetModelID.init(rawValue:))
             ?? .tdt_0_6b_v3_eou_streaming
+        // Seed the active language from its own key when present; otherwise
+        // derive it from the stored model (covers users who upgraded before
+        // the one-shot migration ran, and keeps boot resilient if the key is
+        // ever absent). The migration in `LanguageMigration` is the canonical
+        // writer; this is a safe fallback, not a substitute for it.
+        let language = defaults.string(forKey: Self.languageKey)
+            .flatMap(LanguageChoice.init(rawValue:))
+            ?? LanguageChoice.fromStoredModelID(stored)
         self.primaryModelID = stored
-        self.transcriber = transcriberFactory(stored)
+        self.activeLanguage = language
+        self.transcriber = transcriberFactory(stored, language)
         // Phase 4 hermetic-harness fix: callers (the harness) can seed
         // an explicit installed-set so tests don't read the dev
         // machine's `~/Library/Application Support/Jot/Models/...`
         // cache. Production omits the arg and gets a real disk scan.
         self.installedModelIDs = installedModelIDs ?? Self.scan(cache: cache)
+    }
+
+    /// The model that should actually be loaded/used: the explicit stored
+    /// choice always wins over the language's resolved default (design §5.4.1).
+    /// In steady state `primaryModelID` already IS this value; the helper makes
+    /// the precedence explicit and is the single readable expression of the
+    /// no-surprise-download invariant.
+    var activeModelID: ParakeetModelID {
+        primaryModelID
     }
 
     /// Swap to a different primary model. No-op when `id == primaryModelID`.
@@ -70,11 +106,56 @@ final class TranscriberHolder: ObservableObject {
     /// next `transcribe(_:)` call, which already handles the not-loaded case.
     func setPrimary(_ id: ParakeetModelID) async {
         guard id != primaryModelID else { return }
-        let new = transcriberFactory(id)
+        let new = transcriberFactory(id, activeLanguage)
         primaryModelID = id
         transcriber = new
         defaults.set(id.rawValue, forKey: Self.defaultsKey)
         try? await new.ensureLoaded()
+    }
+
+    /// Switch the active transcription **language** (design §5.4). This is the
+    /// write path behind the Setup Wizard / Settings language picker.
+    ///
+    /// It persists `jot.transcriptionLanguage` and resolves the language to a
+    /// model, but with a **no-clobber guard** so re-confirming a language that
+    /// the stored English-only model already serves never swaps the model or
+    /// triggers a download (design §5.4.1):
+    ///
+    /// - A user stored on Nemotron or v2 (both English-only) who (re-)picks
+    ///   English keeps their stored model untouched — v2 *is* the English
+    ///   default (re-pick is a no-op) and Nemotron is grandfathered (no
+    ///   downgrade to v3). The guard is **hardware-blind on purpose**: a
+    ///   Nemotron user on a now-unqualifying Mac stays on Nemotron.
+    /// - Otherwise the language drives the model via `setPrimary`, which
+    ///   persists `jot.defaultModelID` and downloads/loads if missing — the
+    ///   common, user-initiated case.
+    func setLanguage(_ lang: LanguageChoice) async {
+        defaults.set(lang.rawValue, forKey: Self.languageKey)
+        let resolved = lang.modelID()
+
+        // No-clobber rule for English-only stored models (Nemotron / v2).
+        if lang == .english,
+           primaryModelID == .nemotron_en || primaryModelID == .tdt_0_6b_v2_en_streaming {
+            // Language metadata updates; MODEL is untouched. We still rebuild
+            // the transcriber so the (English → nil) hint is reflected, but
+            // the model id and the stored `jot.defaultModelID` are unchanged,
+            // so there is no download.
+            activeLanguage = lang
+            transcriber = transcriberFactory(primaryModelID, lang)
+            try? await transcriber.ensureLoaded()
+            return
+        }
+
+        // Common case: the language drives the model.
+        activeLanguage = lang
+        if resolved == primaryModelID {
+            // Same model, new hint — rebuild the transcriber so the hint is
+            // threaded, without re-persisting/re-downloading the model.
+            transcriber = transcriberFactory(primaryModelID, lang)
+            try? await transcriber.ensureLoaded()
+            return
+        }
+        await setPrimary(resolved)
     }
 
     /// Re-scan the model cache directory and update `installedModelIDs`.

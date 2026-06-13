@@ -163,6 +163,7 @@ extension Feature {
         features.append(dictationSubRow(id: "on-device-transcription", title: "On-device transcription"))
         features.append(dictationSubRow(id: "multilingual", title: "Multilingual (25 languages)"))
         features.append(dictationSubRow(id: "languages", title: "Languages"))
+        features.append(dictationSubRow(id: "transcription-language", title: "Transcription language"))
         features.append(dictationSubRow(id: "custom-vocabulary", title: "Custom vocabulary"))
 
         // Hero: Cleanup
@@ -395,7 +396,7 @@ extension Feature {
         // added: languages for the JA / multi-model picker explainer).
         "toggle-recording", "push-to-talk", "cancel-recording", "any-length",
         "on-device-transcription", "multilingual", "languages",
-        "custom-vocabulary",
+        "transcription-language", "custom-vocabulary",
         // Cleanup sub-rows
         "cleanup-providers", "cleanup-prompt", "cleanup-fallback",
         "cleanup-raw-preserved",
