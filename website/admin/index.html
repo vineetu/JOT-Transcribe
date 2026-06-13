@@ -625,32 +625,113 @@ function CardPreview() {
 }
 
 // ── Traffic ──
-function Traffic() {
-  const code = localStorage.getItem('jot-gc-code') || 'jot-transcribe';
-  const [val, setVal] = useState(code);
-  const [saved, setSaved] = useState(!!code);
-  if (saved && val) {
-    return h`<div class="panel">
-      <h2><span class="dot"></span>Site traffic</h2>
-      <iframe src=${`https://${val}.goatcounter.com`} style=${{ width: '100%', height: '420px', border: '1px solid var(--border)', borderRadius: '9px', background: '#fff' }}></iframe>
-      <div class="hint"><span style=${{cursor:'pointer'}} onClick=${() => { localStorage.removeItem('jot-gc-code'); location.reload(); }}>Change site code</span></div>
-    </div>`;
-  }
-  return h`<div class="panel">
-    <h2><span class="dot"></span>Site traffic — not wired up yet</h2>
-    <ul class="checklist">
-      <li>Create a free account at <a href="https://www.goatcounter.com" target="_blank" rel="noopener">goatcounter.com</a> (privacy-first: no cookies, no personal data, open source).</li>
-      <li>Uncomment the GoatCounter script at the bottom of the public index.html and drop in your site code.</li>
-      <li>Enter the same code here to embed the dashboard:</li>
-    </ul>
-    <div class="btn-row">
-      <input type="text" style=${{ width: '200px' }} placeholder="your-site-code" value=${val} onInput=${e => setVal(e.target.value)} />
-      <button class="btn" onClick=${() => { if (val.trim()) { localStorage.setItem('jot-gc-code', val.trim()); setSaved(true); } }}>Connect</button>
+const GC_TOKEN = '10yb3d8m962yl64v9aqp9uogh3mzcsjk8ndmo1h7n9itmb05jw';
+const GC_BASE  = 'https://jot-transcribe.goatcounter.com/api/v0';
+
+function useGoatCounter() {
+  const [data, setData] = React.useState({ loading: true });
+  React.useEffect(() => {
+    const end   = new Date().toISOString().slice(0, 10);
+    const start = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const q     = `?start=${start}&end=${end}`;
+    const hdr   = { Authorization: `Bearer ${GC_TOKEN}` };
+    const gc    = url => fetch(GC_BASE + url, { headers: hdr }).then(r => r.json());
+    const delay = ms => new Promise(r => setTimeout(r, ms));
+    (async () => {
+      try {
+        const total    = await gc('/stats/total'    + q); await delay(300);
+        const hits     = await gc('/stats/hits'     + q + '&limit=10'); await delay(300);
+        const browsers = await gc('/stats/browsers' + q); await delay(300);
+        const systems  = await gc('/stats/systems'  + q); await delay(300);
+        const sizes    = await gc('/stats/sizes'    + q); await delay(300);
+        const langs    = await gc('/stats/languages'+ q);
+        setData({ loading: false, total, hits, browsers, systems, sizes, langs });
+      } catch(e) {
+        setData({ loading: false, error: String(e.message || e) });
+      }
+    })();
+  }, []);
+  return data;
+}
+
+function GCBar({ label, count, max, color }) {
+  const pct = max > 0 ? Math.round((count / max) * 100) : 0;
+  return h`<div style=${{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'5px' }}>
+    <div style=${{ width:'130px', fontSize:'0.78rem', color:'var(--text-2)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', flexShrink:0 }}>${label}</div>
+    <div style=${{ flex:1, height:'7px', background:'var(--panel-2)', borderRadius:'4px', overflow:'hidden', border:'1px solid var(--border)' }}>
+      <div style=${{ width:pct+'%', height:'100%', background:color||'var(--wave)', borderRadius:'4px', transition:'width 0.4s' }}></div>
     </div>
-    <div class="hint">Until then, GitHub download counts (left) are the ground-truth metric — every install is one DMG download.</div>
+    <div style=${{ width:'24px', textAlign:'right', fontSize:'0.78rem', color:'var(--text-3)', fontFamily:'var(--mono)' }}>${count}</div>
   </div>`;
 }
 
+const SIZE_NAMES = { phone:'Phone', tablet:'Tablet / Large Phone', desktop:'Desktop', desktophd:'HD Monitor', unknown:'Unknown' };
+
+function Traffic() {
+  const gc = useGoatCounter();
+
+  if (gc.loading) return h`<div class="panel"><h2><span class="dot"></span>Site traffic</h2><div class="loading">Loading from GoatCounter…</div></div>`;
+  if (gc.error)   return h`<div class="panel"><h2><span class="dot"></span>Site traffic</h2><div class="err">${gc.error}</div></div>`;
+
+  const { total, hits, browsers, systems, sizes, langs } = gc;
+  const dailyData  = total.stats.map(s => s.daily);
+  const maxDaily   = Math.max(...dailyData, 1);
+  const nonZero    = total.stats.filter(s => s.daily > 0);
+  const avgPerDay  = nonZero.length > 0 ? (total.total / nonZero.length).toFixed(1) : '0';
+  const topPages   = hits.hits || [];
+  const maxPage    = Math.max(...topPages.map(p => p.count), 1);
+  const maxBrowser = Math.max(...(browsers.stats||[]).map(b => b.count), 1);
+  const maxSystem  = Math.max(...(systems.stats||[]).map(s => s.count), 1);
+  const activeSz   = (sizes.stats||[]).filter(s => s.count > 0);
+  const maxSize    = Math.max(...activeSz.map(s => s.count), 1);
+  const allLangs   = langs.stats || [];
+  const maxLang    = Math.max(...allLangs.map(l => l.count), 1);
+
+  return h`<div>
+    <div style=${{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'10px', marginBottom:'10px' }}>
+      <div class="panel stat"><h2><span class="dot"></span>Total views</h2><div class="big">${total.total}</div><div class="sub">last 30 days</div></div>
+      <div class="panel stat"><h2><span class="dot"></span>Active days</h2><div class="big">${nonZero.length}</div><div class="sub">days with visits</div></div>
+      <div class="panel stat"><h2><span class="dot"></span>Avg / active day</h2><div class="big">${avgPerDay}</div><div class="sub">views per day</div></div>
+    </div>
+    <div class="panel" style=${{ marginBottom:'10px' }}>
+      <h2><span class="dot"></span>Daily views — last 30 days</h2>
+      <div style=${{ display:'flex', alignItems:'flex-end', gap:'2px', height:'52px' }}>
+        ${dailyData.map((v, i) => {
+          const barH = Math.max(Math.round((v / maxDaily) * 48), v > 0 ? 3 : 0);
+          const isToday = i === dailyData.length - 1;
+          return h`<div key=${i} title=${total.stats[i]?.day + ': ' + v + ' views'}
+            style=${{ flex:1, height:barH+'px', background: isToday ? '#CE231D' : (v > 0 ? '#1496F0' : 'var(--border)'), borderRadius:'2px 2px 0 0', cursor:'default' }}
+          ></div>`;
+        })}
+      </div>
+      <div style=${{ display:'flex', justifyContent:'space-between', marginTop:'4px' }}>
+        <span style=${{ fontSize:'0.7rem', color:'var(--text-3)', fontFamily:'var(--mono)' }}>${total.stats[0]?.day}</span>
+        <span style=${{ fontSize:'0.7rem', color:'var(--text-3)', fontFamily:'var(--mono)' }}>${total.stats[total.stats.length-1]?.day}</span>
+      </div>
+    </div>
+    <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
+      <div class="panel"><h2><span class="dot"></span>Top pages</h2>
+        ${topPages.map(p => h`<${GCBar} key=${p.path} label=${p.path||'/'} count=${p.count} max=${maxPage} color="var(--wave)" />`)}
+      </div>
+      <div class="panel"><h2><span class="dot"></span>Browsers</h2>
+        ${(browsers.stats||[]).map(b => h`<${GCBar} key=${b.id} label=${b.name} count=${b.count} max=${maxBrowser} color="var(--wave)" />`)}
+      </div>
+    </div>
+    <div style=${{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px', marginBottom:'10px' }}>
+      <div class="panel"><h2><span class="dot"></span>Operating systems</h2>
+        ${(systems.stats||[]).map(s => h`<${GCBar} key=${s.id} label=${s.name} count=${s.count} max=${maxSystem} color="var(--green)" />`)}
+      </div>
+      <div class="panel"><h2><span class="dot"></span>Screen sizes</h2>
+        ${activeSz.map(s => h`<${GCBar} key=${s.id} label=${SIZE_NAMES[s.id]||s.id} count=${s.count} max=${maxSize} color="var(--accent)" />`)}
+      </div>
+    </div>
+    <div class="panel">
+      <h2><span class="dot"></span>Languages</h2>
+      ${allLangs.map(l => h`<${GCBar} key=${l.id} label=${l.name||l.id||'Unknown'} count=${l.count} max=${maxLang} color="#9a6cf0" />`)}
+      <div class="hint" style=${{ marginTop:'10px' }}><a href="https://jot-transcribe.goatcounter.com/" target="_blank" rel="noopener">Open full GoatCounter dashboard →</a></div>
+    </div>
+  </div>`;
+}
 const TABS = {
   today: {
     label: 'Today',
@@ -726,13 +807,11 @@ function App() {
       </div>
     </div>`}
 
-    ${tab === 'analytics' && h`<div class="cols">
-      <div>
+    ${tab ${tab === 'analytics' && h`<div>
+      <div class="panel" style=${{ marginBottom:'10px' }}>
         <${Releases} gh=${gh} />
       </div>
-      <div>
-        <${Traffic} />
-      </div>
+      <${Traffic} />
     </div>`}
   </div>`;
 }
