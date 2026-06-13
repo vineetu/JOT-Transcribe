@@ -242,6 +242,85 @@ public actor Transcriber: Transcribing {
         )
     }
 
+    /// Lean preview decode for the live pill (batch pseudo-streaming —
+    /// `docs/batch-pseudo-streaming/design.md` §4.3). Mirrors
+    /// `transcribeWithAsrManager` MINUS the parts a re-runnable preview tick must
+    /// not pay for or must not mutate:
+    ///   - **No `isTranscribing` busy-throw.** Ticks are coalesced single-flight
+    ///     by `PreviewScheduler`, and the scheduler's `quiesce()` stop fence
+    ///     guarantees no preview tick overlaps the final pass (design §4.3.1), so
+    ///     the lean path neither sets nor checks the busy flag. The *final*
+    ///     `transcribe(_:)` still honors it.
+    ///   - **No vocabulary rescore** and **no provenance/diagnostics** side
+    ///     effects (vocab corrects only on the final stop pass).
+    ///   - **Returns `nil` instead of throwing** — for < 1 s of audio, an
+    ///     unloaded/Nemotron model, or any decode error. It must never throw into
+    ///     the scheduler.
+    ///
+    /// Decoder config is identical to `transcribe(_:)`: a **fresh
+    /// `TdtDecoderState` per call** (no carried state — design §2.5), sized by
+    /// `modelID.fluidAudioVersion.decoderLayers`, so preview decodes against
+    /// whichever batch model is loaded (the v2/v3 blank-id difference is
+    /// encapsulated in the version). A future per-call language hint would thread
+    /// through here exactly as it would through the final path — this is the
+    /// stable seam downstream language work plugs into.
+    func previewTranscribe(_ samples: [Float]) async -> String? {
+        guard samples.count >= Int(AudioFormat.sampleRate) else { return nil }
+
+        switch modelID {
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
+            guard let manager else { return nil }
+            return await previewWithAsrManager(samples, manager: manager)
+
+        case .nemotron_en:
+            // Nemotron has its own streaming preview; it is not driven by the
+            // batch PreviewScheduler.
+            return nil
+        }
+    }
+
+    private func previewWithAsrManager(
+        _ samples: [Float],
+        manager: AsrManager
+    ) async -> String? {
+        let result: ASRResult
+        do {
+            var decoderState = TdtDecoderState.make(
+                decoderLayers: modelID.fluidAudioVersion.decoderLayers
+            )
+            result = try await manager.transcribe(samples, decoderState: &decoderState)
+        } catch {
+            // Never throw into the scheduler — a failed tick just produces no
+            // preview text; the saved transcript is unaffected.
+            return nil
+        }
+
+        // v2-gated post-processing only, matching the final path (`:220-235`).
+        // NO vocabulary rescore. v3+/JA/Nemotron emit well-cased, filler-trimmed
+        // text natively, so they pass through.
+        if modelID == .tdt_0_6b_v2_en_streaming {
+            let segmented: String
+            if let timings = result.tokenTimings {
+                segmented = ParagraphSegmenter.segment(
+                    rescoredText: result.text,
+                    tokenTimings: timings
+                )
+            } else {
+                segmented = result.text
+            }
+            let dedupped = FillerWordCleaner.clean(segmented)
+            let normalized = NumberNormalizer.normalize(dedupped)
+            return PostProcessing.apply(normalized, language: modelID)
+        } else {
+            return result.text
+        }
+    }
+
     private func transcribeWithNemotron(
         _ samples: [Float],
         nemotronBatch: NemotronStreamingTranscriber
