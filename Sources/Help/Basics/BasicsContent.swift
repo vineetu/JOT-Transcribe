@@ -248,12 +248,12 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Four transcription options. The default pairs multilingual Parakeet v3 final transcripts with English Nemotron live preview. Japanese (Parakeet 0.6B JA) is a separate ~1.25 GB download, v2 + EOU remains available as a deprecated legacy option, and Nemotron (English, lighter) is a smaller English-only option. Pick one as primary at Settings → Transcription; only the primary is hot in memory.",
-                        warning: "Custom Vocabulary applies only to European-language transcription. The Japanese model uses a different tokenizer, so vocabulary boosts are not applied when Japanese is primary.",
+                        prose: "You pick a language, not a model — Jot loads the right transcription model for you (Settings → Transcription, or during setup). English uses an English-optimized model for best accuracy; the European languages share Jot's multilingual model; Japanese is a separate download. Only the active model is kept hot in memory.",
+                        warning: "Custom Vocabulary applies only to European-language transcription. The Japanese model uses a different tokenizer, so vocabulary boosts are not applied when Japanese is selected.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
                             pane: .transcription,
-                            anchor: "model-picker"
+                            anchor: "transcription-language"
                         )
                     )
                 ),
