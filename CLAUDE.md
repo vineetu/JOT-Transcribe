@@ -153,8 +153,8 @@ To release the Sony flavor: `./scripts/release-sony.sh <version>`.
 
 **Website:** ALL website and donations-service changes live in the separate repo `vineetu/jot-website`, cloned at `~/code/jot-website` — do NOT edit `website/` in this repo; it's a legacy copy.
 
-- `~/code/jot-website/jot-transcribe.com/` — the marketing site at **https://jot-transcribe.com/** (primary domain, June 2026 on). Pure static; deploy by running `vercel deploy --prod --yes` inside that folder (Vercel project `jot-transcribe`, already linked via `.vercel/`).
-- `~/code/jot-website/website/` — the older site still served at https://jot.ideaflow.page/ plus the live **donations page** (`donations.html`, linked from jot-transcribe.com). Served from disk on the ideaflow workspace box via `cortex-runports` (see that repo's README runbook); edits go live only when that box pulls.
+- `~/code/jot-website/jot-transcribe.com/` — the marketing site at **https://jot-transcribe.com/** (primary domain, June 2026 on), including the live **donations page** at `/donations/` and the privacy page at `/privacy`. Pure static; deploy by running `vercel deploy --prod --yes` inside that folder (Vercel project `jot-transcribe`, already linked via `.vercel/`).
+- `~/code/jot-website/website/` — the legacy site still served at https://jot.ideaflow.page/ (kept for old links only; all content now lives on jot-transcribe.com). Served from disk on the ideaflow workspace box via `cortex-runports` (see that repo's README runbook); edits go live only when that box pulls.
 - `~/code/jot-website/webhook-service/` — Go donations service behind https://jot-donations.ideaflow.page/ (Every.org webhooks + summary API).
 
 Download links everywhere use GitHub's `releases/latest/download/Jot.dmg` pattern, so sites auto-point at the newest non-prerelease without a redeploy.
