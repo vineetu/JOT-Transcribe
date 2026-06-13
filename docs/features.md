@@ -344,7 +344,7 @@ Full website v2 redesign landed in `website/` (commit `e947729`; design spec in 
 
 **TODOs:**
 
-- ~~Deploy blocked~~ **Resolved 2026-06-12:** the public site is live at **https://jot-transcribe.com/** (custom domain serving the platform `jot` site; `/admin/` and `/donations/` both resolve). All site/doc references synced to the new domain. The old `jot.ideaflow.page` still serves the legacy deployment — retire or redirect it eventually.
+- ~~Deploy blocked~~ **Resolved 2026-06-12:** the site is live at **https://jot-transcribe.com/** (Vercel project `jot-transcribe`, deployed from `~/code/jot-website/jot-transcribe.com/`; `/admin/` and `/donations/` both resolve). All site/doc references synced to the new domain. The old `jot.ideaflow.page` still serves the legacy deployment — retire or redirect it eventually.
 - Reassign the Simple Host `jot` site record from `jamychatterjee@gmail.com` (created there by accident) to `vineetu@gmail.com`.
 - Analytics: create a GoatCounter account, uncomment the script tag at the bottom of `website/index.html` with the site code, and connect the same code in the `/admin/` traffic panel.
 - Replace the CSS typing demo in the hero with a real 5–8 s muted screen-recording loop of an actual dictation (<2 MB MP4/WebM, poster fallback on mobile) — research says real capture beats simulation for credibility.
