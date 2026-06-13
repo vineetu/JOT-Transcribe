@@ -17,6 +17,10 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     private enum StreamingEngine: Sendable {
         case eou(StreamingTranscriber)
         case nemotron(NemotronStreamingTranscriber)
+        /// Batch pseudo-streaming preview (`PreviewScheduler` re-runs the batch
+        /// model over a trailing window). Replaces `.eou` once routing/EOU
+        /// removal lands (design §4.2); added here as the stable seam.
+        case batchPreview(PreviewScheduler)
     }
 
     private let finalEngine: FinalEngine
@@ -34,6 +38,16 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     init(batch: Transcriber, nemotronStreaming: NemotronStreamingTranscriber) {
         self.finalEngine = .batch(batch)
         self.streamingEngine = .nemotron(nemotronStreaming)
+    }
+
+    /// Batch final transcript + batch-pseudo-streaming preview. The
+    /// `PreviewScheduler` must be constructed over the SAME `Transcriber` passed
+    /// as `batch`, so the preview re-uses the loaded `AsrModels` (design §4.5).
+    /// Not yet routed by the factory — this is the seam the routing/EOU-removal
+    /// task plugs into.
+    init(batch: Transcriber, batchPreview: PreviewScheduler) {
+        self.finalEngine = .batch(batch)
+        self.streamingEngine = .batchPreview(batchPreview)
     }
 
     /// Nemotron-only path: one manager instance provides partials and the
@@ -64,6 +78,10 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
                 try await streaming.ensureLoaded()
             case .nemotron(let nemotron):
                 try await nemotron.ensureLoaded()
+            case .batchPreview:
+                // Nothing to load — the scheduler re-uses the batch final
+                // engine's already-loaded model (loaded above via `batch`).
+                break
             }
         } catch {
             await ErrorLog.shared.error(
@@ -130,6 +148,8 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             await streaming.start(generation: generation, onPartial: onPartial)
         case .nemotron(let nemotron):
             await nemotron.start(generation: generation, onPartial: onPartial)
+        case .batchPreview(let scheduler):
+            await scheduler.begin(generation: generation, onPartial: onPartial)
         }
     }
 
@@ -139,6 +159,8 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             streaming.enqueue(samples: samples)
         case .nemotron(let nemotron):
             nemotron.enqueue(samples: samples)
+        case .batchPreview(let scheduler):
+            scheduler.enqueue(samples: samples)
         }
     }
 
@@ -147,6 +169,13 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         switch streamingEngine {
         case .eou(let streaming):
             final = await streaming.finish()
+        case .batchPreview(let scheduler):
+            // Stop fence: drain + block further ticks BEFORE the caller runs the
+            // final batch pass, so no preview decode overlaps it on the
+            // module-global `sharedMLArrayCache` (design §4.3.1). Batch is
+            // authoritative — the assembled preview text is not used as the final.
+            await scheduler.quiesce()
+            final = nil
         case .nemotron(let nemotron):
             do {
                 final = try await nemotron.finish()
@@ -173,6 +202,8 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             await streaming.cancel()
         case .nemotron(let nemotron):
             await nemotron.cancel()
+        case .batchPreview(let scheduler):
+            await scheduler.cancel()
         }
     }
 
