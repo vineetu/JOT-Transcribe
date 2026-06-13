@@ -433,7 +433,7 @@ enum InfoCircleAnchorRegistry {
         // GeneralPane.donationReminder has helpAnchor: nil
 
         // TranscriptionPane
-        ("TranscriptionPane.defaultModel",                "on-device-transcription"),
+        ("TranscriptionPane.transcriptionLanguage",       "transcription-language"),
         ("TranscriptionPane.autoPaste",                   "dictation"),
         ("TranscriptionPane.pressReturnAfterPasting",     "dictation"),
         ("RewritePane.cleanUpTranscriptWithAI",        "cleanup"),

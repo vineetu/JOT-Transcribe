@@ -103,7 +103,8 @@ extension BasicsContent {
             "dictation": [
                 "toggle-recording", "push-to-talk", "cancel-recording",
                 "any-length", "on-device-transcription",
-                "multilingual", "languages", "custom-vocabulary",
+                "multilingual", "languages", "transcription-language",
+                "custom-vocabulary",
             ],
             "cleanup": [
                 "cleanup-providers", "cleanup-prompt",

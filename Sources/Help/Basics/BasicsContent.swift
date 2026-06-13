@@ -258,6 +258,20 @@ struct BasicsContent {
                     )
                 ),
                 SubRow(
+                    id: "transcription-language",
+                    name: "Transcription language",
+                    shortcutChip: nil,
+                    isExpandable: true,
+                    detail: SubRowDetailContent(
+                        prose: "Pick the language you speak in Settings → Transcription; Jot downloads and loads the right on-device model automatically. English uses Parakeet v2; 25 European languages share Parakeet v3 with a script hint; Japanese is a separate model. You never choose a model directly — the exact model in use is shown in About → Acknowledgements.",
+                        settingsLink: SettingsLink(
+                            label: "Open in Settings",
+                            pane: .transcription,
+                            anchor: "transcription-language"
+                        )
+                    )
+                ),
+                SubRow(
                     id: "custom-vocabulary",
                     name: "Custom vocabulary (experimental)",
                     shortcutChip: nil,

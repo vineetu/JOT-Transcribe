@@ -442,7 +442,18 @@ struct AboutPane: View {
     // MARK: - Credit
 
     private var creditSection: some View {
-        Section {
+        Section("Acknowledgements") {
+            // Surface the exact model in use here (design §5.1 / §8) — the
+            // language picker hides model names everywhere else, so this is the
+            // one place a user can see which Parakeet variant is active.
+            HStack(spacing: 4) {
+                Text("Transcription model")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(transcriberHolder.primaryModelID.displayName)
+                    .textSelection(.enabled)
+            }
+            .font(.system(size: 11))
             HStack(spacing: 4) {
                 Text("Built by")
                     .foregroundStyle(.secondary)

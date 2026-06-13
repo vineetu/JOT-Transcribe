@@ -24,13 +24,29 @@ public actor Transcriber: Transcribing {
     /// creates a fresh conformer whenever the primary model changes.
     private let modelID: ParakeetModelID
 
+    /// The active transcription language, threaded in at construction by
+    /// `TranscriberHolder` (mirroring `modelID`). Drives the FluidAudio
+    /// `language:` script hint passed at `transcribe(...)` time. `nil` means
+    /// "no hint" (the pre-language-picker behavior) — used by tests and any
+    /// caller that constructs a `Transcriber` directly without a language.
+    ///
+    /// Only the v3 European paths actually exercise the hint; v2 (English) and
+    /// JA ignore it (design §2.1, §5.4). For these the resolved hint is `nil`
+    /// regardless.
+    private let language: LanguageChoice?
+
     private var manager: AsrManager?
     private var nemotronBatch: NemotronStreamingTranscriber?
     private var isTranscribing: Bool = false
 
-    public init(cache: ModelCache = .shared, modelID: ParakeetModelID = .tdt_0_6b_v3) {
+    public init(
+        cache: ModelCache = .shared,
+        modelID: ParakeetModelID = .tdt_0_6b_v3,
+        language: LanguageChoice? = nil
+    ) {
         self.cache = cache
         self.modelID = modelID
+        self.language = language
     }
 
     /// Load Parakeet into memory if it isn't already. Idempotent — safe to
@@ -147,14 +163,20 @@ public actor Transcriber: Transcribing {
             // hand the manager a fresh decoder state per call. The number
             // of LSTM layers is version-specific (1 for `tdtCtc110m`, 2
             // for v2/v3/tdtJa) and `AsrModelVersion.decoderLayers` is the
-            // SDK's source of truth. Language hint is intentionally
-            // unused: it's silently ignored for tdtJa (Japanese is always
-            // kept) and Jot doesn't surface a per-call language switch
-            // for v3 either.
+            // SDK's source of truth.
+            //
+            // Language hint (design §5.4): we now pass the active language's
+            // FluidAudio script hint. It is the v3-only Latin/Cyrillic token
+            // filter — only the v3 European paths exercise it; v2 (English)
+            // and tdtJa ignore it (their resolved hint is `nil` anyway).
             var decoderState = TdtDecoderState.make(
                 decoderLayers: modelID.fluidAudioVersion.decoderLayers
             )
-            result = try await manager.transcribe(samples, decoderState: &decoderState)
+            result = try await manager.transcribe(
+                samples,
+                decoderState: &decoderState,
+                language: language?.fluidAudioLanguage
+            )
         } catch {
             await ErrorLog.shared.error(component: "Transcriber", message: "FluidAudio transcribe failed", context: ["sampleCount": String(samples.count), "error": ErrorLog.redactedAppleError(error)])
             throw TranscriberError.fluidAudio(error)
@@ -261,9 +283,11 @@ public actor Transcriber: Transcribing {
     /// `TdtDecoderState` per call** (no carried state — design §2.5), sized by
     /// `modelID.fluidAudioVersion.decoderLayers`, so preview decodes against
     /// whichever batch model is loaded (the v2/v3 blank-id difference is
-    /// encapsulated in the version). A future per-call language hint would thread
-    /// through here exactly as it would through the final path — this is the
-    /// stable seam downstream language work plugs into.
+    /// encapsulated in the version). The per-call language hint is threaded
+    /// through here exactly as it is through the final path — it reads the
+    /// actor's active `language` (set at construction by `TranscriberHolder`)
+    /// rather than taking a parameter, so `PreviewScheduler`'s single-arg call
+    /// site is unchanged.
     func previewTranscribe(_ samples: [Float]) async -> String? {
         guard samples.count >= Int(AudioFormat.sampleRate) else { return nil }
 
@@ -290,10 +314,19 @@ public actor Transcriber: Transcribing {
     ) async -> String? {
         let result: ASRResult
         do {
+            // Decoder config reads the ACTIVE model's version (design §5.4 —
+            // v2 blankId 1024 vs v3 blankId 8192), so the preview decodes
+            // against whichever batch model is loaded. The language hint is
+            // threaded identically to the final path; only v3 European paths
+            // exercise it.
             var decoderState = TdtDecoderState.make(
                 decoderLayers: modelID.fluidAudioVersion.decoderLayers
             )
-            result = try await manager.transcribe(samples, decoderState: &decoderState)
+            result = try await manager.transcribe(
+                samples,
+                decoderState: &decoderState,
+                language: language?.fluidAudioLanguage
+            )
         } catch {
             // Never throw into the scheduler — a failed tick just produces no
             // preview text; the saved transcript is unaffected.

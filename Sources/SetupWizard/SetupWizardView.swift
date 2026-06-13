@@ -85,7 +85,7 @@ struct SetupWizardView: View {
         switch coordinator.currentStep {
         case .welcome: WelcomeStep()
         case .permissions: PermissionsStep()
-        case .model: ModelStep()
+        case .model: LanguageStep()
         case .microphone: MicrophoneStep()
         case .test: TestStep()
         case .done: DoneStep()

@@ -8,11 +8,6 @@ struct TranscriptionPane: View {
     @AppStorage("jot.preserveClipboard") private var preserveClipboard: Bool = true
     @AppStorage("jot.speakerLabels.enabled") private var speakerLabelsEnabled: Bool = true
 
-    /// v1.14: collapse non-primary model rows behind a disclosure.
-    /// Persisted so the user's preference (open/closed) survives relaunch.
-    @AppStorage("jot.settings.transcription.otherModelsExpanded")
-    private var otherModelsExpanded: Bool = false
-
     /// v1.14: paste / press-return / keep-clipboard toggles are gated
     /// behind the **global** Advanced features flag in Settings →
     /// General — not behind a per-pane disclosure. When Advanced is off
@@ -36,28 +31,28 @@ struct TranscriptionPane: View {
 
     var body: some View {
         Form {
-            // v1.14: only the primary model is shown by default. Any
-            // additional installed/available models live behind the
-            // "Show other models" disclosure so the pane reads as a
-            // single decision ("which model is in use") rather than a
-            // four-row choose-one menu.
+            // Language-based selection (design §5.3): the user picks a
+            // *language*; Jot resolves the model + recognizer hint
+            // automatically. Model identity is surfaced only in About →
+            // Acknowledgements, never here.
             Section {
-                modelRow(holder.primaryModelID)
-                if !otherVisibleModels.isEmpty {
-                    DisclosureGroup(isExpanded: $otherModelsExpanded) {
-                        ForEach(otherVisibleModels, id: \.rawValue) { model in
-                            modelRow(model)
+                HStack {
+                    Picker("Transcription language", selection: languageBinding) {
+                        ForEach(LanguageChoice.presentationOrder) { lang in
+                            Text(lang.displayName).tag(lang)
                         }
-                    } label: {
-                        Text(otherModelsExpanded ? "Hide other models" : "Show other models")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
                     }
+                    InfoPopoverButton(
+                        title: "Transcription language",
+                        body: "Jot transcribes on-device on the Apple Neural Engine. Pick the language you speak — Jot downloads and loads the right model automatically. You can see exactly which model is in use in About → Acknowledgements.",
+                        helpAnchor: "transcription-language"
+                    )
                 }
+                languageModelStatusRow
             } header: {
-                Text("Speech recognition model")
+                Text("Transcription language")
             } footer: {
-                Text("Each model is downloaded once and runs on the Apple Neural Engine. Multiple models can be installed; only the primary is hot in memory.")
+                Text("Jot picks the on-device model for your language automatically. Each model downloads once and runs on the Apple Neural Engine.")
             }
 
             // v1.13: gate the card on the same kill switch the sidebar
@@ -150,10 +145,76 @@ struct TranscriptionPane: View {
         .onAppear { holder.refreshInstalled() }
     }
 
-    /// All visible models other than the current primary, preserving the
-    /// canonical order from `ParakeetModelID.visibleCases`.
-    private var otherVisibleModels: [ParakeetModelID] {
-        ParakeetModelID.visibleCases.filter { $0 != holder.primaryModelID }
+    /// Two-way binding over the active language. Reads `holder.activeLanguage`;
+    /// writes route through `holder.setLanguage(_:)` which owns the no-clobber
+    /// guard and the resolved-model download (design §5.4.1).
+    private var languageBinding: Binding<LanguageChoice> {
+        Binding(
+            get: { holder.activeLanguage },
+            set: { lang in Task { await holder.setLanguage(lang) } }
+        )
+    }
+
+    /// Install-state + download/delete + progress for the model resolved from
+    /// the active language. Labeled by *language*, not model name (§5.3).
+    @ViewBuilder
+    private var languageModelStatusRow: some View {
+        let model = holder.activeLanguage.modelID()
+        let installed = holder.installedModelIDs.contains(model)
+        let state = rowState[model] ?? RowState()
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(languageStatusSubtitle(model: model, installed: installed, state: state))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if state.isDownloading {
+                    HStack(spacing: 6) {
+                        ProgressView(value: state.progress)
+                            .frame(width: 100)
+                        Text("\(Int(state.progress * 100))%")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                } else if installed {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Downloaded")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.green)
+                    }
+                } else {
+                    Button("Download") { startDownload(model) }
+                        .controlSize(.small)
+                }
+            }
+            if let error = state.error {
+                Text(error)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !installed && !state.isDownloading {
+                Text("Download required.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+            }
+        }
+    }
+
+    private func languageStatusSubtitle(
+        model: ParakeetModelID,
+        installed: Bool,
+        state: RowState
+    ) -> String {
+        let footprint = footprintLabel(for: model)
+        if state.isDownloading {
+            return "Downloading… · \(footprint)"
+        }
+        return installed ? "Installed · \(footprint)" : "Not installed · \(footprint)"
     }
 
     @ViewBuilder
@@ -205,114 +266,6 @@ struct TranscriptionPane: View {
         identitiesStore.hasIdentities ? "Manage" : "Set up"
     }
 
-    @ViewBuilder
-    private func modelRow(_ model: ParakeetModelID) -> some View {
-        let installed = holder.installedModelIDs.contains(model)
-        let state = rowState[model] ?? RowState()
-        let isPrimary = holder.primaryModelID == model
-
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                // Primary radio. Only meaningful for installed models.
-                // When the primary points at a not-installed model the
-                // radio is rendered as filled (reflects stored
-                // preference) but the row also surfaces the "Download
-                // required" hint below — no implicit fetch.
-                Button {
-                    Task { await holder.setPrimary(model) }
-                } label: {
-                    Image(systemName: isPrimary ? "largecircle.fill.circle" : "circle")
-                        .font(.system(size: 14))
-                        .foregroundStyle(isPrimary ? Color.accentColor : .secondary)
-                }
-                .buttonStyle(.plain)
-                .disabled(!installed)
-                .help(installed ? "Make primary" : "Install this model first")
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(model.displayName)
-                            .font(.system(size: 13, weight: isPrimary ? .semibold : .regular))
-                        if model.isRecommended {
-                            RecommendedBadge()
-                        }
-                        if model.isExperimental {
-                            ExperimentalBadge()
-                        }
-                        if model.isDeprecated {
-                            DeprecatedBadge()
-                        }
-                    }
-                    Text(rowSubtitle(for: model, installed: installed, state: state))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    if let detail = model.detailText {
-                        Text(detail)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Spacer()
-
-                rowTrailing(model: model, installed: installed, state: state, isPrimary: isPrimary)
-            }
-            if let error = state.error {
-                Text(error)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if isPrimary && !installed && !state.isDownloading {
-                Text("Download required.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func rowTrailing(
-        model: ParakeetModelID,
-        installed: Bool,
-        state: RowState,
-        isPrimary: Bool
-    ) -> some View {
-        if state.isDownloading {
-            HStack(spacing: 6) {
-                ProgressView(value: state.progress)
-                    .frame(width: 100)
-                Text("\(Int(state.progress * 100))%")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-        } else if installed {
-            Button("Delete") { delete(model) }
-                .controlSize(.small)
-                .disabled(!canDelete(model))
-                .help(canDelete(model)
-                      ? "Remove the model files from disk."
-                      : deleteDisabledHelp(for: model))
-        } else {
-            Button("Download") { startDownload(model) }
-                .controlSize(.small)
-        }
-    }
-
-    private func rowSubtitle(
-        for model: ParakeetModelID,
-        installed: Bool,
-        state: RowState
-    ) -> String {
-        let footprint = footprintLabel(for: model)
-        if state.isDownloading {
-            return "Downloading… · \(footprint)"
-        }
-        return installed ? "Installed · \(footprint)" : "Not installed · \(footprint)"
-    }
-
     private func footprintLabel(for id: ParakeetModelID) -> String {
         if id.approxBytes < 1_000_000_000 {
             let mb = Double(id.approxBytes) / 1_000_000
@@ -320,41 +273,6 @@ struct TranscriptionPane: View {
         }
         let gb = Double(id.approxBytes) / 1_000_000_000
         return String(format: "~%.2f GB", gb)
-    }
-
-    /// The currently-primary model can be deleted only if at least one
-    /// other model is installed (so Jot still has something to fall back
-    /// to as primary). Rows that share a streaming bundle with the active
-    /// primary are also protected:
-    /// - v3 + EOU primary protects the v2 + EOU row (shared EOU bundle).
-    /// - v3 + Nemotron primary (legacy, post-migration this should not be
-    ///   the active primary) protects the Nemotron-only row.
-    private func canDelete(_ model: ParakeetModelID) -> Bool {
-        if sharedStreamingBundleProtection(primary: holder.primaryModelID, target: model) {
-            return false
-        }
-        if holder.primaryModelID != model { return true }
-        return holder.installedModelIDs.contains(where: { $0 != model && $0.isUserSelectable })
-    }
-
-    private func deleteDisabledHelp(for model: ParakeetModelID) -> String {
-        if sharedStreamingBundleProtection(primary: holder.primaryModelID, target: model) {
-            return "The primary model uses this live-preview bundle."
-        }
-        return "Install another model first; the primary cannot be removed."
-    }
-
-    private func sharedStreamingBundleProtection(
-        primary: ParakeetModelID,
-        target: ParakeetModelID
-    ) -> Bool {
-        switch (primary, target) {
-        case (.tdt_0_6b_v3_eou_streaming, .tdt_0_6b_v2_en_streaming),
-             (.tdt_0_6b_v3_nemotron_streaming, .nemotron_en):
-            return true
-        default:
-            return false
-        }
     }
 
     private func startDownload(_ model: ParakeetModelID) {
@@ -386,64 +304,6 @@ struct TranscriptionPane: View {
                 }
             }
         }
-    }
-
-    private func delete(_ model: ParakeetModelID) {
-        // If the user is deleting the *active* primary, transfer primary
-        // to a remaining installed model BEFORE removing the cache.
-        // Otherwise `primaryModelID` lingers on a now-uncached model and
-        // the next cold transcriber load throws `model-missing`. Order:
-        // setPrimary → removeCache → refreshInstalled.
-        if holder.primaryModelID == model {
-            let fallback = pickFallback(excluding: model)
-            guard let fallback else {
-                // canDelete already guards this — if no fallback exists
-                // the Delete button is disabled. Defensive no-op.
-                return
-            }
-            Task {
-                await holder.setPrimary(fallback)
-                await MainActor.run {
-                    removeCacheForUserDelete(model)
-                    rowState[model] = RowState()
-                    holder.refreshInstalled()
-                }
-            }
-            return
-        }
-
-        // Reuse the shared cache so the on-disk path matches the
-        // downloader's. A `ModelCache(root:)` minted ad-hoc would point
-        // at a different directory and silently no-op.
-        removeCacheForUserDelete(model)
-        rowState[model] = RowState()
-        holder.refreshInstalled()
-    }
-
-    private func removeCacheForUserDelete(_ model: ParakeetModelID) {
-        // Composite primaries share their streaming bundle with another row:
-        // - v3 + Nemotron shares the Nemotron streaming bundle with the
-        //   Nemotron-only row.
-        // - v3 + EOU shares the EOU streaming bundle with the legacy v2+EOU row.
-        // When deleting one of these composite primaries, preserve the
-        // streaming side on disk so the sibling row keeps working.
-        switch model {
-        case .tdt_0_6b_v3_nemotron_streaming, .tdt_0_6b_v3_eou_streaming:
-            ModelCache.shared.removeCache(for: model, removeBatch: true, removeStreaming: false)
-        case .tdt_0_6b_v3,
-             .tdt_0_6b_v3_int4,
-             .tdt_0_6b_ja,
-             .tdt_0_6b_v2_en_streaming,
-             .nemotron_en:
-            ModelCache.shared.removeCache(for: model)
-        }
-    }
-
-    private func pickFallback(excluding: ParakeetModelID) -> ParakeetModelID? {
-        Self.pickFallbackPrimary(
-            excluding: excluding,
-            installed: holder.installedModelIDs
-        )
     }
 
     /// Pick a deterministic fallback primary when the active model is

@@ -288,10 +288,15 @@ enum JotComposition {
         // is captured into the factory so all factory calls return the same
         // stub instance (model swaps don't matter for the stub, but the
         // closure shape lets a future swap-aware harness rebuild as needed).
+        // Language migration (design §6.4): additively seed
+        // `jot.transcriptionLanguage` from the stored model. One-shot,
+        // never clobbers `jot.defaultModelID`. Runs after the model
+        // migrations above so it reads the post-migration stored model.
+        LanguageMigration.runIfNeeded(defaults: systemServices.userDefaults)
         let transcriberHolder = TranscriberHolder(
             cache: .shared,
             defaults: systemServices.userDefaults,
-            transcriberFactory: { modelID in
+            transcriberFactory: { modelID, language in
                 if let override = overrides?.transcriber {
                     return override
                 }
@@ -301,10 +306,10 @@ enum JotComposition {
                     // streaming bundle. v1.12 introduces v3+EOU; v2+EOU
                     // remains as a deprecated migration anchor.
                     guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
-                        return Transcriber(modelID: modelID)
+                        return Transcriber(modelID: modelID, language: language)
                     }
                     return DualPipelineTranscriber(
-                        batch: Transcriber(modelID: modelID),
+                        batch: Transcriber(modelID: modelID, language: language),
                         streaming: StreamingTranscriber(bundleDirectory: streamingURL)
                     )
                 case .tdt_0_6b_v3_nemotron_streaming:
@@ -315,21 +320,21 @@ enum JotComposition {
                     // effectively dead in production but preserved for
                     // rollback / debug paths.
                     guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
-                        return Transcriber(modelID: modelID)
+                        return Transcriber(modelID: modelID, language: language)
                     }
                     return DualPipelineTranscriber(
-                        batch: Transcriber(modelID: modelID),
+                        batch: Transcriber(modelID: modelID, language: language),
                         nemotronStreaming: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
                     )
                 case .nemotron_en:
                     guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
-                        return Transcriber(modelID: modelID)
+                        return Transcriber(modelID: modelID, language: language)
                     }
                     return DualPipelineTranscriber(
                         nemotron: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
                     )
                 case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
-                    return Transcriber(modelID: modelID)
+                    return Transcriber(modelID: modelID, language: language)
                 }
             },
             installedModelIDs: installedModelIDs
