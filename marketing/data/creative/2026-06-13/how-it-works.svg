@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Title -->
+  <text x="72" y="106" font-family="Helvetica, Arial, sans-serif" font-size="68" font-weight="bold" fill="#f0f0f0">How it works.</text>
+  <text x="72" y="150" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f">3 steps. Any app. Any text field.</text>
+
+  <!-- Panel 1 -->
+  <rect x="72" y="180" width="292" height="760" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="108" y="280" font-family="Helvetica, Arial, sans-serif" font-size="88" font-weight="bold" fill="#CE231D">1</text>
+  <text x="108" y="368" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="bold" fill="#f0f0f0">Press</text>
+  <text x="108" y="424" font-family="Helvetica, Arial, sans-serif" font-size="36" font-weight="bold" fill="#f0f0f0">⌥ Space</text>
+  <text x="108" y="520" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">Works in any app</text>
+  <text x="108" y="548" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">and any text field.</text>
+  <text x="108" y="576" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">No window opens.</text>
+  <text x="108" y="604" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">Nothing interrupts.</text>
+
+  <!-- Panel 2 -->
+  <rect x="394" y="180" width="292" height="760" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="430" y="280" font-family="Helvetica, Arial, sans-serif" font-size="88" font-weight="bold" fill="#CE231D">2</text>
+  <text x="430" y="368" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="bold" fill="#f0f0f0">Speak</text>
+  <text x="430" y="520" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">Parakeet TDT runs</text>
+  <text x="430" y="548" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">on your Neural</text>
+  <text x="430" y="576" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">Engine. On-device.</text>
+  <text x="430" y="604" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">No internet needed.</text>
+
+  <!-- Panel 3 -->
+  <rect x="716" y="180" width="292" height="760" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="752" y="280" font-family="Helvetica, Arial, sans-serif" font-size="88" font-weight="bold" fill="#CE231D">3</text>
+  <text x="752" y="368" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="bold" fill="#f0f0f0">Text</text>
+  <text x="752" y="424" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="bold" fill="#f0f0f0">lands</text>
+  <text x="752" y="520" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">Pastes exactly</text>
+  <text x="752" y="548" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">where your cursor</text>
+  <text x="752" y="576" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">was. No copy-paste.</text>
+  <text x="752" y="604" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">No switching.</text>
+
+  <!-- Footer -->
+  <circle cx="72" cy="1046" r="7" fill="#CE231D"/>
+  <text x="92" y="1052" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+  <text x="830" y="1052" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">free · open source</text>
+</svg>

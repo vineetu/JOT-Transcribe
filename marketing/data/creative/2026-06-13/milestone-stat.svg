@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Eyebrow -->
+  <text x="540" y="168" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#9a9a9f" text-anchor="middle">as of today,</text>
+
+  <!-- Big number -->
+  <text x="540" y="460" font-family="Helvetica, Arial, sans-serif" font-size="288" font-weight="bold" fill="#f0f0f0" text-anchor="middle">100</text>
+
+  <!-- What it is -->
+  <text x="540" y="534" font-family="Helvetica, Arial, sans-serif" font-size="42" font-weight="bold" fill="#CE231D" text-anchor="middle">Macs running Jot</text>
+
+  <!-- Context panel -->
+  <rect x="72" y="592" width="936" height="224" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="658" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">No ads. No App Store. No press.</text>
+  <text x="540" y="700" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">In 58 days. On word of mouth alone.</text>
+  <line x1="150" y1="735" x2="930" y2="735" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="782" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">Cost to download: <tspan font-weight="bold" fill="#f0f0f0">$0. Forever.</tspan></text>
+
+  <!-- Footer -->
+  <circle cx="72" cy="1046" r="7" fill="#CE231D"/>
+  <text x="92" y="1052" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

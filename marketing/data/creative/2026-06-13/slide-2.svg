@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Title -->
+  <text x="72" y="110" font-family="Helvetica, Arial, sans-serif" font-size="50" font-weight="bold" fill="#f0f0f0">Cloud dictation:</text>
+  <text x="72" y="174" font-family="Helvetica, Arial, sans-serif" font-size="50" font-weight="bold" fill="#f0f0f0">the actual path</text>
+
+  <!-- Step 1 -->
+  <rect x="72" y="220" width="936" height="90" rx="14" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="120" y="274" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#f0f0f0">1  You speak into your mic</text>
+
+  <text x="540" y="352" font-family="Helvetica, Arial, sans-serif" font-size="40" fill="#CE231D" text-anchor="middle">↓</text>
+
+  <!-- Step 2 -->
+  <rect x="72" y="366" width="936" height="90" rx="14" fill="#161618" stroke="#CE231D" stroke-width="1"/>
+  <text x="120" y="420" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="bold" fill="#CE231D">2  Audio leaves your Mac via the internet</text>
+
+  <text x="540" y="498" font-family="Helvetica, Arial, sans-serif" font-size="40" fill="#CE231D" text-anchor="middle">↓</text>
+
+  <!-- Step 3 -->
+  <rect x="72" y="512" width="936" height="90" rx="14" fill="#161618" stroke="#CE231D" stroke-width="1"/>
+  <text x="120" y="566" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#CE231D">3  A remote server processes it</text>
+
+  <text x="540" y="644" font-family="Helvetica, Arial, sans-serif" font-size="40" fill="#CE231D" text-anchor="middle">↓</text>
+
+  <!-- Step 4 -->
+  <rect x="72" y="658" width="936" height="90" rx="14" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="120" y="712" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#f0f0f0">4  Transcript is sent back to you</text>
+
+  <text x="540" y="790" font-family="Helvetica, Arial, sans-serif" font-size="40" fill="#9a9a9f" text-anchor="middle">↓</text>
+
+  <!-- Step 5 -->
+  <rect x="72" y="804" width="936" height="90" rx="14" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="120" y="858" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#9a9a9f">5  Repeat every time you dictate</text>
+
+  <!-- Conclusion -->
+  <text x="72" y="1000" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#9a9a9f">Every session. Every word. Every day.</text>
+
+  <!-- Footer -->
+  <circle cx="72" cy="1316" r="7" fill="#CE231D"/>
+  <text x="92" y="1322" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

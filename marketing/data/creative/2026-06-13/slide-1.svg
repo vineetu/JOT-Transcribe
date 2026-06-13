@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Hook -->
+  <text x="72" y="430" font-family="Helvetica, Arial, sans-serif" font-size="104" font-weight="bold" fill="#f0f0f0">Your voice</text>
+  <text x="72" y="556" font-family="Helvetica, Arial, sans-serif" font-size="104" font-weight="bold" fill="#f0f0f0">just left</text>
+  <text x="72" y="682" font-family="Helvetica, Arial, sans-serif" font-size="104" font-weight="bold" fill="#f0f0f0">your Mac<tspan fill="#CE231D">.</tspan></text>
+
+  <!-- Qualifier -->
+  <text x="72" y="782" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f">(if you're using cloud dictation)</text>
+
+  <!-- Swipe prompt -->
+  <text x="72" y="1290" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f">What cloud dictation doesn't tell you  →</text>
+</svg>

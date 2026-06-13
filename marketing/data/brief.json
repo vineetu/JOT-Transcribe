@@ -1,78 +1,97 @@
 {
-  "date": "2026-06-12",
-  "downloads": { "total": 99, "delta": 2, "avg7": 2, "goal": 100 },
-  "drafts": [
-    {
-      "channel": "linkedin",
-      "text": "I built a tiny Dynamic Island-style pill that lives under your Mac's notch.\n\nWhen you press the hotkey in Jot — my free, open-source dictation app — a floating pill appears below the notch. It shows that it's listening, then vanishes the moment your transcript pastes at the cursor. No modal. No dock bounce. Your current app stays front and center.\n\nWhy? Because every extra interaction breaks writing flow. The pill keeps you in the document you're working in.\n\nUnder the hood: an NSPanel at a specific window level with NSVisualEffectView vibrancy. One of my favorite 200 lines in the codebase.\n\nJot is free, Apple Silicon, macOS 14+.\n\n#macOS #indiedev #Swift",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-12",
-      "publish_window_pt": "7:00–8:30am PT",
-      "recommended": true,
-      "note": "Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting."
-    },
-    {
-      "channel": "x",
-      "text": "Wispr Flow: cloud-only, $15/month\nSuperwhisper: $85/yr or $250 lifetime\n\nJot: $0, on-device on the Apple Neural Engine — no account, no audio leaves your Mac.\n\nHotkey → speak → text at cursor.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-12",
-      "publish_window_pt": "6:30–9:00am PT",
-      "recommended": true,
-      "note": "No link in the post — post the utm_url as the first reply. Attach a 10–15s screen recording (hotkey press → pill → text appearing) for ~3x reach."
-    },
-    {
-      "channel": "reddit",
-      "text": "I replaced a $85/year dictation app with a free open-source one — here's how it's gone\n\nFor a few months I was paying for a Mac dictation app. At renewal I thought: the core tech — on-device Whisper-class models on Apple Silicon — is commoditized now. Why am I paying?\n\nSo I built Jot and open-sourced it.\n\nThe workflow: press a hotkey (I use ⌥Space), speak, transcript pastes wherever my cursor is. Any app, any text field. No window switching.\n\nIt runs NVIDIA's Parakeet model on the Apple Neural Engine — works offline, audio never leaves the Mac. Optional AI cleanup defaults to Apple Intelligence on macOS 26. There's also a rewrite-with-voice mode: select text, press a hotkey, speak an instruction (\"make this shorter\", \"translate to Spanish\"), Jot rewrites it in place.\n\nA few things I learned building this:\n• The clipboard sandwich (save → write → paste → restore) sounds simple but has a dozen timing edge cases\n• NSPanel for the floating pill status indicator under the notch was fun to build\n• CoreAudio on macOS is deeply unforgiving\n\nApple Silicon only, macOS 14+, completely free, no account. Happy to answer questions — and link below if you want to try it.\n\n(I built this — disclosure)\n\nhttps://jot-transcribe.com/",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-12",
-      "publish_window_pt": "6:00–8:00am PT",
-      "recommended": false,
-      "note": "Post to r/MacOS. Replace the bare URL at the bottom with the utm_url before posting. recommended:false — last recommended reddit post was yesterday (2026-06-11); wait until 4+ days have passed before flagging recommended again. Answer every comment in the first hour."
-    },
-    {
-      "channel": "instagram",
-      "text": "The feature that changed how I edit text on my Mac.\n\nSelect any text → press a hotkey → speak your instruction → Jot rewrites it in place. No typing, no separate window. The rewrite lands exactly where the original was.\n\n\"Make this more concise.\" \"Translate to Spanish.\" \"Clean up the code comments.\" All spoken, done in seconds.\n\nFree. Open source. 100% on-device — your voice never leaves your Mac. Link in bio.\n\n#macos #productivity #dictation #voicetotext #speechtotext #opensource #macapps #indiedev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-12",
-      "publish_window_pt": "11am–1pm PT",
-      "recommended": false,
-      "visual": "10–15s Reel: open Notes with a wordy paragraph, select it, press hotkey, pill glows under the notch while model runs, speak 'make this more concise and punchy', cut to the tighter version landing in place. Text overlay frames: 'select' → 'speak your instruction' → 'rewritten'. Upbeat hook audio. Hook frame (first 3s): tight close-up of the pill appearing under the notch — that's the visual.",
-      "note": "recommended:false — last recommended instagram post was yesterday (2026-06-11); needs 3+ days. Caption links aren't clickable — put the utm_url (utm_source=instagram) in your bio permanently. The rewrite-with-voice Reel is more visually demonstrable than straight dictation."
-    }
-  ],
+  "date": "2026-06-13",
+  "downloads": {
+    "total": 119,
+    "delta": 20,
+    "avg7": 11,
+    "goal": 100
+  },
   "creative": {
-    "concept": "Price honesty — one picture, four numbers, theirs vs ours. Plus a bold privacy statement card. Fewer words than any competitor can argue with.",
+    "concept": "Milestone card + privacy carousel: celebrate 100 downloads with a big-number stat card, pivot to the 'your voice just left your Mac' angle as a 6-slide carousel. One channel hook, one trust argument — built around visuals first.",
     "cards": [
-      { "file": "marketing/data/creative/2026-06-12/price-comparison.svg", "title": "Price comparison — $0 vs the market", "use": "Attach to today's X post (the image replaces the text list — cut the post to one line + image) or LinkedIn. Posts with an image get ~2x engagement." },
-      { "file": "marketing/data/creative/2026-06-12/privacy-statement.svg", "title": "Privacy statement — bold claim card", "use": "Instagram feed post or LinkedIn. Caption under 20 words: let the card talk." }
+      {
+        "file": "marketing/data/creative/2026-06-13/how-it-works.svg",
+        "title": "3-step how-it-works",
+        "use": "Attach to the LinkedIn or X milestone post; also strong as a standalone IG static post for first-time audiences who have no idea what Jot does."
+      },
+      {
+        "file": "marketing/data/creative/2026-06-13/milestone-stat.svg",
+        "title": "100 downloads milestone stat",
+        "use": "Primary visual for today's LinkedIn and X milestone posts. The big 100 stops the scroll; the $0 line is the punchline."
+      }
     ],
-    "carousel": [],
+    "carousel": [
+      "marketing/data/creative/2026-06-13/slide-1.svg",
+      "marketing/data/creative/2026-06-13/slide-2.svg",
+      "marketing/data/creative/2026-06-13/slide-3.svg",
+      "marketing/data/creative/2026-06-13/slide-4.svg",
+      "marketing/data/creative/2026-06-13/slide-5.svg",
+      "marketing/data/creative/2026-06-13/slide-6.svg"
+    ],
     "storyboard": {
-      "title": "Rewrite-with-voice in 15 seconds",
+      "title": "Jot in 15 seconds — hotkey to text",
       "duration_s": 15,
-      "use": "Instagram Reel / X video / GIF for Reddit comments",
+      "use": "Instagram Reel / X video / GIF; universal intro clip that works on every channel",
       "shots": [
-        { "t": "0–3s", "visual": "Tight close-up: pill appears under the notch as the hotkey is pressed", "overlay": "Watch this." },
-        { "t": "3–7s", "visual": "A wordy paragraph in Notes gets selected, hotkey pressed, pill glows", "overlay": "Select. Speak." },
-        { "t": "7–12s", "visual": "Voice says 'make this concise' — text rewrites in place", "overlay": "\"Make this concise\"" },
-        { "t": "12–15s", "visual": "Cut to clean result, pill vanishes", "overlay": "Free · on-device · jot-transcribe.com" }
+        {
+          "t": "0–2s",
+          "visual": "Cursor blinking in a Notes document — empty line, waiting",
+          "overlay": "Watch this."
+        },
+        {
+          "t": "2–5s",
+          "visual": "Hand presses ⌥ Space; the pill appears under the Mac notch",
+          "overlay": "One hotkey."
+        },
+        {
+          "t": "5–12s",
+          "visual": "User speaks; pill shows a pulsing audio waveform",
+          "overlay": "Speak."
+        },
+        {
+          "t": "12–15s",
+          "visual": "Pill vanishes; text appears at the cursor in Notes",
+          "overlay": "Done. Free. On-device."
+        }
       ]
     }
   },
-  "opportunities": [],
-  "outreach": [
+  "drafts": [
     {
-      "target": "MacMenuBar.com",
-      "type": "directory",
-      "url": "https://macmenubar.com/",
-      "contact": "https://macmenubar.com/submit-your-menu-bar-app/",
-      "why": "Curated directory of macOS menu bar apps with an active Recently Added section (last updated June 11 2026). Jot is a menu bar app whose exact audience browses MacMenuBar. Zero cost to submit; listing drives long-tail discovery. No prior submission on record.",
-      "pitch": "Jot is a free, open-source macOS dictation app that lives in the menu bar. Press a hotkey, speak, and the transcript pastes at your cursor in any app — no window switching. Transcription runs entirely on-device on the Apple Neural Engine (no cloud, no account, no telemetry). Optional AI rewrite via Apple Intelligence, Ollama, or user-configured cloud providers. Apple Silicon, macOS 14+. https://jot-transcribe.com"
+      "channel": "linkedin",
+      "text": "Jot just crossed 100 downloads.\n\nNo paid ads. No App Store listing. No press. 58 days from v1.0.\n\nIt's a free, open-source dictation app for Mac: press a hotkey, speak, transcript lands at your cursor — all on the Neural Engine, nothing leaves the device.\n\n100 people found it on their own. That number should scare me toward doing real marketing. Does organic-only scale past 1000?\n\n#indiedev #macOS #buildinpublic",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-13",
+      "publish_window_pt": "7:00–8:30am PT",
+      "recommended": true,
+      "note": "Attach milestone-stat.svg (export as PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting."
     },
     {
-      "target": "9to5Mac Indie App Spotlight",
-      "type": "media",
-      "url": "https://9to5mac.com/guides/indie-app-spotlight/",
-      "contact": "tips@9to5mac.com",
-      "why": "Weekly indie Mac app feature reaching a large audience of exactly Jot's target users. Their April 25 InnerPulse coverage specifically praised on-device processing and privacy — Jot fits that editorial lens. Recent coverage cadence is roughly weekly. A mention here would be the highest-leverage single piece of press Jot could get right now.",
-      "pitch": "Hi,\n\nYour Indie App Spotlight on InnerPulse (April 25) caught my attention — the on-device, privacy-first angle clearly resonates with 9to5Mac readers.\n\nI built Jot, a free open-source macOS dictation app in the same spirit. Press a hotkey, speak, and the transcript pastes at your cursor in any app — all transcription runs on the Apple Neural Engine, so no audio ever leaves the Mac, no account required, no subscription. There's a Dynamic Island-style pill indicator under the notch, voice-instructed AI rewrite, and custom vocabulary boosting. It's at v1.13 now.\n\nI'd love to tell the story behind it or do a live demo if that would be helpful.\n\nhttps://jot-transcribe.com/?utm_source=press&utm_medium=outreach&utm_campaign=9to5mac\n\nThanks,\nVineet"
+      "channel": "x",
+      "text": "100 downloads. No ads. No App Store. No press. 58 days.\n\nJot: press a hotkey, speak, text at cursor. Free. On-device. Open source.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-13",
+      "publish_window_pt": "6:30–9:00am PT",
+      "recommended": true,
+      "note": "Attach milestone-stat.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting."
+    },
+    {
+      "channel": "reddit",
+      "text": "Hit 100 downloads on my free on-device Mac dictation app — no ads, no App Store, no press\n\nBuilt Jot because I got frustrated with the cost of Mac dictation apps. Core idea: press a hotkey, speak, transcript pastes at cursor in whatever app you're using — no window switching, no copy-paste.\n\nKey design choice: transcription runs entirely on-device on Apple Silicon's Neural Engine (Parakeet TDT model). No audio leaves the Mac, works offline, no API key needed.\n\nThere's optional AI cleanup via Apple Intelligence (on-device, macOS 26+), Ollama, or cloud providers if you want it. And a voice-instructed rewrite mode: select text, press a hotkey, speak an instruction — \"make this shorter\" or \"translate to Spanish\" — Jot rewrites in place.\n\nJust crossed 100 total downloads. Feels slow, but: entirely organic discovery so far. No ads, no press placement.\n\nApple Silicon only, macOS 14+. Free, open source.\n\n(I built this — disclosure)\n\nLink in comments.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-13",
+      "publish_window_pt": "6:00–8:00am PT",
+      "recommended": false,
+      "note": "Post to r/productivity (rotating: r/macapps Jun 11, r/MacOS Jun 12, r/productivity today). Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit post was June 11 (2 days ago); needs 4+ days — earliest is June 15. Answer every comment in the first hour."
+    },
+    {
+      "channel": "instagram",
+      "text": "Cloud dictation sends your voice to remote servers. Jot doesn't.\n\nTranscription runs on your Mac's Neural Engine. Nothing leaves. No subscription. Free, forever.\n\nLink in bio.\n\n#macos #privacy #dictation #voicetotext #opensource #macapps #productivity #indiedev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-13",
+      "publish_window_pt": "11am–1pm PT",
+      "recommended": false,
+      "visual": "Today's carousel: slide-1.svg through slide-6.svg. Export each slide as a 1080×1350 PNG. Post as a multi-image carousel on Instagram. Caption pairs with slide-1 (the hook). UTM link goes in your bio.",
+      "note": "recommended:false — last recommended instagram post was June 11 (2 days ago); needs 3+ days — earliest is June 14. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
     }
   ],
-  "notes": "Total downloads hit 99 today (up 2 from yesterday's 97) — one download from the 100 milestone. Jot is absent from every current Mac dictation roundup found in web searches (zackproser.com, machow2.com, avaan.app, macaiapps.com); a MacMenuBar.com listing and a 9to5Mac Indie App Spotlight mention would put Jot in front of its exact audience with no social lift needed. No high-quality forum reply opportunities found today — no specific Reddit or HN thread URLs surfaced. The Superwhisper ($85/yr or $250 lifetime) vs Jot ($0) comparison is a strong angle: web searches confirm users are actively looking for free on-device alternatives, and Jot doesn't yet appear in those results."
+  "opportunities": [],
+  "outreach": [],
+  "notes": "Downloads hit 119 (+20 from June 12's 99), passing the 100-milestone for the first time; 7-day avg is now 11/day. The spike from yesterday's 2/day baseline is notable — possibly a delayed effect of the June 12 MacMenuBar.com submission or 9to5Mac tip, or organic discovery via a Reddit thread not visible in today's searches. Superwhisper's lifetime plan was raised 240% to $849 in 2026 (per search results) — the strongest pricing contrast angle Jot has right now, woven into slide-4 of today's carousel. Jot still absent from all Mac dictation roundup articles surfaced by web search (machow2.com, heymumble.com, setapp.com, aidictation.com, lumevoice.com); these are SEO channels that will pay off with 1–2 press mentions. AlternativeTo.net appeared prominently in searches for 'free macOS dictation alternatives' — if Jot isn't listed there yet, a free submission would put it in front of active comparison shoppers with no effort. No outreach today (last outreach was June 12, within the 7-day window). No high-quality Reddit/HN reply opportunities surfaced in today's searches."
 }

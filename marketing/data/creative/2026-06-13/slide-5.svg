@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Title -->
+  <text x="72" y="110" font-family="Helvetica, Arial, sans-serif" font-size="50" font-weight="bold" fill="#f0f0f0">Jot doesn't</text>
+  <text x="72" y="174" font-family="Helvetica, Arial, sans-serif" font-size="50" font-weight="bold" fill="#f0f0f0">send anything.</text>
+
+  <!-- Main panel -->
+  <rect x="72" y="220" width="936" height="780" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <text x="540" y="360" font-family="Helvetica, Arial, sans-serif" font-size="68" font-weight="bold" fill="#f0f0f0" text-anchor="middle">You speak.</text>
+
+  <text x="540" y="448" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#9a9a9f" text-anchor="middle">Parakeet TDT runs on the</text>
+  <text x="540" y="494" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#9a9a9f" text-anchor="middle">Apple Neural Engine in your Mac.</text>
+
+  <line x1="150" y1="548" x2="930" y2="548" stroke="#2a2a2e" stroke-width="1"/>
+
+  <text x="540" y="608" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#9a9a9f" text-anchor="middle">No internet request is made.</text>
+  <text x="540" y="658" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#9a9a9f" text-anchor="middle">No audio is uploaded.</text>
+  <text x="540" y="708" font-family="Helvetica, Arial, sans-serif" font-size="34" fill="#9a9a9f" text-anchor="middle">No transcript is stored remotely.</text>
+
+  <line x1="150" y1="760" x2="930" y2="760" stroke="#2a2a2e" stroke-width="1"/>
+
+  <text x="540" y="854" font-family="Helvetica, Arial, sans-serif" font-size="38" font-weight="bold" fill="#CE231D" text-anchor="middle">Your voice never leaves your Mac.</text>
+
+  <!-- Footer -->
+  <circle cx="72" cy="1316" r="7" fill="#CE231D"/>
+  <text x="92" y="1322" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
