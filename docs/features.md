@@ -22,11 +22,10 @@ User-facing features in the shipping build. This is the product surface — not 
 ## Local Transcription
 
 - **On-device only** — audio is transcribed locally on the Apple Neural Engine; it never leaves the Mac.
-- **Multiple model options** — pick the transcription engine in Settings → Transcription or the Setup Wizard. All run via FluidAudio on the ANE; switching is non-destructive (other models stay installed unless you delete them):
-  - **Parakeet v3 (multilingual) + Nemotron live preview** — default; multilingual batch transcript with English live preview in the recording pill. Best general-purpose option. ≈1.85 GB.
-  - **Parakeet 0.6B Japanese** — single-language alternative tuned for Japanese-first users. ≈1.25 GB.
-  - **Parakeet v2 + EOU live preview (deprecated)** — legacy option. Available for existing users; will be removed in a future release. ≈720 MB.
-  - **Nemotron (English, lighter)** — English-only. A single model handles both the final transcript and the live preview in the pill. Smaller and faster than option 1; best on read-style English; v2/v3 batch is more accurate on noisy/conversational audio. ≈600 MB.
+- **Language-based model selection** — you pick the **language** you speak (Settings → Transcription or the Setup Wizard); Jot auto-selects and downloads the right on-device model. Model names are hidden — they surface only in About → Acknowledgements. All run via FluidAudio on the ANE; switching is non-destructive (other models stay installed unless you delete them):
+  - **English** → **Nemotron** on capable hardware (≥ M2 Pro **and** ≥ 16 GB RAM — the premium English engine, true low-latency streaming), or **Parakeet v2** on every other Mac (English-optimized batch model — best English accuracy where Nemotron can't run). ≈600 MB / ≈720 MB.
+  - **European languages** → shared **Parakeet v3** (multilingual batch) with a FluidAudio Latin/Cyrillic script hint. ≈1.85 GB.
+  - **Japanese** → **Parakeet 0.6B JA** (separate model, no live preview). ≈1.25 GB.
 - **Post-processing (Parakeet v2 only)** — v2 transcripts run through a deterministic cleanup chain before delivery, since v2 emits rawer text than v3 / Nemotron:
   - **Filler-word removal** — regex strip of `um/uh/er/uhm/erm` + recapitalization, no LLM.
   - **Number normalization** — deterministic spoken-number → digit conversion (handles money, percent, year, time-of-day, address, cardinals; preserves idioms and phone-shaped sequences).
@@ -207,7 +206,7 @@ Fields throughout Settings carry per-field `info.circle` popovers for inline hel
   All three require a confirmation alert. Only "Erase all data" is tinted red — the other two are styled as normal interactive rows so they don't read as disabled.
 
 ### Transcription
-- Transcription language picker — the user picks the **language** they speak; Jot resolves and downloads the right on-device model automatically (model names are hidden — they surface only in About → Acknowledgements). English → Parakeet v2 (best English accuracy); 25 European languages → shared Parakeet v3 with a FluidAudio Latin/Cyrillic script hint; Japanese → Parakeet 0.6B JA (separate model, no live preview). Default is the system locale's language, falling back to English. The picker is tier-agnostic and never routes to Nemotron (an Advanced-only, hardware-gated English engine). Shows install state + footprint + a percentage download for the resolved model, and an `info.circle` popover deep-linking to Help → "Transcription language". A stored model choice (v3 / Nemotron / v2) is grandfathered with no surprise download: the stored model always wins over the language's default until the user deliberately re-picks a language.
+- Transcription language picker — the user picks the **language** they speak; Jot resolves and downloads the right on-device model automatically (model names are hidden — they surface only in About → Acknowledgements). English → **Nemotron** on capable hardware (≥ M2 Pro and ≥ 16 GB — premium English engine) or **Parakeet v2** elsewhere (best English accuracy where Nemotron can't run); 25 European languages → shared Parakeet v3 with a FluidAudio Latin/Cyrillic script hint; Japanese → Parakeet 0.6B JA (separate model, no live preview). Default is the system locale's language, falling back to English. The English model is chosen automatically by hardware tier; European and Japanese are tier-independent, and Nemotron is reachable only for English on eligible Macs. Shows install state + footprint + a percentage download for the resolved model, and an `info.circle` popover deep-linking to Help → "Transcription language". A stored model choice (v3 / Nemotron / v2) is grandfathered with no surprise download: the stored model always wins over the language's default until the user deliberately re-picks a language.
 - Auto-paste transcription
 - Auto-press Enter after paste
 - Keep transcription in clipboard
