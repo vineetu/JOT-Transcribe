@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Title -->
+  <text x="72" y="110" font-family="Helvetica, Arial, sans-serif" font-size="50" font-weight="bold" fill="#f0f0f0">And they charge</text>
+  <text x="72" y="174" font-family="Helvetica, Arial, sans-serif" font-size="50" font-weight="bold" fill="#f0f0f0">for the privilege</text>
+
+  <!-- Wispr Flow -->
+  <rect x="72" y="220" width="936" height="114" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="120" y="270" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">Wispr Flow</text>
+  <text x="120" y="316" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="bold" fill="#f0f0f0">$15 / month</text>
+  <text x="900" y="296" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f" text-anchor="end">cloud-only</text>
+
+  <!-- Superwhisper -->
+  <rect x="72" y="352" width="936" height="114" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="120" y="402" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">Superwhisper</text>
+  <text x="120" y="448" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="bold" fill="#f0f0f0">$849 lifetime</text>
+  <text x="900" y="428" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#CE231D" text-anchor="end">raised 240% in 2026</text>
+
+  <!-- MacWhisper -->
+  <rect x="72" y="484" width="936" height="114" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="120" y="534" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">MacWhisper</text>
+  <text x="120" y="580" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="bold" fill="#f0f0f0">$99 one-time</text>
+
+  <!-- Jot -->
+  <rect x="72" y="638" width="936" height="130" rx="18" fill="#161618" stroke="#CE231D" stroke-width="2"/>
+  <text x="120" y="688" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">Jot</text>
+  <text x="120" y="748" font-family="Helvetica, Arial, sans-serif" font-size="76" font-weight="bold" fill="#f0f0f0">$0</text>
+  <text x="230" y="748" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#9a9a9f">forever · open source</text>
+
+  <!-- Callout -->
+  <text x="72" y="882" font-family="Helvetica, Arial, sans-serif" font-size="27" fill="#9a9a9f">Not a trial. Not freemium.</text>
+  <text x="72" y="922" font-family="Helvetica, Arial, sans-serif" font-size="27" fill="#9a9a9f">Free because it runs on your chip.</text>
+
+  <!-- Footer -->
+  <circle cx="72" cy="1316" r="7" fill="#CE231D"/>
+  <text x="92" y="1322" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
