@@ -17,13 +17,12 @@ import Foundation
 /// - **Japanese → Parakeet JA** (`.tdt_0_6b_ja`). A separate model with no
 ///   live preview (`supportsStreaming == false`); the hint is ignored.
 ///
-/// ## Tier-agnostic, never Nemotron
-/// `modelID(tier:)` **never** returns `.nemotron_en`. v2 and v3 are both 0.6B
-/// batch models that run on every Apple Silicon Mac, so the language picker is
-/// hardware-gate-free. Nemotron remains an Advanced-only, M2-Pro/16-GB-gated
-/// engine (design §4.1, §7) reachable only outside this picker. The `tier:`
-/// parameter is plumbed for the future Advanced engine selector but is ignored
-/// by the v1 language picker.
+/// ## English is hardware-tiered; other languages are not
+/// `modelID(tier:)` returns **Nemotron for English on capable hardware**
+/// (≥ M2 Pro AND ≥ 16 GB — premium true-streaming), and **v2 for English**
+/// elsewhere. European (v3) and Japanese (JA) are 0.6B batch models that run on
+/// every Apple Silicon Mac, so they are tier-independent. Nemotron is reachable
+/// ONLY for English on eligible Macs — never for any other language.
 ///
 /// ## Surfaced language set (design §2.3)
 /// We surface the union the v3 model supports. For each language we pass the
@@ -105,14 +104,17 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
-    /// The model the language picker resolves to. **Tier-agnostic and NEVER
-    /// returns `.nemotron_en`** (design §3, §7). English → v2, Japanese → JA,
-    /// every European language → v3. The `tier:` parameter is plumbed for the
-    /// future Advanced engine selector but ignored here.
+    /// The model the language picker resolves to. **English is tier-aware**:
+    /// Nemotron on eligible hardware (≥ M2 Pro AND ≥ 16 GB), else v2. Japanese
+    /// → JA, every European language → v3 (all tier-independent). Nemotron is
+    /// never returned for a non-English language.
     public func modelID(tier: HardwareTier.Type = HardwareTier.self) -> ParakeetModelID {
         switch self {
         case .english:
-            return .tdt_0_6b_v2_en_streaming
+            // Best English model the hardware can run: Nemotron on capable
+            // Macs (≥ M2 Pro AND ≥ 16 GB — premium true-streaming), else the
+            // English-optimized v2 batch model. v3 is never the English pick.
+            return tier.nemotronEligible ? .nemotron_en : .tdt_0_6b_v2_en_streaming
         case .japanese:
             return .tdt_0_6b_ja
         case .spanish, .french, .german, .italian, .portuguese, .romanian,
