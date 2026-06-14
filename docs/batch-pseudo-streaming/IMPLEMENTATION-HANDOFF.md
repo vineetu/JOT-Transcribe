@@ -99,9 +99,6 @@ kept for its surface map: `docs/pseudo-streaming/design.md`.)
   `xcodebuild` resolves FluidAudio 0.14.7 and builds clean. Ignore them.
 - **Build command (isolate DerivedData — parallel agents share the repo):**
   `xcodebuild build -project Jot.xcodeproj -scheme Jot -configuration Debug -derivedDataPath /tmp/jot-<your-stream>-build -destination 'platform=macOS,arch=arm64'`
-- **Sony release commit on `main`:** before any `git push public main`, run
-  `git log public/main..main` and `git show main:appcast.xml | grep enclosure`; drop any
-  `*-sony` release commit (it rewrites the public appcast to an internal playstation host).
 - Owner runs many parallel agents (`git worktree list`). Both pseudo-streaming efforts
   landed in the **main** worktree, which is why they collided. The sibling research docs
   (`hardware-capability-matrix/`, `language-based-model-selection/`) are other agents' work
