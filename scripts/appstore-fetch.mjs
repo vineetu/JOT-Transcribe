@@ -165,10 +165,15 @@ async function main() {
   fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + '\n');
   console.log(`Wrote ${OUT}: installs=${installs}, ratings=${out.ratingCount}\n${note}`);
 
-  if (process.argv.includes('--commit')) {
-    execSync(`git -C "${REPO_ROOT}" add marketing/data/appstore.json`);
-    try { execSync(`git -C "${REPO_ROOT}" commit -m "marketing: App Store snapshot ${out.date}" --no-verify`, { stdio: 'inherit' }); execSync(`git -C "${REPO_ROOT}" push origin main`, { stdio: 'inherit' }); }
-    catch { console.log('(nothing to commit)'); }
+  if (process.argv.includes('--commit') && installs != null) {
+    try {
+      execSync(`git -C "${REPO_ROOT}" add marketing/data/appstore.json`);
+      execSync(`git -C "${REPO_ROOT}" commit -m "marketing: App Store install snapshot ${out.date}" --no-verify`, { stdio: 'inherit' });
+      execSync(`git -C "${REPO_ROOT}" pull --rebase origin main`, { stdio: 'inherit' });
+      execSync(`git -C "${REPO_ROOT}" push origin main`, { stdio: 'inherit' });
+    } catch (e) { console.log('(commit/push skipped:', String(e.message).slice(0, 80), ')'); }
+  } else if (process.argv.includes('--commit')) {
+    console.log('(no installs number yet — nothing committed; will commit once Apple has the data)');
   }
 }
 main().catch(e => { console.error(e); process.exit(1); });
