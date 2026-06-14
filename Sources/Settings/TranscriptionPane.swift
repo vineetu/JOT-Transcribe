@@ -155,11 +155,16 @@ struct TranscriptionPane: View {
         )
     }
 
-    /// Install-state + download/delete + progress for the model resolved from
-    /// the active language. Labeled by *language*, not model name (§5.3).
+    /// Install-state + download/delete + progress for the model the user is
+    /// ACTUALLY running (`primaryModelID`, the authoritative active model), not
+    /// the one the active language would resolve to. Otherwise a grandfathered
+    /// user whose stored model differs from their language's default (e.g. still
+    /// on v3+EOU while English now resolves to Nemotron) sees a spurious
+    /// "Download required" for a model they never chose, while their real model
+    /// is installed and working. Labeled by *language*, not model name (§5.3).
     @ViewBuilder
     private var languageModelStatusRow: some View {
-        let model = holder.activeLanguage.modelID()
+        let model = holder.primaryModelID
         let installed = holder.installedModelIDs.contains(model)
         let state = rowState[model] ?? RowState()
 
