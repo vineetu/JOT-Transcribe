@@ -162,18 +162,26 @@ async function main() {
     releaseDate: r.releaseDate ? r.releaseDate.slice(0, 10) : null, minimumOs: r.minimumOsVersion || null,
     installs, installsNote: note,
   };
-  fs.writeFileSync(OUT, JSON.stringify(out, null, 2) + '\n');
+  // Only touch the committed file when we actually have an install number —
+  // otherwise the working tree churns on every run while Apple is still generating.
+  if (installs == null) {
+    console.log(`No installs number yet (${note}). Leaving appstore.json untouched; will fill in once Apple has the data.`);
+    return;
+  }
+
+  // Preserve the public ratings fields already in the file (kept fresh by the cloud agent).
+  let prev = {};
+  try { prev = JSON.parse(fs.readFileSync(OUT, 'utf8')); } catch {}
+  fs.writeFileSync(OUT, JSON.stringify({ ...prev, ...out }, null, 2) + '\n');
   console.log(`Wrote ${OUT}: installs=${installs}, ratings=${out.ratingCount}\n${note}`);
 
-  if (process.argv.includes('--commit') && installs != null) {
+  if (process.argv.includes('--commit')) {
     try {
       execSync(`git -C "${REPO_ROOT}" add marketing/data/appstore.json`);
       execSync(`git -C "${REPO_ROOT}" commit -m "marketing: App Store install snapshot ${out.date}" --no-verify`, { stdio: 'inherit' });
       execSync(`git -C "${REPO_ROOT}" pull --rebase origin main`, { stdio: 'inherit' });
       execSync(`git -C "${REPO_ROOT}" push origin main`, { stdio: 'inherit' });
     } catch (e) { console.log('(commit/push skipped:', String(e.message).slice(0, 80), ')'); }
-  } else if (process.argv.includes('--commit')) {
-    console.log('(no installs number yet — nothing committed; will commit once Apple has the data)');
   }
 }
 main().catch(e => { console.error(e); process.exit(1); });
