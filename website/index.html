@@ -174,6 +174,9 @@ nav .container { display: flex; align-items: center; justify-content: space-betw
 .cta.alt:hover { box-shadow: 0 6px 18px rgba(0,0,0,0.08); border-color: var(--text-secondary); }
 .cta-q { display: block; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 13px; }
 .cta-note { display: block; margin-top: 14px; font-size: 0.8125rem; color: var(--text-faint); }
+.downloads { margin-top: 22px; display: inline-flex; align-items: baseline; gap: 9px; }
+.downloads .num { font-size: 1.6rem; font-weight: 700; color: var(--text); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.downloads .lbl { font-size: 0.9rem; color: var(--text-secondary); }
 .copy-link {
   display: none; margin: 14px auto 0;
   background: none; border: 1px solid var(--border); border-radius: 9px;
@@ -292,6 +295,10 @@ footer a:hover { color: var(--text); }
       <a href="https://apps.apple.com/us/app/jot-transcribe/id6766447330" class="cta alt" data-platform="ios">Get it for iPhone</a>
     </div>
     <span class="cta-note">Both free &middot; Mac: Apple Silicon, macOS 14+ &middot; iPhone: App Store</span>
+    <div class="downloads" id="downloadCount" hidden>
+      <span class="num" id="downloadNum">—</span>
+      <span class="lbl">downloads and counting</span>
+    </div>
     <button class="copy-link" id="copyLink">Also want it on your Mac? Copy the link</button>
   </div>
 </header>
@@ -436,6 +443,38 @@ footer a:hover { color: var(--text); }
     navigator.clipboard.writeText('https://jot-transcribe.com/').then(function () {
       btn.textContent = 'Link copied — open it on your Mac';
     });
+  });
+})();
+
+// Live download count — Mac (GitHub releases) + iOS installs (App Store Connect, via our daily snapshot).
+(function () {
+  var box = document.getElementById('downloadCount');
+  var out = document.getElementById('downloadNum');
+  if (!box || !out) return;
+  var REPO = 'vineetu/JOT-Transcribe';
+  var DATA = 'https://raw.githubusercontent.com/' + REPO + '/main/marketing/data/appstore.json';
+
+  function show(total) {
+    if (!total || total < 1) return;
+    out.textContent = total.toLocaleString();
+    box.hidden = false;
+  }
+
+  Promise.all([
+    fetch('https://api.github.com/repos/' + REPO + '/releases?per_page=100')
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (rels) {
+        if (!Array.isArray(rels)) return 0;
+        return rels.reduce(function (s, rel) {
+          return s + (rel.assets || []).reduce(function (a, x) { return a + (x.download_count || 0); }, 0);
+        }, 0);
+      }).catch(function () { return 0; }),
+    fetch(DATA, { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { return (d && typeof d.installs === 'number') ? d.installs : 0; })
+      .catch(function () { return 0; }),
+  ]).then(function (parts) {
+    show((parts[0] || 0) + (parts[1] || 0));
   });
 })();
 
