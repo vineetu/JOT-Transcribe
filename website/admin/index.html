@@ -241,8 +241,8 @@ function useMarketing() {
   const [data, setData] = useState({ loading: true });
   useEffect(() => {
     const get = f => fetch(RAW + f, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
-    Promise.all([get('snapshots.json'), get('brief.json'), get('starter-pack.json')])
-      .then(([snaps, brief, starter]) => setData({ loading: false, snaps, brief, starter }));
+    Promise.all([get('snapshots.json'), get('brief.json'), get('starter-pack.json'), get('appstore.json')])
+      .then(([snaps, brief, starter, appstore]) => setData({ loading: false, snaps, brief, starter, appstore }));
   }, []);
   return data;
 }
@@ -624,6 +624,33 @@ function CardPreview() {
   </div>`;
 }
 
+// ── App Store ──
+function AppStore({ m }) {
+  const a = m.appstore;
+  if (m.loading) return h`<div class="panel"><h2><span class="dot"></span>App Store (iOS)</h2><div class="loading">Loading…</div></div>`;
+  if (!a) return h`<div class="panel"><h2><span class="dot"></span>App Store (iOS)</h2>
+    <div class="hint" style=${{ marginTop: 0 }}>No App Store data yet — the agent writes <code>marketing/data/appstore.json</code> each morning.</div></div>`;
+  const stars = '★'.repeat(Math.round(a.avgRating || 0)) + '☆'.repeat(5 - Math.round(a.avgRating || 0));
+  return h`<div class="panel">
+    <h2><span class="dot"></span>App Store (iOS)</h2>
+    <div class="grid" style=${{ gridTemplateColumns: '1fr 1fr', marginBottom: 0 }}>
+      <div class="stat">
+        <div class="big">${a.installs != null ? a.installs.toLocaleString() : '—'}</div>
+        <div class="sub">${a.installs != null ? 'installs (App Store Connect)' : 'installs not public'}</div>
+      </div>
+      <div class="stat">
+        <div class="big">${a.ratingCount ?? 0} <span style=${{ fontSize: '1rem', color: 'var(--accent)' }}>${stars}</span></div>
+        <div class="sub">ratings · v${a.version} · since ${a.releaseDate}</div>
+      </div>
+    </div>
+    <div class="hint">
+      Apple doesn't expose download counts publicly, so the live number here is ratings —
+      the only public signal. <a href=${a.url} target="_blank" rel="noopener">View on the App Store →</a>
+      ${a.installs == null && h`<br/>To show real installs, add App Store Connect API credentials to the daily agent (one-time setup — ask me).`}
+    </div>
+  </div>`;
+}
+
 // ── Traffic ──
 const GC_TOKEN = '10yb3d8m962yl64v9aqp9uogh3mzcsjk8ndmo1h7n9itmb05jw';
 const GC_BASE  = 'https://jot-transcribe.goatcounter.com/api/v0';
@@ -810,6 +837,8 @@ function App() {
     ${tab ${tab === 'analytics' && h`<div>
       <div class="panel" style=${{ marginBottom:'10px' }}>
         <${Releases} gh=${gh} />
+        <div class="spacer"></div>
+        <${AppStore} m=${mk} />
       </div>
       <${Traffic} />
     </div>`}
