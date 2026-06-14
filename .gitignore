@@ -81,3 +81,8 @@ streaming-test/
 # Vercel CLI project link
 .vercel/
 website/.vercel/
+
+# App Store Connect API credentials (local only — never commit)
+.jot-appstore.json
+*.p8
+AuthKey_*.p8
