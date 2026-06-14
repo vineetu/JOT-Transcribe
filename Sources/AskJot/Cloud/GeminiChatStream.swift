@@ -114,7 +114,7 @@ struct GeminiChatStream: CloudChatStream {
             contents: contents,
             systemInstruction: .init(parts: [.text(systemInstructions)]),
             tools: [.showFeature],
-            generationConfig: .init(maxOutputTokens: maxTokens)
+            generationConfig: .init(maxOutputTokens: maxTokens, thinkingConfig: .init(thinkingBudget: 0))
         )
 
         var request = URLRequest(url: url)
@@ -274,7 +274,11 @@ private struct GeminiFunctionCallPart {
 
 private struct GeminiRequest: Encodable { let contents: [GeminiContent]; let systemInstruction: GeminiSystemInstruction; let tools: [GeminiTool]; let generationConfig: GeminiGenerationConfig }
 private struct GeminiSystemInstruction: Encodable { let parts: [GeminiPart] }
-private struct GeminiGenerationConfig: Encodable { let maxOutputTokens: Int }
+private struct GeminiGenerationConfig: Encodable { let maxOutputTokens: Int; let thinkingConfig: GeminiThinkingConfig }
+// Gemini 3.x models think by default, and thinking tokens count against
+// `maxOutputTokens` — so a capped response can be exhausted by thinking and
+// come back empty/truncated. Disable thinking for the help-chat use case.
+private struct GeminiThinkingConfig: Encodable { let thinkingBudget: Int }
 private struct GeminiEvent: Decodable { let candidates: [GeminiCandidate]? }
 private struct GeminiCandidate: Decodable { let content: GeminiContent? }
 

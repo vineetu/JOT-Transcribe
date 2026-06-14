@@ -360,7 +360,9 @@ actor LLMClient {
             "contents": [
                 ["parts": [["text": combinedPrompt]]]
             ],
-            "generationConfig": ["temperature": temperature],
+            // Gemini 3.x thinks by default and thinking counts against the output
+            // budget; disable it so capped cleanup/rewrite replies aren't truncated.
+            "generationConfig": ["temperature": temperature, "thinkingConfig": ["thinkingBudget": 0]],
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
