@@ -64,7 +64,7 @@ nav.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
 .tabs button.active { background: var(--panel); border-color: var(--border); color: var(--text); }
 .section-sub { font-size: 0.8rem; color: var(--text-3); margin: 0 4px 16px; line-height: 1.5; }
 
-.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 14px; margin-bottom: 14px; }
 .panel {
   background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
   padding: 18px 20px; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
@@ -646,7 +646,10 @@ function AppStore({ m }) {
     <div class="hint">
       Apple doesn't expose download counts publicly, so the live number here is ratings —
       the only public signal. <a href=${a.url} target="_blank" rel="noopener">View on the App Store →</a>
-      ${a.installs == null && h`<br/>To show real installs, add App Store Connect API credentials to the daily agent (one-time setup — ask me).`}
+      ${a.installs == null && h`<br/><br/><b>To show real installs</b> (key stays on your Mac, never in this page):
+        <br/>1. App Store Connect → grab your <b>Vendor Number</b> (Payments and Financial Reports) + a fresh API key
+        <br/>2. Put them in <code>~/.jot-appstore.json</code>
+        <br/>3. Run <code>node scripts/appstore-fetch.mjs --commit</code> — this number fills in automatically.`}
     </div>
   </div>`;
 }
@@ -800,6 +803,9 @@ function App() {
         sub=${pace == null ? 'live after the agent’s first 2 runs' : Math.round(pace) + '% of the 100/day goal, 7-day avg'} />
       <${Stat} label="Latest release" value=${gh.latest?.tag ?? '…'} sub=${gh.latest ? `${gh.latest.downloads.toLocaleString()} downloads since ${gh.latest.date}` : ''} />
       <${Stat} label="GitHub stars" value=${gh.loading ? '…' : gh.stars?.toLocaleString()} sub=${gh.forks != null ? `${gh.forks} forks` : ''} />
+      <${Stat} label="App Store (iOS)"
+        value=${mk.loading ? '…' : mk.appstore?.installs != null ? mk.appstore.installs.toLocaleString() : (mk.appstore?.ratingCount ?? 0) + '★'}
+        sub=${mk.appstore?.installs != null ? 'installs · run the local fetcher to refresh' : (mk.appstore ? `${mk.appstore.ratingCount} ratings · installs need API key` : 'iOS app')} />
     </div>
 
     <nav class="tabs">
