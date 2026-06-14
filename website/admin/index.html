@@ -834,13 +834,15 @@ function App() {
       </div>
     </div>`}
 
-    ${tab ${tab === 'analytics' && h`<div>
-      <div class="panel" style=${{ marginBottom:'10px' }}>
+    ${tab === 'analytics' && h`<div class="cols">
+      <div>
         <${Releases} gh=${gh} />
         <div class="spacer"></div>
         <${AppStore} m=${mk} />
       </div>
-      <${Traffic} />
+      <div>
+        <${Traffic} />
+      </div>
     </div>`}
   </div>`;
 }
