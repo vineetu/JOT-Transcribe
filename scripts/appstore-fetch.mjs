@@ -97,7 +97,10 @@ async function pageAll(token, url) {
 
 // Find the report whose name describes downloads/installs.
 function pickDownloadsReport(reports) {
-  const score = n => (/install/i.test(n) ? 2 : 0) + (/download/i.test(n) ? 2 : 0) + (/deletion/i.test(n) ? 1 : 0);
+  // Prefer the clean aggregated downloads report by exact name, else score by keywords.
+  const exact = reports.find(r => r.attributes?.name === 'App Downloads Standard');
+  if (exact) return exact;
+  const score = n => (/^app downloads/i.test(n) ? 4 : 0) + (/download/i.test(n) ? 2 : 0) + (/install/i.test(n) ? 1 : 0) - (/detailed/i.test(n) ? 1 : 0);
   return reports.map(r => ({ r, s: score(r.attributes?.name || '') })).filter(x => x.s > 0).sort((a, b) => b.s - a.s)[0]?.r;
 }
 
@@ -136,8 +139,13 @@ async function main() {
       const rep = pickDownloadsReport(reports);
       if (!rep) { note = `No downloads report among: ${reports.map(x => x.attributes?.name).join(', ')}`; }
       else {
-        const instances = await pageAll(token, `/v1/analyticsReports/${rep.id}/instances?filter[granularity]=DAILY&limit=200`);
-        if (!instances.length) note = 'Downloads report found but no data instances yet — re-run later.';
+        // Apple may publish the first data at any granularity — take whichever exists.
+        let instances = [];
+        for (const g of ['DAILY', 'WEEKLY', 'MONTHLY']) {
+          instances = await pageAll(token, `/v1/analyticsReports/${rep.id}/instances?filter[granularity]=${g}&limit=200`);
+          if (instances.length) break;
+        }
+        if (!instances.length) note = `Report "${rep.attributes?.name}" exists but Apple has not generated data instances yet — re-run later.`;
         else {
           const latest = instances.sort((a, b) => (a.attributes.processingDate < b.attributes.processingDate ? 1 : -1))[0];
           const segs = await pageAll(token, `/v1/analyticsReportInstances/${latest.id}/segments`);
