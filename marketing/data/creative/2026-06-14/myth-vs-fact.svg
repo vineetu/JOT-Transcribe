@@ -1,0 +1,35 @@
+<svg width="1080" height="1080" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="960" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- MYTH section -->
+  <text x="140" y="170" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#CE231D" letter-spacing="5" font-weight="700">MYTH</text>
+
+  <!-- Myth text: dimmed gray -->
+  <text x="140" y="285" font-family="Helvetica, Arial, sans-serif" font-size="58" fill="#9a9a9f" font-weight="600">On-device dictation</text>
+  <text x="140" y="355" font-family="Helvetica, Arial, sans-serif" font-size="58" fill="#9a9a9f" font-weight="600">only works in English.</text>
+
+  <!-- Strike-through bar on myth text -->
+  <line x1="140" y1="306" x2="760" y2="306" stroke="#CE231D" stroke-width="3" opacity="0.6"/>
+
+  <!-- Divider -->
+  <line x1="140" y1="415" x2="940" y2="415" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- FACT section -->
+  <text x="140" y="485" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#f0f0f0" letter-spacing="5" font-weight="700">FACT</text>
+
+  <!-- Fact text: bold white -->
+  <text x="140" y="598" font-family="Helvetica, Arial, sans-serif" font-size="58" fill="#f0f0f0" font-weight="700">Jot picks the best model</text>
+  <text x="140" y="672" font-family="Helvetica, Arial, sans-serif" font-size="58" fill="#f0f0f0" font-weight="700">for your language.</text>
+
+  <!-- Red accent -->
+  <text x="140" y="756" font-family="Helvetica, Arial, sans-serif" font-size="44" fill="#CE231D" font-weight="700">8 languages. On-device.</text>
+
+  <!-- Sub -->
+  <text x="140" y="816" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f">No cloud. No API key. Free.</text>
+
+  <!-- Footer -->
+  <circle cx="350" cy="968" r="5" fill="#CE231D"/>
+  <text x="366" y="974" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+  <text x="940" y="974" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f" text-anchor="end">v1.14.1</text>
+</svg>

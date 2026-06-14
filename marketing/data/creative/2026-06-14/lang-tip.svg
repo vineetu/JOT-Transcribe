@@ -1,0 +1,39 @@
+<svg width="1080" height="1080" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="960" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- USE-CASE TIP label -->
+  <text x="540" y="148" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#CE231D" text-anchor="middle" letter-spacing="5" font-weight="700">USE-CASE TIP</text>
+
+  <!-- Big headline -->
+  <text x="140" y="272" font-family="Helvetica, Arial, sans-serif" font-size="94" fill="#f0f0f0" font-weight="700">Your language.</text>
+  <text x="140" y="378" font-family="Helvetica, Arial, sans-serif" font-size="94" fill="#f0f0f0" font-weight="700">Best model.</text>
+  <text x="140" y="462" font-family="Helvetica, Arial, sans-serif" font-size="70" fill="#CE231D" font-weight="700">Automatic.</text>
+
+  <!-- Separator -->
+  <line x1="140" y1="504" x2="940" y2="504" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Language → Model table -->
+  <text x="140" y="556" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f0f0f0" font-weight="600">English (M2 Pro / 16 GB+)</text>
+  <text x="940" y="556" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f" text-anchor="end">Nemotron</text>
+
+  <text x="140" y="614" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f0f0f0" font-weight="600">English (all other Macs)</text>
+  <text x="940" y="614" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f" text-anchor="end">Parakeet v2</text>
+
+  <text x="140" y="672" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f0f0f0" font-weight="600">French · Spanish · German +3</text>
+  <text x="940" y="672" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f" text-anchor="end">Parakeet v3</text>
+
+  <text x="140" y="730" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#f0f0f0" font-weight="600">Japanese</text>
+  <text x="940" y="730" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f" text-anchor="end">Parakeet JA</text>
+
+  <!-- Separator -->
+  <line x1="140" y1="762" x2="940" y2="762" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Sub note -->
+  <text x="540" y="814" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">All models run on-device. Nothing leaves your Mac.</text>
+
+  <!-- Footer -->
+  <circle cx="350" cy="928" r="5" fill="#CE231D"/>
+  <text x="366" y="934" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+  <text x="940" y="934" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f" text-anchor="end">v1.14.1</text>
+</svg>

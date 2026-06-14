@@ -1,57 +1,55 @@
 {
-  "date": "2026-06-13",
+  "date": "2026-06-14",
   "downloads": {
-    "total": 119,
-    "delta": 20,
-    "avg7": 11,
+    "total": 120,
+    "delta": 1,
+    "avg7": 8,
     "goal": 100
   },
   "creative": {
-    "concept": "Milestone card + privacy carousel: celebrate 100 downloads with a big-number stat card, pivot to the 'your voice just left your Mac' angle as a 6-slide carousel. One channel hook, one trust argument — built around visuals first.",
+    "concept": "Release-day launch for v1.14.1: language-aware model selection reframed as 'pick your language, done' — use-case tip card + myth-vs-fact debunker built around the multilingual angle",
     "cards": [
       {
-        "file": "marketing/data/creative/2026-06-13/how-it-works.svg",
-        "title": "3-step how-it-works",
-        "use": "Attach to the LinkedIn or X milestone post; also strong as a standalone IG static post for first-time audiences who have no idea what Jot does."
+        "file": "marketing/data/creative/2026-06-14/lang-tip.svg",
+        "title": "Use-case tip: Your language. Best model. Automatic.",
+        "use": "Primary visual for LinkedIn and X release-day posts; also works as a standalone Instagram static card."
       },
       {
-        "file": "marketing/data/creative/2026-06-13/milestone-stat.svg",
-        "title": "100 downloads milestone stat",
-        "use": "Primary visual for today's LinkedIn and X milestone posts. The big 100 stops the scroll; the $0 line is the punchline."
+        "file": "marketing/data/creative/2026-06-14/myth-vs-fact.svg",
+        "title": "Myth vs Fact: 'On-device dictation only works in English'",
+        "use": "Secondary X post or alternative LinkedIn card; strong IG carousel opener on a future multilingual week."
       }
     ],
-    "carousel": [
-      "marketing/data/creative/2026-06-13/slide-1.svg",
-      "marketing/data/creative/2026-06-13/slide-2.svg",
-      "marketing/data/creative/2026-06-13/slide-3.svg",
-      "marketing/data/creative/2026-06-13/slide-4.svg",
-      "marketing/data/creative/2026-06-13/slide-5.svg",
-      "marketing/data/creative/2026-06-13/slide-6.svg"
-    ],
+    "carousel": [],
     "storyboard": {
-      "title": "Jot in 15 seconds — hotkey to text",
-      "duration_s": 15,
-      "use": "Instagram Reel / X video / GIF; universal intro clip that works on every channel",
+      "title": "Jot speaks your language — multilingual demo",
+      "duration_s": 18,
+      "use": "Instagram Reel / X video / GIF; showcases v1.14.1 language-aware model selection",
       "shots": [
         {
           "t": "0–2s",
-          "visual": "Cursor blinking in a Notes document — empty line, waiting",
+          "visual": "Mac desktop, cursor blinking in empty Notes document",
           "overlay": "Watch this."
         },
         {
-          "t": "2–5s",
-          "visual": "Hand presses ⌥ Space; the pill appears under the Mac notch",
-          "overlay": "One hotkey."
+          "t": "2–7s",
+          "visual": "Jot Settings → Transcription → Language picker; user selects Français; model label auto-updates to Parakeet v3 multilingual",
+          "overlay": "Pick your language."
         },
         {
-          "t": "5–12s",
-          "visual": "User speaks; pill shows a pulsing audio waveform",
-          "overlay": "Speak."
+          "t": "7–12s",
+          "visual": "Hotkey press; Dynamic Island-style pill appears under Mac notch with pulsing waveform; user speaks French aloud",
+          "overlay": "Speak. Any language."
         },
         {
-          "t": "12–15s",
-          "visual": "Pill vanishes; text appears at the cursor in Notes",
-          "overlay": "Done. Free. On-device."
+          "t": "12–16s",
+          "visual": "French text appears accurately at cursor in Notes app",
+          "overlay": "On-device. Zero cloud."
+        },
+        {
+          "t": "16–18s",
+          "visual": "Wide shot of Notes with French text; Jot logo lower right",
+          "overlay": "Free. jot-transcribe.com"
         }
       ]
     }
@@ -59,39 +57,47 @@
   "drafts": [
     {
       "channel": "linkedin",
-      "text": "Jot just crossed 100 downloads.\n\nNo paid ads. No App Store listing. No press. 58 days from v1.0.\n\nIt's a free, open-source dictation app for Mac: press a hotkey, speak, transcript lands at your cursor — all on the Neural Engine, nothing leaves the device.\n\n100 people found it on their own. That number should scare me toward doing real marketing. Does organic-only scale past 1000?\n\n#indiedev #macOS #buildinpublic",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-13",
+      "text": "v1.14.1 shipped this morning.\n\nNew: pick your language, Jot selects the right on-device model automatically.\n\nEnglish on M2 Pro / 16 GB+ → Nemotron. French, Spanish, German and 3 more → Parakeet v3. Japanese → Parakeet JA. Other Macs → Parakeet v2.\n\nNo cloud. No API key. The right model for your language, running entirely on-device.\n\nFree, open source, Apple Silicon.\n\nWhat language do you work in?\n\n#macOS #indiedev #buildinpublic",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-14",
       "publish_window_pt": "7:00–8:30am PT",
       "recommended": true,
-      "note": "Attach milestone-stat.svg (export as PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting."
+      "note": "Attach lang-tip.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting."
     },
     {
       "channel": "x",
-      "text": "100 downloads. No ads. No App Store. No press. 58 days.\n\nJot: press a hotkey, speak, text at cursor. Free. On-device. Open source.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-13",
+      "text": "v1.14.1: pick your language → Jot auto-selects the best on-device model. French, Spanish, Japanese + more. No cloud, no API key, no setup.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-14",
       "publish_window_pt": "6:30–9:00am PT",
       "recommended": true,
-      "note": "Attach milestone-stat.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting."
+      "note": "Attach lang-tip.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. myth-vs-fact.svg works as a second X post in the same morning window."
     },
     {
       "channel": "reddit",
-      "text": "Hit 100 downloads on my free on-device Mac dictation app — no ads, no App Store, no press\n\nBuilt Jot because I got frustrated with the cost of Mac dictation apps. Core idea: press a hotkey, speak, transcript pastes at cursor in whatever app you're using — no window switching, no copy-paste.\n\nKey design choice: transcription runs entirely on-device on Apple Silicon's Neural Engine (Parakeet TDT model). No audio leaves the Mac, works offline, no API key needed.\n\nThere's optional AI cleanup via Apple Intelligence (on-device, macOS 26+), Ollama, or cloud providers if you want it. And a voice-instructed rewrite mode: select text, press a hotkey, speak an instruction — \"make this shorter\" or \"translate to Spanish\" — Jot rewrites in place.\n\nJust crossed 100 total downloads. Feels slow, but: entirely organic discovery so far. No ads, no press placement.\n\nApple Silicon only, macOS 14+. Free, open source.\n\n(I built this — disclosure)\n\nLink in comments.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-13",
+      "text": "Jot v1.14.1 — now picks the best on-device model for your language (free, open source Mac dictation)\n\nJust shipped v1.14.1, which adds language-based model selection. Pick the language you speak — Jot automatically uses the best on-device model for it.\n\n- English on M2 Pro or 16 GB+ Mac: Nemotron (NVIDIA's high-accuracy on-device model)\n- English on all other Apple Silicon Macs: Parakeet v2\n- French, Spanish, German, Italian, Portuguese, Dutch: Parakeet v3 multilingual\n- Japanese: Parakeet JA\n\nNo downloads you didn't ask for — existing users keep their current model with no surprise changes.\n\nThe reason: until now, picking a model in Jot was a technical choice (which Parakeet variant is that again?). Language is something everyone understands. You speak French — you pick French. Done.\n\nJot is free, open source, Apple Silicon only, macOS 14+. No account, no subscription, no audio leaves your Mac.\n\n(I built this — disclosure)\n\nLink in comments.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-14",
       "publish_window_pt": "6:00–8:00am PT",
       "recommended": false,
-      "note": "Post to r/productivity (rotating: r/macapps Jun 11, r/MacOS Jun 12, r/productivity today). Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit post was June 11 (2 days ago); needs 4+ days — earliest is June 15. Answer every comment in the first hour."
+      "note": "Post to r/macapps (rotating: macapps Jun 11, MacOS Jun 12, productivity Jun 13, macapps Jun 14). First line is the post title, the rest is the body. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit post was June 11 (3 days ago); needs 4+ days — earliest is June 15. Answer every comment in the first hour."
     },
     {
       "channel": "instagram",
-      "text": "Cloud dictation sends your voice to remote servers. Jot doesn't.\n\nTranscription runs on your Mac's Neural Engine. Nothing leaves. No subscription. Free, forever.\n\nLink in bio.\n\n#macos #privacy #dictation #voicetotext #opensource #macapps #productivity #indiedev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-13",
+      "text": "Jot now auto-selects the best on-device model for your language.\n\nFrench, Spanish, German, Japanese, and more — no setup, no cloud, no subscription. Free forever.\n\nLink in bio.\n\n#macOS #dictation #multilingual #speechtotext #opensource #macapps #indiedev #productivity",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-14",
       "publish_window_pt": "11am–1pm PT",
-      "recommended": false,
-      "visual": "Today's carousel: slide-1.svg through slide-6.svg. Export each slide as a 1080×1350 PNG. Post as a multi-image carousel on Instagram. Caption pairs with slide-1 (the hook). UTM link goes in your bio.",
-      "note": "recommended:false — last recommended instagram post was June 11 (2 days ago); needs 3+ days — earliest is June 14. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
+      "recommended": true,
+      "visual": "lang-tip.svg as a static 1080×1080 post — the language→model table is visually clean and scannable as an Instagram card. Export as PNG.",
+      "note": "recommended:true — last recommended instagram post was June 11 (3 days ago); threshold of 3+ days met today (June 14). Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
+    },
+    {
+      "channel": "hn",
+      "text": "Show HN: Jot 1.14.1 – free on-device Mac dictation, auto-selects the best model for your language",
+      "utm_url": "https://jot-transcribe.com/?utm_source=hn&utm_medium=social&utm_campaign=daily-2026-06-14",
+      "publish_window_pt": "6:00–8:00am ET (Tue–Thu only — hold until Tue Jun 16)",
+      "recommended": true,
+      "note": "v1.14.1 shipped today (Jun 14), qualifying this for Show HN. DO NOT post on weekends — hold until Tue Jun 16 at 6–8am ET. First comment backstory to paste immediately after submission:\n\n'Jot is a free, open-source Mac dictation app I've been building since April. Press a hotkey, speak, and the transcript pastes wherever your cursor is in any app. Transcription runs entirely on the Apple Neural Engine — no internet, no account, no audio leaves the Mac.\n\nToday's 1.14.1 adds language-based model selection. The problem: users had to choose between Parakeet v2, Parakeet v3, Nemotron in settings — meaningful if you know the model landscape, confusing if you don't. Now you just pick the language you speak. Jot maps it to the best available model: English on M2 Pro/16GB+ gets Nemotron (higher accuracy), European languages get multilingual Parakeet v3, Japanese gets Parakeet JA. Existing users keep their current model with no surprise downloads.\n\nApple Silicon only, macOS 14+. Source: https://github.com/vineetu/JOT-Transcribe'\n\nNever solicit upvotes. The utm_url goes in the submission URL field."
     }
   ],
   "opportunities": [],
   "outreach": [],
-  "notes": "Downloads hit 119 (+20 from June 12's 99), passing the 100-milestone for the first time; 7-day avg is now 11/day. The spike from yesterday's 2/day baseline is notable — possibly a delayed effect of the June 12 MacMenuBar.com submission or 9to5Mac tip, or organic discovery via a Reddit thread not visible in today's searches. Superwhisper's lifetime plan was raised 240% to $849 in 2026 (per search results) — the strongest pricing contrast angle Jot has right now, woven into slide-4 of today's carousel. Jot still absent from all Mac dictation roundup articles surfaced by web search (machow2.com, heymumble.com, setapp.com, aidictation.com, lumevoice.com); these are SEO channels that will pay off with 1–2 press mentions. AlternativeTo.net appeared prominently in searches for 'free macOS dictation alternatives' — if Jot isn't listed there yet, a free submission would put it in front of active comparison shoppers with no effort. No outreach today (last outreach was June 12, within the 7-day window). No high-quality Reddit/HN reply opportunities surfaced in today's searches."
+  "notes": "v1.14.1 shipped at 4:21am UTC today with language-aware model selection — the strongest product angle since launch. Downloads climbed to 120 (+1 from yesterday's 119; 7-day avg 8/day; new release DMG has 1 download so far, Sparkle auto-updates don't increment the GitHub counter). iTunes API returned HTTP 403 so appstore.json was not updated; June 13 entry (iOS v1.1, 1 rating at 5★) is preserved. No outreach this cycle (last: June 12, within 7-day window). No specific Reddit/HN reply threads found in today's searches. Instagram recommended:true today — threshold of 3+ days since June 11 met. The multilingual angle opens a new untouched audience: French, Spanish, German, Japanese, and other non-English speakers who've assumed Mac dictation is English-only. Consider follow-up posts in r/learnfrench, r/español, or r/LearnJapanese next week with a genuine use-case angle. Hold the Show HN until Tuesday Jun 16."
 }
