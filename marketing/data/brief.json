@@ -1,55 +1,50 @@
 {
-  "date": "2026-06-14",
+  "date": "2026-06-15",
   "downloads": {
-    "total": 120,
-    "delta": 1,
-    "avg7": 8,
+    "total": 126,
+    "delta": 6,
+    "avg7": 7,
     "goal": 100
   },
   "creative": {
-    "concept": "Release-day launch for v1.14.1: language-aware model selection reframed as 'pick your language, done' — use-case tip card + myth-vs-fact debunker built around the multilingual angle",
+    "concept": "Before/after speed card: 60 WPM typing vs 130 WPM speaking — you speak 2× faster than you type. Visual proof that dictation isn't a gimmick, it's a throughput upgrade. Words come after the numbers.",
     "cards": [
       {
-        "file": "marketing/data/creative/2026-06-14/lang-tip.svg",
-        "title": "Use-case tip: Your language. Best model. Automatic.",
-        "use": "Primary visual for LinkedIn and X release-day posts; also works as a standalone Instagram static card."
-      },
-      {
-        "file": "marketing/data/creative/2026-06-14/myth-vs-fact.svg",
-        "title": "Myth vs Fact: 'On-device dictation only works in English'",
-        "use": "Secondary X post or alternative LinkedIn card; strong IG carousel opener on a future multilingual week."
+        "file": "marketing/data/creative/2026-06-15/speed-comparison.svg",
+        "title": "Before/After: 60 WPM typing vs 130 WPM dictating",
+        "use": "Primary visual for LinkedIn and X today. Two-panel layout: left column shows 60 WPM in muted grey, right shows 130 WPM in accent red. The contrast does the arguing. Also works as a standalone Instagram static post."
       }
     ],
     "carousel": [],
     "storyboard": {
-      "title": "Jot speaks your language — multilingual demo",
-      "duration_s": 18,
-      "use": "Instagram Reel / X video / GIF; showcases v1.14.1 language-aware model selection",
+      "title": "Jot in the dev workflow — dictate a code comment",
+      "duration_s": 16,
+      "use": "Instagram Reel / X video / GIF; developer-audience hook showing Jot inside VS Code without breaking flow",
       "shots": [
         {
           "t": "0–2s",
-          "visual": "Mac desktop, cursor blinking in empty Notes document",
-          "overlay": "Watch this."
+          "visual": "VS Code open, cursor sitting after a function signature on an empty comment line",
+          "overlay": "In the zone?"
         },
         {
-          "t": "2–7s",
-          "visual": "Jot Settings → Transcription → Language picker; user selects Français; model label auto-updates to Parakeet v3 multilingual",
-          "overlay": "Pick your language."
+          "t": "2–4s",
+          "visual": "Hand presses ⌥ Space; Dynamic Island-style pill appears under the Mac notch",
+          "overlay": "One hotkey."
         },
         {
-          "t": "7–12s",
-          "visual": "Hotkey press; Dynamic Island-style pill appears under Mac notch with pulsing waveform; user speaks French aloud",
-          "overlay": "Speak. Any language."
+          "t": "4–12s",
+          "visual": "Pill shows pulsing waveform; dev speaks: 'drains the async queue — only call this after the lock is released'",
+          "overlay": "Speak."
         },
         {
-          "t": "12–16s",
-          "visual": "French text appears accurately at cursor in Notes app",
-          "overlay": "On-device. Zero cloud."
+          "t": "12–15s",
+          "visual": "Comment text appears perfectly at the cursor in VS Code; pill vanishes; dev keeps typing",
+          "overlay": "Done. Never left your editor."
         },
         {
-          "t": "16–18s",
-          "visual": "Wide shot of Notes with French text; Jot logo lower right",
-          "overlay": "Free. jot-transcribe.com"
+          "t": "15–16s",
+          "visual": "Brief freeze on VS Code with jot-transcribe.com watermark lower-right",
+          "overlay": "Free. On-device."
         }
       ]
     }
@@ -57,47 +52,46 @@
   "drafts": [
     {
       "channel": "linkedin",
-      "text": "v1.14.1 shipped this morning.\n\nNew: pick your language, Jot selects the right on-device model automatically.\n\nEnglish on M2 Pro / 16 GB+ → Nemotron. French, Spanish, German and 3 more → Parakeet v3. Japanese → Parakeet JA. Other Macs → Parakeet v2.\n\nNo cloud. No API key. The right model for your language, running entirely on-device.\n\nFree, open source, Apple Silicon.\n\nWhat language do you work in?\n\n#macOS #indiedev #buildinpublic",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-14",
+      "text": "The average person types 60 words per minute. They speak 130.\n\nEvery time you switch to a keyboard to write something down, you're leaving half your throughput on the table.\n\nI built Jot to fix that. Press a hotkey, speak, text lands at your cursor in any app on your Mac. No cloud, no subscription, no account.\n\nWhat would you dictate if this was always one hotkey away?\n\n#macOS #productivity #indiedev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-15",
       "publish_window_pt": "7:00–8:30am PT",
       "recommended": true,
-      "note": "Attach lang-tip.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting."
+      "note": "Attach speed-comparison.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. The closing question is the engagement trigger — watch who self-identifies as a heavy writer in comments."
     },
     {
       "channel": "x",
-      "text": "v1.14.1: pick your language → Jot auto-selects the best on-device model. French, Spanish, Japanese + more. No cloud, no API key, no setup.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-14",
+      "text": "You type 60 WPM. You speak 130 WPM. Jot: press a hotkey, speak, text lands wherever your cursor is. On-device. No account. Free.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-15",
       "publish_window_pt": "6:30–9:00am PT",
       "recommended": true,
-      "note": "Attach lang-tip.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. myth-vs-fact.svg works as a second X post in the same morning window."
+      "note": "Attach speed-comparison.svg (export as PNG) — the two-column visual reads instantly as a before/after without reading a word. No link in post body — post the utm_url as the first reply immediately after posting. 131 characters."
     },
     {
       "channel": "reddit",
-      "text": "Jot v1.14.1 — now picks the best on-device model for your language (free, open source Mac dictation)\n\nJust shipped v1.14.1, which adds language-based model selection. Pick the language you speak — Jot automatically uses the best on-device model for it.\n\n- English on M2 Pro or 16 GB+ Mac: Nemotron (NVIDIA's high-accuracy on-device model)\n- English on all other Apple Silicon Macs: Parakeet v2\n- French, Spanish, German, Italian, Portuguese, Dutch: Parakeet v3 multilingual\n- Japanese: Parakeet JA\n\nNo downloads you didn't ask for — existing users keep their current model with no surprise changes.\n\nThe reason: until now, picking a model in Jot was a technical choice (which Parakeet variant is that again?). Language is something everyone understands. You speak French — you pick French. Done.\n\nJot is free, open source, Apple Silicon only, macOS 14+. No account, no subscription, no audio leaves your Mac.\n\n(I built this — disclosure)\n\nLink in comments.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-14",
+      "text": "I built a free, on-device dictation app for Mac — here's what surprised me after 60 days of using it myself\n\nI built Jot because I was tired of paying for cloud dictation apps. But the thing I didn't expect: switching from typing to dictating for most prose actually changes how much I write.\n\nYou type at ~60 WPM if you're good. You speak at ~130. That gap shows up fast when you're drafting emails, Slack messages, commit message descriptions, code comments, meeting notes.\n\nA few things I learned:\n\n**The friction ceiling matters.** If there's any setup, any window-switching, any copy-paste step, you won't use it. Jot pastes exactly where your cursor already is, in whatever app you're working in. No step zero.\n\n**On-device vs cloud is a different experience.** Not just privacy — latency. There's no round-trip. You press the hotkey, speak, and the pill disappears the moment you're done. On my M2 the text lands in under a second.\n\n**People underuse voice for structured writing.** Commit messages, code comments, PR descriptions — stuff where the words matter but the act of typing them is pure friction. Dictating these felt weird for three days, then felt obvious.\n\nJot is free, open source, Apple Silicon + macOS 14+. No account, no subscription, no audio leaves your Mac. (I built this — disclosure)\n\nLink in comments if you want to try it.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-15",
       "publish_window_pt": "6:00–8:00am PT",
-      "recommended": false,
-      "note": "Post to r/macapps (rotating: macapps Jun 11, MacOS Jun 12, productivity Jun 13, macapps Jun 14). First line is the post title, the rest is the body. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit post was June 11 (3 days ago); needs 4+ days — earliest is June 15. Answer every comment in the first hour."
+      "recommended": true,
+      "note": "Post to r/MacOS (rotating: r/macapps Jun 11, r/MacOS Jun 12, r/productivity Jun 13, r/macapps Jun 14, r/MacOS today). First line is the post title; the rest is the body. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:true — last recommended:true reddit post was June 11 (4 days ago); threshold of 4+ days met today. Answer every comment in the first hour."
     },
     {
       "channel": "instagram",
-      "text": "Jot now auto-selects the best on-device model for your language.\n\nFrench, Spanish, German, Japanese, and more — no setup, no cloud, no subscription. Free forever.\n\nLink in bio.\n\n#macOS #dictation #multilingual #speechtotext #opensource #macapps #indiedev #productivity",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-14",
+      "text": "You type 60 WPM. You speak 130. That gap is pure wasted output.\n\nJot: hotkey, speak, text at cursor. Free. On-device. Open source.\n\nLink in bio.\n\n#macOS #productivity #dictation #voicetotext #speechtotext #opensource #macapps #indiedev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-15",
       "publish_window_pt": "11am–1pm PT",
-      "recommended": true,
-      "visual": "lang-tip.svg as a static 1080×1080 post — the language→model table is visually clean and scannable as an Instagram card. Export as PNG.",
-      "note": "recommended:true — last recommended instagram post was June 11 (3 days ago); threshold of 3+ days met today (June 14). Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
-    },
-    {
-      "channel": "hn",
-      "text": "Show HN: Jot 1.14.1 – free on-device Mac dictation, auto-selects the best model for your language",
-      "utm_url": "https://jot-transcribe.com/?utm_source=hn&utm_medium=social&utm_campaign=daily-2026-06-14",
-      "publish_window_pt": "6:00–8:00am ET (Tue–Thu only — hold until Tue Jun 16)",
-      "recommended": true,
-      "note": "v1.14.1 shipped today (Jun 14), qualifying this for Show HN. DO NOT post on weekends — hold until Tue Jun 16 at 6–8am ET. First comment backstory to paste immediately after submission:\n\n'Jot is a free, open-source Mac dictation app I've been building since April. Press a hotkey, speak, and the transcript pastes wherever your cursor is in any app. Transcription runs entirely on the Apple Neural Engine — no internet, no account, no audio leaves the Mac.\n\nToday's 1.14.1 adds language-based model selection. The problem: users had to choose between Parakeet v2, Parakeet v3, Nemotron in settings — meaningful if you know the model landscape, confusing if you don't. Now you just pick the language you speak. Jot maps it to the best available model: English on M2 Pro/16GB+ gets Nemotron (higher accuracy), European languages get multilingual Parakeet v3, Japanese gets Parakeet JA. Existing users keep their current model with no surprise downloads.\n\nApple Silicon only, macOS 14+. Source: https://github.com/vineetu/JOT-Transcribe'\n\nNever solicit upvotes. The utm_url goes in the submission URL field."
+      "recommended": false,
+      "visual": "speed-comparison.svg as a static 1080×1080 post — the two-column 60 vs 130 layout reads as a punchy infographic. Export as PNG.",
+      "note": "recommended:false — last recommended:true instagram post was June 14 (1 day ago); threshold of 3+ days not met. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
     }
   ],
-  "opportunities": [],
+  "opportunities": [
+    {
+      "url": "https://alternativeto.net/software/wispr-flow/",
+      "title": "Wispr Flow Alternatives — AlternativeTo.net",
+      "why": "AlternativeTo.net appears in every web search for 'free mac dictation alternatives' and 'superwhisper alternatives'. Jot is not listed there. A free submission would put Jot in front of active comparison shoppers with zero ongoing effort. One-time action, not a reply.",
+      "suggested_reply": null
+    }
+  ],
   "outreach": [],
-  "notes": "v1.14.1 shipped at 4:21am UTC today with language-aware model selection — the strongest product angle since launch. Downloads climbed to 120 (+1 from yesterday's 119; 7-day avg 8/day; new release DMG has 1 download so far, Sparkle auto-updates don't increment the GitHub counter). iTunes API returned HTTP 403 so appstore.json was not updated; June 13 entry (iOS v1.1, 1 rating at 5★) is preserved. No outreach this cycle (last: June 12, within 7-day window). No specific Reddit/HN reply threads found in today's searches. Instagram recommended:true today — threshold of 3+ days since June 11 met. The multilingual angle opens a new untouched audience: French, Spanish, German, Japanese, and other non-English speakers who've assumed Mac dictation is English-only. Consider follow-up posts in r/learnfrench, r/español, or r/LearnJapanese next week with a genuine use-case angle. Hold the Show HN until Tuesday Jun 16."
+  "notes": "Downloads reached 126 (+6 from June 14's 120; the v1.14.1 DMG went from 1 to 7 downloads since yesterday — all other release asset counts not individually fetched due to MCP tool limitations, so total may be slightly higher). Avg7 is 7/day across 4 deltas. The Show HN for v1.14.1 is ready in yesterday's brief and goes up tomorrow Tue Jun 16 at 6–8am ET — no new HN draft needed today. Jot still absent from all Mac dictation roundups found in web searches. AlternativeTo.net is the most actionable zero-effort listing opportunity this week: Wispr Flow and Superwhisper both appear there prominently. iTunes API returned 403 again — appstore.json preserved at June 13 values. No specific Reddit thread URLs surfaced for opportunistic replies. Outreach skipped (last was June 12, within 7-day window). Tomorrow: after the Show HN posts, watch for HN comments and draft replies to any technical questions."
 }

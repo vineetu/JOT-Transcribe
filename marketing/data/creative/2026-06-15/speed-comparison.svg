@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Headline -->
+  <text x="540" y="108" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="800" fill="#f0f0f0" text-anchor="middle">You speak 2× faster</text>
+  <text x="540" y="178" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="800" fill="#f0f0f0" text-anchor="middle">than you type.</text>
+
+  <!-- Left panel: Typing -->
+  <rect x="58" y="218" width="452" height="620" fill="#161618" stroke="#2a2a2e" stroke-width="1.5" rx="18"/>
+  <text x="284" y="286" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#9a9a9f" text-anchor="middle" letter-spacing="3">TYPING</text>
+  <!-- Keyboard icon (simplified) -->
+  <rect x="224" y="306" width="120" height="68" fill="none" stroke="#2a2a2e" stroke-width="2" rx="8"/>
+  <rect x="234" y="316" width="20" height="12" fill="#2a2a2e" rx="2"/>
+  <rect x="260" y="316" width="20" height="12" fill="#2a2a2e" rx="2"/>
+  <rect x="286" y="316" width="20" height="12" fill="#2a2a2e" rx="2"/>
+  <rect x="312" y="316" width="20" height="12" fill="#2a2a2e" rx="2"/>
+  <rect x="244" y="334" width="14" height="12" fill="#2a2a2e" rx="2"/>
+  <rect x="264" y="334" width="14" height="12" fill="#2a2a2e" rx="2"/>
+  <rect x="284" y="334" width="14" height="12" fill="#2a2a2e" rx="2"/>
+  <rect x="304" y="334" width="14" height="12" fill="#2a2a2e" rx="2"/>
+  <rect x="248" y="352" width="72" height="12" fill="#2a2a2e" rx="2"/>
+  <!-- Number -->
+  <text x="284" y="590" font-family="Helvetica, Arial, sans-serif" font-size="220" font-weight="900" fill="#3a3a3e" text-anchor="middle">60</text>
+  <text x="284" y="660" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#9a9a9f" text-anchor="middle">WPM</text>
+  <text x="284" y="796" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">avg. person</text>
+
+  <!-- Right panel: Jot -->
+  <rect x="570" y="218" width="452" height="620" fill="#130808" stroke="#CE231D" stroke-width="1.5" rx="18"/>
+  <text x="796" y="286" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#CE231D" text-anchor="middle" letter-spacing="3">DICTATING WITH JOT</text>
+  <!-- Waveform icon -->
+  <line x1="706" y1="340" x2="706" y2="340" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="718" y1="320" x2="718" y2="360" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="730" y1="308" x2="730" y2="372" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="742" y1="326" x2="742" y2="354" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="754" y1="316" x2="754" y2="364" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="766" y1="300" x2="766" y2="380" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="778" y1="322" x2="778" y2="358" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="790" y1="332" x2="790" y2="348" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="802" y1="312" x2="802" y2="368" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="814" y1="326" x2="814" y2="354" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="826" y1="338" x2="826" y2="342" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="838" y1="320" x2="838" y2="360" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="850" y1="308" x2="850" y2="372" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="862" y1="330" x2="862" y2="350" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <line x1="874" y1="340" x2="874" y2="340" stroke="#CE231D" stroke-width="3" stroke-linecap="round"/>
+  <!-- Number -->
+  <text x="796" y="590" font-family="Helvetica, Arial, sans-serif" font-size="220" font-weight="900" fill="#CE231D" text-anchor="middle">130</text>
+  <text x="796" y="660" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#CE231D" text-anchor="middle">WPM</text>
+  <text x="796" y="796" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">avg. person</text>
+
+  <!-- Bottom CTA strip -->
+  <text x="540" y="896" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#f0f0f0" text-anchor="middle">Free. Open source. 100% on-device.</text>
+  <text x="540" y="944" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#9a9a9f" text-anchor="middle">Press a hotkey. Speak. Text at your cursor.</text>
+
+  <!-- Footer -->
+  <circle cx="390" cy="1020" r="7" fill="#CE231D"/>
+  <text x="408" y="1027" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
