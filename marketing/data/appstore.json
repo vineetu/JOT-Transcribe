@@ -1,14 +1,14 @@
 {
-  "date": "2026-06-13",
+  "date": "2026-06-16",
   "appId": "6766447330",
   "name": "Jot Transcribe",
   "url": "https://apps.apple.com/us/app/jot-transcribe/id6766447330",
   "version": "1.1",
   "price": "Free",
-  "ratingCount": 1,
+  "ratingCount": 3,
   "avgRating": 5,
   "releaseDate": "2026-05-21",
   "minimumOs": "26.0",
-  "installs": null,
-  "installsNote": "Real install counts require App Store Connect API credentials — not public. Ratings shown as the live public proxy."
+  "installs": 0,
+  "installsNote": "First-time downloads from App Store Connect Analytics (instance 2026-06-14)."
 }
