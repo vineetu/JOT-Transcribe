@@ -487,7 +487,7 @@ function PublishCalendar() {
 }
 
 // ── Durable channels ──
-const KIT = `https://github.com/${REPO}/blob/main/marketing/distribution/`;
+// Kits live locally in the repo's marketing/distribution/ (kept out of the public repo).
 const DURABLE = [
   { k: 'brew', label: 'Homebrew tap — brew install --cask jamyc3/jot/jot', doc: 'homebrew.md', note: 'live — add the one-liner to README + website' },
   { k: 'alt', label: 'AlternativeTo listing', doc: 'alternativeto.md', note: '20 min — copy is ready to paste' },
@@ -507,7 +507,7 @@ function Durable() {
       ${DURABLE.map(d => h`<li key=${d.k} style=${{ alignItems: 'center' }}>
         <input type="checkbox" style=${{ width: 'auto' }} checked=${!!done[d.k]} onChange=${() => toggle(d.k)} />
         <span style=${{ textDecoration: done[d.k] ? 'line-through' : 'none', color: done[d.k] ? 'var(--text-3)' : 'var(--text-2)' }}>
-          ${d.label} <a href=${KIT + d.doc} target="_blank" rel="noopener">kit →</a>
+          ${d.label}
           <span style=${{ color: 'var(--text-3)', fontSize: '0.75rem' }}> · ${d.note}</span>
         </span>
       </li>`)}
