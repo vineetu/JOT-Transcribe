@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="1230" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Slide indicator -->
+  <text x="540" y="138" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" letter-spacing="4" fill="#9a9a9f">01 / 05</text>
+
+  <!-- Red number badge -->
+  <circle cx="540" cy="290" r="72" fill="#CE231D"/>
+  <text x="540" y="316" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="68" font-weight="900" fill="#f0f0f0">1</text>
+
+  <!-- Heading -->
+  <text x="540" y="446" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="58" font-weight="700" fill="#f0f0f0">Git commit</text>
+  <text x="540" y="518" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="58" font-weight="700" fill="#f0f0f0">messages</text>
+
+  <!-- Terminal snippet box -->
+  <rect x="100" y="562" width="880" height="104" rx="10" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="136" y="606" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#9a9a9f">$ git commit -m "Fix auth token refresh"</text>
+  <text x="136" y="648" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#CE231D">[main 3b7a9c1] Fix auth token refresh</text>
+
+  <!-- Body -->
+  <text x="540" y="746" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f">Press the hotkey in Terminal.</text>
+  <text x="540" y="788" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f">Speak the message.</text>
+  <text x="540" y="830" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f">Never leave the terminal.</text>
+
+  <!-- Footer -->
+  <circle cx="424" cy="1250" r="6" fill="#CE231D"/>
+  <text x="440" y="1256" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

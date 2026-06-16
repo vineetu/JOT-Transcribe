@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Hook text — massive, centered vertically -->
+  <text x="540" y="476" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="96" font-weight="900" fill="#f0f0f0">Dictation</text>
+  <text x="540" y="586" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="96" font-weight="900" fill="#f0f0f0">isn't just</text>
+  <text x="540" y="696" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="96" font-weight="900" fill="#CE231D">for emails.</text>
+
+  <!-- Swipe prompt -->
+  <text x="540" y="854" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f">5 things you didn't know you could dictate  →</text>
+
+  <!-- Footer -->
+  <circle cx="424" cy="1304" r="6" fill="#CE231D"/>
+  <text x="440" y="1310" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
