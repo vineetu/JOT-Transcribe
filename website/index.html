@@ -270,7 +270,7 @@ footer a:hover { color: var(--text); }
     <div class="nav-right">
       <a href="#features" class="plain">Features</a>
       <a href="https://github.com/vineetu/JOT-Transcribe" class="plain">GitHub</a>
-      <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" class="btn-download"><span class="dot"></span>Download</a>
+      <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" class="btn-download">Download</a>
     </div>
   </div>
 </nav>
@@ -291,7 +291,7 @@ footer a:hover { color: var(--text); }
 
     <span class="cta-q">Where will you use it?</span>
     <div class="cta-row" id="ctaRow">
-      <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" class="cta" data-platform="mac"><span class="dot"></span>Download for Mac</a>
+      <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" class="cta" data-platform="mac">Download for Mac</a>
       <a href="https://apps.apple.com/us/app/jot-transcribe/id6766447330" class="cta alt" data-platform="ios">Get it for iPhone</a>
     </div>
     <span class="cta-note">Both free &middot; Mac: Apple Silicon, macOS 14+ &middot; iPhone: App Store</span>
@@ -374,7 +374,7 @@ footer a:hover { color: var(--text); }
     <h2 class="section-heading">Install in under a minute.</h2>
     <p class="sub">On the Mac, the setup wizard walks you through permissions, the model download, and a test dictation. On iPhone, it&rsquo;s a keyboard — enable it and dictate into any app.</p>
     <div class="cta-row">
-      <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" class="cta" data-platform="mac"><span class="dot"></span>Download for Mac</a>
+      <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg" class="cta" data-platform="mac">Download for Mac</a>
       <a href="https://apps.apple.com/us/app/jot-transcribe/id6766447330" class="cta alt" data-platform="ios">Get it for iPhone</a>
     </div>
     <span class="cta-note">Mac: Apple Silicon, macOS Sonoma 14.0+ &middot; iPhone: free on the App Store</span>
@@ -428,7 +428,6 @@ footer a:hover { color: var(--text); }
     if (!mac || !ios) return;
     ios.classList.remove('alt');
     mac.classList.add('alt');
-    var dot = mac.querySelector('.dot'); if (dot) ios.prepend(dot);
     row.prepend(ios);
   });
   var btn = document.getElementById('copyLink');
