@@ -1,50 +1,76 @@
 # Jot
 
-> Speak, and it's written.
+> **Speak, and it's written.**
 
-Native macOS dictation utility. Press a hotkey, speak, and text appears at your cursor. Core transcription stays on-device; optional AI features can use Apple Intelligence, local Ollama, or configured cloud providers. No Jot account, no telemetry.
+Free, on-device dictation for Mac and iPhone. Press a hotkey, talk, and your words appear at the cursor — in any app. Your voice never leaves your device.
 
-## Basic features
+<p>
+  <a href="https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg"><b>⬇ Download for Mac</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://apps.apple.com/us/app/jot-transcribe/id6766447330"><b> Get it for iPhone</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://jot-transcribe.com/">Website</a>
+</p>
 
-**Dictation** — Hit ⌥Space (or your custom shortcut), speak, and the transcript is pasted wherever your cursor is. Works in any app. Push-to-talk mode available too — hold the key, release to transcribe.
+Apple Silicon · macOS 14+ · iPhone on the App Store · MIT-licensed · No account · No telemetry
 
-**Transcript cleanup (optional)** — Opt in and every dictation gets a quick LLM pass to strip filler words ("um", "you know", false starts), fix grammar, and fix context-unambiguous homophones (brake/break, peace/piece) while preserving your tone and meaning. Off by default; falls back to the raw transcript on any failure; runs against your configured provider (including local Ollama and on-device Apple Intelligence).
+---
 
-**Ask Jot** — A dedicated in-app chatbot for Jot help. Streaming, grounded in Jot's docs, on-device via Apple Intelligence by default, with optional OpenAI / Anthropic / Gemini / Ollama routing when you enable it. Includes voice input and clickable in-app feature links.
+## Why Jot
 
-## Advanced features
+- **Private by default.** Transcription runs entirely on your Mac. No audio, no transcripts, nothing leaves the device — there's nothing to leak.
+- **Free, with no catch.** No subscription, no usage limits, no account. The leading dictation apps charge ~$144/year for this.
+- **Works everywhere.** One global hotkey types into Mail, Slack, your editor, a browser form — anywhere there's a cursor.
+- **Open source.** Read every line. MIT-licensed.
 
-**Rewrite** — Select text, trigger the Rewrite with Voice shortcut, and speak an instruction ("make this more formal", "fix the grammar", "translate to Spanish"). Jot sends the selected text + your voice instruction to an LLM, and the rewritten text replaces your selection. A fixed-prompt variant ("Rewrite") works without a voice instruction — select text, press the shortcut, done. Supports Apple Intelligence, OpenAI, Anthropic, Gemini, and Ollama. The Rewrite shared system prompt and the Cleanup prompt are both editable for power users, with a one-click reset.
+## What it does
 
-**Custom vocabulary** — Add proper nouns, acronyms, and domain-specific terms you use often. Jot biases the speech model toward them so product names and jargon get transcribed correctly instead of being guessed at. Edit in Settings → Transcription → Vocabulary.
+- **Dictation** — Press ⌥Space (or your own shortcut), speak, and the transcript is pasted at your cursor. Toggle or push-to-talk.
+- **Rewrite by voice** — Select text, speak an instruction ("make this friendlier", "translate to Spanish"), and it's rewritten in place.
+- **Optional cleanup** — Strip filler words and fix grammar while keeping how you actually talk. Off by default.
+- **Custom vocabulary** — Teach it the names, acronyms, and jargon you use so they're transcribed right.
+- **Searchable history** — Every dictation is saved on your Mac. Replay the audio, search everything you've said.
+- **Ask Jot** — A built-in help chat, grounded in Jot's docs, that answers in plain language.
+- **On iPhone, too** — A free dictation keyboard. Same rules: no account, no cloud, nothing leaves the device.
 
-## Setup
+## Privacy
 
-On first launch, a setup wizard walks you through granting three macOS permissions (Microphone, Input Monitoring, Accessibility), downloading the Parakeet speech model (~1.2 GB, one-time), and configuring shortcuts.
+Core dictation is 100% on-device. The only network calls Jot ever makes are the one-time speech-model download and a daily check for app updates.
 
-If permissions get into a bad state, go to **Settings → General → Reset Permissions** or **Run Setup Wizard** to redo the flow.
+Optional AI features (cleanup, Rewrite, Ask Jot) default to **Apple Intelligence**, which also runs on-device. If you'd rather use a cloud provider (OpenAI, Anthropic, Gemini) or local Ollama, that's strictly opt-in and uses your own key — Jot never ships one.
 
-To configure Rewrite or transcript cleanup, go to **Settings → AI**, pick your provider, and enter your API key (not needed for Ollama or Apple Intelligence). The cleanup toggle and prompt editor live in **Settings → AI** alongside the provider configuration. Ask Jot uses Apple Intelligence by default; if you switch to a non-Apple provider, you can opt that provider into Ask Jot from the same pane. Press **Test Connection** any time you want to verify reachability — it's a manual diagnostic, not a gate.
+## Install
 
-## Stack
+**Mac** — [Download the DMG](https://github.com/vineetu/JOT-Transcribe/releases/latest/download/Jot.dmg), open it, drag Jot to Applications. A first-run wizard walks you through the macOS permissions (Microphone, Input Monitoring, Accessibility) and a one-time speech-model download (~1.2 GB).
 
-Swift · SwiftUI + AppKit · FluidAudio (Parakeet TDT 0.6B v3 on Apple Neural Engine) · CoreAudio AUHAL · SwiftData · KeyboardShortcuts
+**iPhone** — [Get Jot Transcribe on the App Store](https://apps.apple.com/us/app/jot-transcribe/id6766447330).
 
 ## Requirements
 
-- Apple Silicon Mac
-- macOS Sonoma 14.0+
+- **Mac:** Apple Silicon, macOS Sonoma 14.0 or later
+- **iPhone:** see the App Store listing
 
-## References
+## Building from source
 
-- `docs/design-requirements.md` — product requirements
-- `docs/features.md` — feature inventory
+Jot is a single Xcode project, one executable target — no package manager step.
+
+```bash
+git clone https://github.com/vineetu/JOT-Transcribe.git
+cd JOT-Transcribe
+open Jot.xcodeproj   # build & run the "Jot" scheme (⌘R)
+```
+
+Code lives under `Sources/`, organized by layer (Recording, Transcription, Delivery, LLM, Settings, …). `Resources/` holds assets and the bundled help content. Start with [`CLAUDE.md`](CLAUDE.md) for the architecture map and [`docs/`](docs/) for the product requirements and feature inventory.
+
+## Built with
+
+- [FluidAudio](https://github.com/FluidInference/FluidAudio) running **Parakeet TDT 0.6B v3** on the Apple Neural Engine for transcription
+- Swift · SwiftUI + AppKit · CoreAudio · SwiftData · [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts)
+- Apple Intelligence (`FoundationModels`) for on-device AI
 
 ## Support
 
-Jot is MIT-licensed and free. No ads, no account, no tracking.
-
-If you'd like to give back, **every donation goes directly to charity via Every.org** — pick from a curated list of causes the project supports at [jot-transcribe.com/donations](https://jot-transcribe.com/donations). If you'd rather send something directly to the creator, you can also [buy me a coffee ☕](https://ko-fi.com/vineetsriram).
+Jot is free and always will be. If you'd like to give back, **every donation goes to charity via Every.org** — [jot-transcribe.com/donations](https://jot-transcribe.com/donations). To support the creator directly, [buy me a coffee ☕](https://ko-fi.com/vineetsriram).
 
 ## License
 
