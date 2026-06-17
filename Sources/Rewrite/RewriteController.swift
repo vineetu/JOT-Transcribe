@@ -53,6 +53,16 @@ final class RewriteController: ObservableObject {
     /// have a stable human-readable instruction column.
     static let fixedInstruction = "Rewrite this"
 
+    /// Resolver for the user-selected default Rewrite prompt. Read on every
+    /// TAP (`rewrite()`) so a default chosen in Settings → Prompts (or the
+    /// hold-picker's "Set as default") takes effect on the next tap without
+    /// restarting the graph. Returns `nil` when no default is selected OR
+    /// the selection no longer resolves — in which case the tap falls back
+    /// to today's behavior (the editable shared Rewrite prompt's
+    /// no-instruction fallback). Wired by composition after `PromptStore`
+    /// is built; `nil` (unwired test seams) means "always fall back".
+    var defaultRewriteResolver: (@MainActor () -> (body: String, title: String)?)?
+
     @Published private(set) var state: RewriteState = .idle {
         didSet { scheduleAutoRecoveryIfNeeded() }
     }
@@ -214,9 +224,21 @@ final class RewriteController: ObservableObject {
             break
         }
 
+        // Resolve the user-selected default prompt, if any. When set, the
+        // tap fires that prompt's body as a system-prompt override through
+        // the same path the hold-picker uses — so "tap = my default prompt"
+        // and "hold = pick a prompt" share one pipeline. When unset (or the
+        // selection no longer resolves) we fall through to today's behavior:
+        // no override, the editable shared Rewrite prompt governs.
+        let resolvedDefault = defaultRewriteResolver?()
+
         let generation = nextFixedGeneration()
         activeFixedFlowTask = Task { @MainActor [weak self] in
-            await self?.runFixed(generation: generation)
+            await self?.runFixed(
+                generation: generation,
+                systemPromptOverride: resolvedDefault?.body,
+                instructionLabel: resolvedDefault?.title
+            )
         }
     }
 

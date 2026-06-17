@@ -9,7 +9,6 @@ struct RewritePane: View {
     @Environment(\.helpNavigator) private var navigator
     @Environment(\.setSidebarSelection) private var setSidebarSelection
     @State private var apiKeyInput: String = ""
-    @State private var cleanupPromptExpanded: Bool = false
     @State private var testStatus: TestStatus = .idle
     @State private var isTesting = false
 
@@ -181,18 +180,26 @@ struct RewritePane: View {
                             helpAnchor: "cleanup"
                         )
                     }
-                    CustomizePromptDisclosure(
-                        label: "Customize prompt",
-                        text: $config.transformPrompt,
-                        defaultValue: TransformPrompt.default,
-                        info: .init(
-                            title: "Customize prompt",
-                            body: "System prompt for Clean up transcript with AI. Tells the LLM how to polish the raw transcript — filler removal, grammar, list detection — while preserving your voice.",
-                            helpAnchor: "cleanup-prompt"
-                        ),
-                        isExpanded: $cleanupPromptExpanded
-                    )
-                    .id("cleanup-prompt")
+                    // The editable cleanup prompt now lives in the unified
+                    // Prompts panel (Settings → Prompts → Cleanup) alongside
+                    // every other prompt. The toggle stays here because it
+                    // governs the automatic post-dictation behavior.
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Edit the cleanup prompt in the Prompts pane.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button {
+                            setSidebarSelection(.settings(.prompts))
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Open Prompts")
+                                Image(systemName: "arrow.right")
+                            }
+                        }
+                        .buttonStyle(.link)
+                    }
                 }
 
                 Section("Rewrite") {
@@ -317,9 +324,6 @@ struct RewritePane: View {
               Self.supportedSettingsAnchors.contains(anchor)
         else { return }
         withAnimation {
-            if anchor == "cleanup-prompt" {
-                cleanupPromptExpanded = true
-            }
             proxy.scrollTo(anchor, anchor: .top)
         }
         navigator.clearPendingSettingsFieldAnchor()
@@ -327,6 +331,5 @@ struct RewritePane: View {
 
     private static let supportedSettingsAnchors: Set<String> = [
         "ai-provider",
-        "cleanup-prompt",
     ]
 }

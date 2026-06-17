@@ -39,10 +39,19 @@ final class PromptStore: ObservableObject {
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "PromptStore")
     private let modelContext: ModelContext?
+    private let defaults: UserDefaults
     private static let userPromptProviderCompatibility = ["apple", "anthropic", "openai", "gemini", "ollama"]
 
-    init(modelContext: ModelContext? = nil, bundle: Bundle = .main) {
+    /// `@AppStorage`-equivalent key for the user-selected default Rewrite
+    /// prompt. Holds a prompt id — a bundled JSON id (e.g. `"improve-writing"`)
+    /// or a user prompt's UUID string. Empty / missing means "no default
+    /// selected": the TAP path falls back to the editable shared Rewrite
+    /// prompt (`LLMConfiguration.rewritePrompt`) so nothing breaks.
+    static let defaultPromptIDKey = "jot.prompts.defaultPromptID"
+
+    init(modelContext: ModelContext? = nil, bundle: Bundle = .main, defaults: UserDefaults = .standard) {
         self.modelContext = modelContext
+        self.defaults = defaults
         self.bundledPrompts = Self.loadBundled(from: bundle, log: log)
         self.userPrompts = Self.loadUserPrompts(from: modelContext, log: log)
         self.usage = Self.loadUsage(from: modelContext, log: log)
@@ -161,6 +170,13 @@ final class PromptStore: ObservableObject {
 
     func deleteUserPrompt(_ prompt: UserPrompt) {
         let promptID = prompt.promptID
+        // Drop a dangling default pointer so the TAP path falls back to
+        // the shared Rewrite prompt instead of silently resolving to nil
+        // forever. `defaultPrompt()` already tolerates a stale id, but
+        // clearing keeps the stored value honest.
+        if isDefault(promptID) {
+            clearDefault()
+        }
         guard let modelContext else {
             userPrompts.removeAll { $0.id == prompt.id }
             usage[promptID] = nil
@@ -251,6 +267,56 @@ final class PromptStore: ObservableObject {
 
     func isPinned(_ promptID: String) -> Bool {
         usage[promptID]?.pinned ?? false
+    }
+
+    // MARK: - Default (tap) prompt
+
+    /// The id of the user-selected default Rewrite prompt, or `nil` when
+    /// none is set. Stored in `UserDefaults` so it survives relaunches and
+    /// is readable from the rewrite-controller resolver without a SwiftData
+    /// fetch. Returns `nil` for an empty stored string.
+    var defaultPromptID: String? {
+        let raw = defaults.string(forKey: Self.defaultPromptIDKey) ?? ""
+        return raw.isEmpty ? nil : raw
+    }
+
+    /// True when `promptID` is the currently-selected default prompt.
+    func isDefault(_ promptID: String) -> Bool {
+        defaultPromptID == promptID
+    }
+
+    /// Promote `promptID` to the default Rewrite prompt fired by a TAP on
+    /// the Rewrite hotkey. Persists to `UserDefaults`.
+    func setDefault(_ promptID: String) {
+        defaults.set(promptID, forKey: Self.defaultPromptIDKey)
+        objectWillChange.send()
+    }
+
+    /// Clear the default selection — the TAP path reverts to the editable
+    /// shared Rewrite prompt (`LLMConfiguration.rewritePrompt`).
+    func clearDefault() {
+        defaults.removeObject(forKey: Self.defaultPromptIDKey)
+        objectWillChange.send()
+    }
+
+    /// Toggle `promptID` as the default: sets it when it isn't already the
+    /// default, clears the selection when it is. Drives the "Set as default"
+    /// affordances in the Prompts panel and picker.
+    func toggleDefault(_ promptID: String) {
+        if isDefault(promptID) {
+            clearDefault()
+        } else {
+            setDefault(promptID)
+        }
+    }
+
+    /// Resolve the selected default prompt to a concrete `Prompt`, or `nil`
+    /// when unset OR the stored id no longer resolves (e.g. the user deleted
+    /// the custom prompt that was the default). A `nil` return is the signal
+    /// for callers to fall back to today's behavior.
+    func defaultPrompt() -> Prompt? {
+        guard let id = defaultPromptID else { return nil }
+        return prompt(id: id)
     }
 
     func useCount(_ promptID: String) -> Int {

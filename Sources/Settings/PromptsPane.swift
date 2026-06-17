@@ -5,11 +5,15 @@ import SwiftUI
 
 struct PromptsPane: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.helpNavigator) private var navigator
     @EnvironmentObject private var llmConfiguration: LLMConfiguration
     @EnvironmentObject private var promptStore: PromptStore
     @State private var editorDraft: PromptEditorDraft?
     @State private var pendingDelete: PromptDeletion?
     @State private var searchText = ""
+    /// Expansion state for the relocated Cleanup prompt editor. Auto-opens
+    /// when a Settings → AI popover deep-links to `cleanup-prompt`.
+    @State private var cleanupPromptExpanded: Bool = false
     /// Drives the read-only inspection sheet for a tapped built-in prompt.
     @State private var inspectingBuiltIn: BuiltInPromptInspection?
     /// "How to use prompts" card collapsed state. Default open on a fresh
@@ -32,6 +36,7 @@ struct PromptsPane: View {
         Form {
             headerSection
             howToUseSection
+            cleanupSection
             searchSection
             if !pinnedPromptsFiltered().isEmpty {
                 pinnedSection
@@ -44,6 +49,10 @@ struct PromptsPane: View {
         .onAppear {
             _ = modelContext
             promptStore.reloadUserPrompts()
+            consumePendingCleanupAnchor()
+        }
+        .onChange(of: navigator.pendingSettingsFieldAnchor) { _, _ in
+            consumePendingCleanupAnchor()
         }
         .sheet(item: $editorDraft) { draft in
             PromptEditorSheet(
@@ -224,6 +233,52 @@ struct PromptsPane: View {
         }
     }
 
+    /// Relocated home for the editable Cleanup (Transform) prompt. The
+    /// automatic post-dictation cleanup itself stays wired in Settings → AI
+    /// (the `transformEnabled` toggle + the `transform()` pipeline, which
+    /// still reads `LLMConfiguration.transformPrompt`). Only the prompt-text
+    /// editing moved here so all prompt management lives in one panel. The
+    /// binding is the same `@AppStorage "jot.llm.transformPrompt"` key, so a
+    /// user's previously-customized cleanup text is read here unchanged — no
+    /// migration required.
+    private var cleanupSection: some View {
+        Section("Cleanup") {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Cleanup prompt")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("Built-in prompt that runs automatically on every dictation when Auto-correct is on (toggle in Settings → AI). Edits here apply to that cleanup pass.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 2)
+
+            CustomizePromptDisclosure(
+                label: "Customize prompt",
+                text: $llmConfiguration.transformPrompt,
+                defaultValue: TransformPrompt.default,
+                info: .init(
+                    title: "Cleanup prompt",
+                    body: "System prompt for Clean up transcript with AI. Tells the LLM how to polish the raw transcript — filler removal, grammar, list detection — while preserving your voice. The cleanup pass itself is toggled in Settings → AI.",
+                    helpAnchor: "cleanup-prompt"
+                ),
+                isExpanded: $cleanupPromptExpanded
+            )
+            .id("cleanup-prompt")
+        }
+    }
+
+    private func consumePendingCleanupAnchor() {
+        guard navigator.pendingSettingsFieldAnchor == "cleanup-prompt" else { return }
+        withAnimation {
+            cleanupPromptExpanded = true
+        }
+        navigator.clearPendingSettingsFieldAnchor()
+    }
+
     private var searchSection: some View {
         Section {
             // Why default style (not `.plain`) + `roundedBorder` ground:
@@ -275,7 +330,9 @@ struct PromptsPane: View {
                     UserPromptRow(
                         prompt: prompt,
                         isPinned: promptStore.isPinned(prompt.promptID),
+                        isDefault: promptStore.isDefault(prompt.promptID),
                         onTogglePin: { promptStore.togglePin(prompt.promptID) },
+                        onToggleDefault: { promptStore.toggleDefault(prompt.promptID) },
                         onEdit: { editorDraft = PromptEditorDraft(prompt: prompt) },
                         onDelete: { pendingDelete = PromptDeletion(prompt: prompt) }
                     )
@@ -441,10 +498,27 @@ private struct BuiltInPromptInspection: Identifiable {
     var id: String { prompt.id }
 }
 
+/// Small accent pill marking the prompt fired by a TAP on the Rewrite
+/// hotkey. Mirrors the system "badge" look used elsewhere in Settings.
+private struct DefaultPromptBadge: View {
+    var body: some View {
+        Text("Default")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(Color.accentColor.opacity(0.15))
+            )
+    }
+}
+
 private struct UserPromptRow: View {
     let prompt: UserPrompt
     let isPinned: Bool
+    let isDefault: Bool
     let onTogglePin: () -> Void
+    let onToggleDefault: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
     @State private var isHovered = false
@@ -452,9 +526,14 @@ private struct UserPromptRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(prompt.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(prompt.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                    if isDefault {
+                        DefaultPromptBadge()
+                    }
+                }
                 Text(previewText)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -462,6 +541,16 @@ private struct UserPromptRow: View {
             }
             Spacer(minLength: 12)
             HStack(spacing: 8) {
+                Button {
+                    onToggleDefault()
+                } label: {
+                    Image(systemName: isDefault ? "bolt.fill" : "bolt")
+                        .font(.system(size: 12))
+                        .foregroundStyle(isDefault ? Color.accentColor : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(isDefault ? "Clear default (tap reverts to the shared prompt)" : "Set as default — tap the Rewrite hotkey to fire this prompt")
+
                 Button {
                     onTogglePin()
                 } label: {
@@ -518,10 +607,15 @@ private struct BrowserRow: View {
             Button(action: onOpen) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(prompt.title)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text(prompt.title)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            if promptStore.isDefault(prompt.id) {
+                                DefaultPromptBadge()
+                            }
+                        }
                         Text(previewText)
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -532,6 +626,16 @@ private struct BrowserRow: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+
+            Button {
+                promptStore.toggleDefault(prompt.id)
+            } label: {
+                Image(systemName: promptStore.isDefault(prompt.id) ? "bolt.fill" : "bolt")
+                    .font(.system(size: 12))
+                    .foregroundStyle(promptStore.isDefault(prompt.id) ? Color.accentColor : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(promptStore.isDefault(prompt.id) ? "Clear default (tap reverts to the shared prompt)" : "Set as default — tap the Rewrite hotkey to fire this prompt")
 
             Button {
                 promptStore.togglePin(prompt.id)
@@ -607,6 +711,14 @@ private struct BuiltInPromptDetailSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { onDismiss() }
                 }
+                ToolbarItem {
+                    Button {
+                        promptStore.toggleDefault(prompt.id)
+                    } label: {
+                        Label(defaultTitle, systemImage: promptStore.isDefault(prompt.id) ? "bolt.fill" : "bolt")
+                    }
+                    .help(promptStore.isDefault(prompt.id) ? "Clear default" : "Set as the prompt fired by a tap on the Rewrite hotkey")
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         promptStore.togglePin(prompt.id)
@@ -625,6 +737,10 @@ private struct BuiltInPromptDetailSheet: View {
 
     private var pinTitle: String {
         promptStore.isPinned(prompt.id) ? "Unpin" : "Pin"
+    }
+
+    private var defaultTitle: String {
+        promptStore.isDefault(prompt.id) ? "Clear default" : "Set as default"
     }
 
     private func nonEmpty(_ value: String?) -> String? {

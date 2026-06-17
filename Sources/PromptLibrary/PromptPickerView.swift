@@ -199,6 +199,12 @@ struct PromptPickerView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 0)
+            if model.isDefault(row.prompt.id) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.accentColor)
+                    .help("Default — fired by a tap on the Rewrite hotkey")
+            }
             if model.isPinned(row.prompt.id) {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 10))
@@ -257,6 +263,7 @@ struct PromptPickerView: View {
         HStack(spacing: 14) {
             footerHint("⏎", "Apply")
             footerHint("⌘P", "Pin")
+            footerHint("⌘D", "Default")
             footerHint("⌥⏎", "Preview")
             footerHint("⎋", "Close")
             Spacer(minLength: 0)

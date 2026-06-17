@@ -66,6 +66,16 @@ final class PromptPickerController {
             onTogglePin: { [weak self] promptID in
                 self?.store.togglePin(promptID)
                 self?.viewModel?.reload()
+            },
+            onToggleDefault: { [weak self] promptID in
+                guard let self, let vm = self.viewModel else { return }
+                // Preserve the focused row across the reload so the user
+                // sees the "Default" marker land on the row they're on
+                // rather than jumping focus back to the top of the list.
+                let focused = vm.focusedPrompt?.id
+                self.store.toggleDefault(promptID)
+                vm.reload()
+                if let focused { vm.setFocus(rowID: focused) }
             }
         )
         self.viewModel = vm
@@ -107,7 +117,7 @@ final class PromptPickerController {
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             // virtual key codes — stable across keyboard layouts.
             // 125=down, 126=up, 36=return, 76=keypad-enter, 53=escape,
-            // 35=P, 13=W.
+            // 35=P, 13=W, 2=D.
             switch event.keyCode {
             case 125:
                 Task { @MainActor in vm.moveFocus(by: 1) }
@@ -129,6 +139,9 @@ final class PromptPickerController {
                 return nil
             case 35 where mods.contains(.command):
                 Task { @MainActor in vm.togglePinFocused() }
+                return nil
+            case 2 where mods.contains(.command):
+                Task { @MainActor in vm.toggleDefaultFocused() }
                 return nil
             case 13 where mods.contains(.command):
                 Task { @MainActor in vm.close() }
