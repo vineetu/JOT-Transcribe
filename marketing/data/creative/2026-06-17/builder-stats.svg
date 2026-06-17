@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1080" height="1080" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Top eyebrow -->
+  <text x="540" y="136" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="22" fill="#9a9a9f" letter-spacing="4">OPEN SOURCE · macOS · DICTATION</text>
+
+  <!-- Day counter -->
+  <text x="540" y="222" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="38" fill="#9a9a9f">Day 62.</text>
+
+  <!-- BIG number -->
+  <text x="540" y="508" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="296" font-weight="700" fill="#f0f0f0">142</text>
+
+  <!-- Downloads label -->
+  <text x="540" y="584" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="38" fill="#9a9a9f" letter-spacing="10">DOWNLOADS</text>
+
+  <!-- Divider -->
+  <line x1="160" y1="644" x2="920" y2="644" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Stat col 1: 27 releases -->
+  <text x="270" y="726" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="64" font-weight="700" fill="#f0f0f0">27</text>
+  <text x="270" y="768" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="24" fill="#9a9a9f">releases</text>
+
+  <!-- Stat col 2: $0 raised (accent red) -->
+  <text x="540" y="726" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="64" font-weight="700" fill="#CE231D">$0</text>
+  <text x="540" y="768" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="24" fill="#9a9a9f">raised</text>
+
+  <!-- Stat col 3: 1 builder -->
+  <text x="810" y="726" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="64" font-weight="700" fill="#f0f0f0">1</text>
+  <text x="810" y="768" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="24" fill="#9a9a9f">builder</text>
+
+  <!-- Tagline -->
+  <text x="540" y="876" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="34" fill="#f0f0f0">Free forever. No account. No telemetry.</text>
+
+  <!-- Footer -->
+  <circle cx="392" cy="970" r="7" fill="#CE231D"/>
+  <text x="410" y="977"
+        font-family="Helvetica, Arial, sans-serif"
+        font-size="28" fill="#9a9a9f">jot-transcribe.com</text>
+
+</svg>
