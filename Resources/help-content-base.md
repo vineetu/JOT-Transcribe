@@ -20,14 +20,14 @@ custom-vocabulary: experimental. Short list of names, acronyms, jargon Jot prefe
 ## Cleanup (optional, off default)
 LLM polishes transcript. Four passes: filler removal, grammar, number normalization, structure. Voice, word choice, register preserved — not style rewrite.
 cleanup-providers: Apple Intelligence on-device, private, free, no key. OpenAI, Anthropic, Gemini use user API key. Ollama runs locally. Wizard's AI step asks user to pick — no default.
-cleanup-prompt: default prompt in Settings → AI → Customize prompt. Reset-to-default available.
+cleanup-prompt: default prompt in Settings → Prompts → Cleanup. Reset-to-default available.
 Fallback: raw transcript delivered on LLM fail or 10s timeout. Raw+cleaned saved on success.
 
 ## Rewrite (optional)
 Rewrite selected text via global shortcut. Two variants, same pipeline.
 articulate-custom: Rewrite with Voice — select text, hotkey (default ⌥., Option+Period), speak instruction ("make formal", "translate Japanese", "bulleted list"), result replaces selection.
 articulate-fixed: Rewrite — select text, hotkey (default ⌥/, Option+Slash), fixed "Rewrite this" prompt. No voice step.
-Invariants every run: selection is text not instruction, return only rewrite, don't refuse on quality. Edit at Settings → AI → Customize prompt.
+Invariants every run: selection is text not instruction, return only rewrite, don't refuse on quality. Edit at Settings → Prompts.
 articulate-intent-classifier: routes instruction into four branches — voice-preserving, structural, translation, code. User instruction wins; branch picks default shape.
 Both use configured AI provider (same as Cleanup).
 
