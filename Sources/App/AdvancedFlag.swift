@@ -14,8 +14,15 @@ import Foundation
 ///   * Existing users (wizard already complete) get Advanced ON — they
 ///     see no change to their sidebar / shortcuts / Ask Jot routing.
 ///   * Fresh installs (wizard not yet run) get Advanced OFF — slim
-///     mode by default. Completing the Setup Wizard separately auto-
-///     flips Advanced ON via `FirstRunState.markComplete()`.
+///     mode by default, and they STAY off after completing the Setup
+///     Wizard. New installs only get Advanced ON by opting in via
+///     Settings → General. (`FirstRunState.markComplete()` deliberately
+///     does not flip this flag.)
+///
+/// IMPORTANT: the existing-user seed above is the grandfather/upgrade
+/// migration — it must be preserved so longtime users upgrading from a
+/// pre-advanced-flag build keep full features. Only the new-install
+/// wizard-completion flip was removed.
 ///
 /// The sentinel `jot.advanced.migrated` ensures we only seed once. After
 /// the first launch, the user's explicit toggle choice (any subsequent
