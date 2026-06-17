@@ -113,7 +113,7 @@ struct ShortcutRowView: View {
         Menu {
             Picker("Trigger type", selection: triggerTypeBinding(for: action)) {
                 Text("Chord (modifiers + key)").tag(SingleKey.TriggerType.chord)
-                Text("Single key (Caps Lock, Fn, side modifier)").tag(SingleKey.TriggerType.singleKey)
+                Text("Single key (Caps Lock, Fn, side modifier, F1–F20)").tag(SingleKey.TriggerType.singleKey)
             }
         } label: {
             Image(systemName: "slider.horizontal.3")

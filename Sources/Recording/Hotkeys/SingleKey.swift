@@ -28,6 +28,12 @@ enum SingleKey: String, CaseIterable, Identifiable, Sendable {
     case rightCommand
     case rightShift
     case rightControl
+    // Function keys (F1–F20). Unlike the modifier keys above, these are
+    // ordinary keys that arrive as `keyDown`/`keyUp` (not `flagsChanged`),
+    // so they're detected via a keyCode-matched key-event path rather than
+    // a modifier-flag transition. See `isFunctionKey` and `SingleKeyHotkey`.
+    case f1, f2, f3, f4, f5, f6, f7, f8, f9, f10
+    case f11, f12, f13, f14, f15, f16, f17, f18, f19, f20
 
     var id: String { rawValue }
 
@@ -40,6 +46,9 @@ enum SingleKey: String, CaseIterable, Identifiable, Sendable {
         case .rightCommand:  return "Right Command (⌘)"
         case .rightShift:    return "Right Shift (⇧)"
         case .rightControl:  return "Right Control (⌃)"
+        case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10,
+             .f11, .f12, .f13, .f14, .f15, .f16, .f17, .f18, .f19, .f20:
+            return rawValue.uppercased()
         }
     }
 
@@ -53,6 +62,9 @@ enum SingleKey: String, CaseIterable, Identifiable, Sendable {
         case .rightCommand:  return "⌘"
         case .rightShift:    return "⇧"
         case .rightControl:  return "⌃"
+        case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10,
+             .f11, .f12, .f13, .f14, .f15, .f16, .f17, .f18, .f19, .f20:
+            return rawValue.uppercased()
         }
     }
 
@@ -70,6 +82,40 @@ enum SingleKey: String, CaseIterable, Identifiable, Sendable {
         case .rightCommand:  return [0x36] // kVK_RightCommand
         case .rightShift:    return [0x3C] // kVK_RightShift
         case .rightControl:  return [0x3E] // kVK_RightControl
+        case .f1:            return [0x7A] // kVK_F1
+        case .f2:            return [0x78] // kVK_F2
+        case .f3:            return [0x63] // kVK_F3
+        case .f4:            return [0x76] // kVK_F4
+        case .f5:            return [0x60] // kVK_F5
+        case .f6:            return [0x61] // kVK_F6
+        case .f7:            return [0x62] // kVK_F7
+        case .f8:            return [0x64] // kVK_F8
+        case .f9:            return [0x65] // kVK_F9
+        case .f10:           return [0x6D] // kVK_F10
+        case .f11:           return [0x67] // kVK_F11
+        case .f12:           return [0x6F] // kVK_F12
+        case .f13:           return [0x69] // kVK_F13
+        case .f14:           return [0x6B] // kVK_F14
+        case .f15:           return [0x71] // kVK_F15
+        case .f16:           return [0x6A] // kVK_F16
+        case .f17:           return [0x40] // kVK_F17
+        case .f18:           return [0x4F] // kVK_F18
+        case .f19:           return [0x50] // kVK_F19
+        case .f20:           return [0x5A] // kVK_F20
+        }
+    }
+
+    /// Function keys arrive as ordinary `keyDown`/`keyUp` events (not
+    /// `flagsChanged`), so `SingleKeyHotkey` routes them through a
+    /// keyCode-matched key-event path instead of the modifier-flag
+    /// transition path used by Caps Lock / Fn / the side modifiers.
+    var isFunctionKey: Bool {
+        switch self {
+        case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10,
+             .f11, .f12, .f13, .f14, .f15, .f16, .f17, .f18, .f19, .f20:
+            return true
+        default:
+            return false
         }
     }
 
@@ -85,6 +131,11 @@ enum SingleKey: String, CaseIterable, Identifiable, Sendable {
         case .rightCommand:  return .command
         case .rightShift:    return .shift
         case .rightControl:  return .control
+        // Function keys are not modifiers — they have no `modifierFlags`
+        // bit. Detection happens via keyDown/keyUp keyCode matching.
+        case .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10,
+             .f11, .f12, .f13, .f14, .f15, .f16, .f17, .f18, .f19, .f20:
+            return nil
         }
     }
 
@@ -227,11 +278,11 @@ extension SingleKey {
         /// reserved for Toggle Recording — the headline single-key feature
         /// — and excluded everywhere else. For the other actions, all
         /// momentary modifiers (Fn, side-specific, and side-agnostic) are
-        /// offered.
+        /// offered. Function keys (F1–F20) are offered for every action.
         var pickerCases: [SingleKey] {
             self == .toggleRecording
-                ? [.capsLock] + SingleKey.modifierCases
-                : SingleKey.modifierCases
+                ? [.capsLock] + SingleKey.modifierCases + SingleKey.functionKeyCases
+                : SingleKey.modifierCases + SingleKey.functionKeyCases
         }
     }
 
@@ -240,10 +291,17 @@ extension SingleKey {
         case hold, toggle, tap
     }
 
-    /// All non-Caps-Lock options, ordered for the picker.
+    /// All non-Caps-Lock modifier options, ordered for the picker.
     static let modifierCases: [SingleKey] = [
         .fn,
         .rightOption, .rightCommand, .rightShift, .rightControl,
+    ]
+
+    /// Function-key options (F1–F20), ordered for the picker. Grouped
+    /// under a "Function keys" header in the single-key menu.
+    static let functionKeyCases: [SingleKey] = [
+        .f1, .f2, .f3, .f4, .f5, .f6, .f7, .f8, .f9, .f10,
+        .f11, .f12, .f13, .f14, .f15, .f16, .f17, .f18, .f19, .f20,
     ]
 }
 
