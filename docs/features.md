@@ -127,7 +127,7 @@ All shortcuts are bindable in the Shortcuts pane. Defaults and bindings:
 - **Rewrite with Voice** — voice-driven rewrite of selected text; default `⌥.`.
 - **Rewrite** — applies a fixed `"Rewrite this"` prompt to the selected text (no voice step); default `⌥/`.
 
-Shortcut bindings require a modifier (⌘, ⌥, ⌃, ⇧) — macOS does not permit global hotkeys bound to a bare key. The Shortcuts pane and the Help tab both surface this. Conflicting bindings are handled gracefully (no two commands silently share a key).
+Each action can use either a **chord** (one or more modifiers + a key — macOS does not permit Carbon global hotkeys bound to a bare key) or a **single key**. The single-key picker offers Caps Lock, Fn / Globe, the right-side modifiers, and any function key **F1–F20**, detected via NSEvent (requires Accessibility permission). For function keys, F1–F12 only reach Jot when macOS's "Use F1, F2, etc. as standard function keys" setting is on (otherwise hold Fn); F13–F20 are unaffected but aren't on every keyboard. The Shortcuts pane and the Help tab both surface this. Conflicting bindings are handled gracefully (no two commands silently share a key).
 
 **Related:** [Recording & Dictation](#recording--dictation), [Rewrite](#rewrite-optional), [Output — Paste & Clipboard](#output--paste--clipboard), [Settings → Shortcuts](#shortcuts), [Help](#help).
 
@@ -252,7 +252,8 @@ A browser + editor for the prompt catalog used by Rewrite. See [Prompt Library](
 - Error chime
 
 ### Shortcuts
-- Editable bindings for Toggle Recording, Push to Talk, Paste Last Transcription, Rewrite, Rewrite with Voice. Cancel Recording (Esc) is hardcoded, not configurable, and not shown in the Shortcuts list — a footnote tells the user that Esc is the cancel key and that macOS global hotkeys must include at least one modifier.
+- Editable bindings for Toggle Recording, Push to Talk, Paste Last Transcription, Rewrite, Rewrite with Voice. Cancel Recording (Esc) is hardcoded, not configurable, and not shown in the Shortcuts list — a footnote tells the user that Esc is the cancel key and that chord global hotkeys must include at least one modifier.
+- Each row can switch between a chord binding and a **single-key** binding (Caps Lock, Fn, a right-side modifier, or a function key **F1–F20**, grouped under a "Function keys" header in the picker). The row's info popover notes that F1–F12 only register as function keys when macOS's "Use F1, F2, etc. as standard function keys" setting is on (otherwise hold Fn), and that F13–F20 aren't present on every keyboard.
 - **Push to Talk** and **Paste Last Transcription** rows are hidden when the Advanced toggle is off. Their bindings still fire — only the configuration UI is gated.
 
 **Related:** [Global Shortcuts](#global-shortcuts), [Recording & Dictation](#recording--dictation), [Rewrite](#rewrite-optional), [Output — Paste & Clipboard](#output--paste--clipboard).

@@ -72,23 +72,29 @@ final class SingleKeyHotkey {
         }
         toggleInternal = false
 
-        // Tear down + rebuild monitors only when transitioning to/from
-        // `.none`. If we're swapping between two real keys, the existing
-        // monitors stay live — they're keyCode-filtered in `handle(_:)`.
+        // Tear down on `.none`. Otherwise pick the event mask for this
+        // key's family: modifier keys ride `flagsChanged`, function keys
+        // ride `keyDown`/`keyUp`. Because the mask differs per family we
+        // always rebuild the monitors on `bind()` (cheap; the old ones
+        // are removed first) so swapping a modifier binding for a
+        // function-key binding installs the correct mask.
         if key == .none {
             removeMonitors()
             return
         }
-        if globalMonitor == nil {
-            globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-                Task { @MainActor [weak self] in self?.handle(event) }
-            }
+
+        removeMonitors()
+
+        let mask: NSEvent.EventTypeMask = key.isFunctionKey
+            ? [.keyDown, .keyUp]
+            : .flagsChanged
+
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
+            Task { @MainActor [weak self] in self?.handle(event) }
         }
-        if localMonitor == nil {
-            localMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-                Task { @MainActor [weak self] in self?.handle(event) }
-                return event
-            }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            Task { @MainActor [weak self] in self?.handle(event) }
+            return event
         }
     }
 
@@ -106,13 +112,29 @@ final class SingleKeyHotkey {
     }
 
     private func handle(_ event: NSEvent) {
-        guard let modifierFlag = activeKey.modifierFlag,
-              activeKey.keyCodes.contains(event.keyCode)
-        else { return }
-        let isActive = event.modifierFlags.contains(modifierFlag)
-        guard isActive != lastWasActive else { return }
-        let edgeIsOn = isActive
-        lastWasActive = isActive
+        guard activeKey.keyCodes.contains(event.keyCode) else { return }
+
+        let edgeIsOn: Bool
+        if activeKey.isFunctionKey {
+            // Ordinary key path: derive the edge from the event type.
+            // `keyDown` auto-repeats while the key is held, so dedupe
+            // against `lastWasActive` to act only on true ON/OFF edges.
+            switch event.type {
+            case .keyDown: edgeIsOn = true
+            case .keyUp:   edgeIsOn = false
+            default:       return
+            }
+            guard edgeIsOn != lastWasActive else { return }
+            lastWasActive = edgeIsOn
+        } else {
+            // Modifier-flag path: edge is the ON/OFF transition of the
+            // bound modifier's flag bit.
+            guard let modifierFlag = activeKey.modifierFlag else { return }
+            let isActive = event.modifierFlags.contains(modifierFlag)
+            guard isActive != lastWasActive else { return }
+            edgeIsOn = isActive
+            lastWasActive = isActive
+        }
 
         switch activeMode {
         case .hold:

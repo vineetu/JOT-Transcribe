@@ -23,24 +23,48 @@ struct ShortcutSingleKeyChip: View {
         Menu {
             Button("None") { selection = .none }
             Divider()
-            ForEach(action.pickerCases) { key in
-                let conflict = conflicts[key]
-                Button {
-                    selection = key
-                } label: {
-                    if let conflict {
-                        Text("\(key.displayName) — used by \(conflict.displayName)")
-                    } else {
-                        Text(key.displayName)
+            // Modifier-key options (Caps Lock / Fn / side modifiers).
+            ForEach(modifierPickerCases) { key in
+                keyButton(for: key)
+            }
+            // Function keys grouped under their own labeled section.
+            if !functionPickerCases.isEmpty {
+                Section("Function keys") {
+                    ForEach(functionPickerCases) { key in
+                        keyButton(for: key)
                     }
                 }
-                .disabled(conflict != nil && selection != key)
             }
         } label: {
             chipLabel
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+    }
+
+    /// The action's non-function-key picker options, in declared order.
+    private var modifierPickerCases: [SingleKey] {
+        action.pickerCases.filter { !$0.isFunctionKey }
+    }
+
+    /// The action's function-key picker options (F1–F20).
+    private var functionPickerCases: [SingleKey] {
+        action.pickerCases.filter { $0.isFunctionKey }
+    }
+
+    @ViewBuilder
+    private func keyButton(for key: SingleKey) -> some View {
+        let conflict = conflicts[key]
+        Button {
+            selection = key
+        } label: {
+            if let conflict {
+                Text("\(key.displayName) — used by \(conflict.displayName)")
+            } else {
+                Text(key.displayName)
+            }
+        }
+        .disabled(conflict != nil && selection != key)
     }
 
     @ViewBuilder
