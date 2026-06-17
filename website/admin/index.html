@@ -173,6 +173,16 @@ table.shots tr:last-child td { border-bottom: none; }
 table.shots td.t { font-family: var(--mono); color: var(--accent); white-space: nowrap; }
 table.shots td.ov { color: var(--text-2); font-style: italic; white-space: nowrap; }
 
+/* Daily boost */
+.boost { background: linear-gradient(135deg, #fff 0%, #fbf7f3 100%); border: 1px solid var(--border); }
+.boost .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.boost .head h2 { margin-bottom: 0; }
+.boost .chip { display: inline-block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--border); border-radius: 999px; padding: 3px 11px; background: var(--panel-2); }
+.boost .post { font-size: 1.02rem; line-height: 1.6; white-space: pre-wrap; color: var(--text); padding: 14px 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; min-height: 90px; }
+.boost .meta { font-size: 0.74rem; color: var(--text-3); margin-top: 8px; }
+.boost .refresh { font-size: 0.9rem; font-weight: 700; }
+.boost .refresh .ico { font-size: 1.05rem; }
+
 .err { color: #c0392b; font-size: 0.82rem; }
 
 /* Starter pack */
@@ -241,10 +251,29 @@ function useMarketing() {
   const [data, setData] = useState({ loading: true });
   useEffect(() => {
     const get = f => fetch(RAW + f, { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
-    Promise.all([get('snapshots.json'), get('brief.json'), get('starter-pack.json'), get('appstore.json')])
-      .then(([snaps, brief, starter, appstore]) => setData({ loading: false, snaps, brief, starter, appstore }));
+    const getText = f => fetch(RAW + f, { cache: 'no-store' }).then(r => r.ok ? r.text() : '').catch(() => '');
+    Promise.all([get('snapshots.json'), get('brief.json'), get('starter-pack.json'), get('appstore.json'), getText('brief-history.jsonl')])
+      .then(([snaps, brief, starter, appstore, historyText]) => {
+        const history = (historyText || '').trim().split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        setData({ loading: false, snaps, brief, starter, appstore, history });
+      });
   }, []);
   return data;
+}
+
+// Build the rotating pool of every post the agent has ever written (newest first, deduped).
+function boostPool(m) {
+  const out = [], seen = new Set();
+  const add = (d, date) => {
+    if (!d || !d.text) return;
+    const key = d.text.trim();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ ...d, date: d.date || date });
+  };
+  (m.brief?.drafts || []).forEach(d => add(d, m.brief?.date));
+  (m.history || []).slice().reverse().forEach(b => (b.drafts || []).forEach(d => add(d, b.date)));
+  return out;
 }
 
 function paceFrom(snaps) {
@@ -401,6 +430,56 @@ function StarterPack({ m }) {
       ${it.attach && it.attach !== 'storyboard' && h`<button class="btn ghost" onClick=${() => downloadPng(it.attach)}>PNG</button>`}
       ${CHANNELS[it.channel] && h`<a class="btn" href=${CHANNELS[it.channel].share(`${SITE}?utm_source=${it.channel}&utm_medium=social&utm_campaign=starter-${it.id}`, it.text)} target="_blank" rel="noopener">Open →</a>`}
     </div>`)}
+  </div>`;
+}
+
+// ── Daily boost (refresher) ──
+function DailyBoost({ m }) {
+  const pool = useMemo(() => boostPool(m), [m.loading]);
+  const [seen, setSeen] = useState(() => new Set(JSON.parse(localStorage.getItem('jot-boost-seen') || '[]')));
+  const [cur, setCur] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const keyOf = p => (p ? p.text.trim() : '');
+  const persist = s => { setSeen(new Set(s)); localStorage.setItem('jot-boost-seen', JSON.stringify([...s])); };
+
+  const pick = (prevSeen) => {
+    if (!pool.length) return;
+    let s = prevSeen || seen;
+    let fresh = pool.filter(p => !s.has(keyOf(p)));
+    if (!fresh.length) { s = new Set(); fresh = pool; }          // cycled through all — start over
+    const next = fresh[Math.floor((pool.length * 9301 + fresh.length * 49297 + (cur ? cur.text.length : 7)) % fresh.length)];
+    const ns = new Set(s); ns.add(keyOf(next)); persist(ns);
+    setCur(next);
+  };
+
+  // show one automatically on first load
+  useEffect(() => { if (!cur && pool.length) pick(); }, [pool.length]);
+
+  if (m.loading) return h`<div class="panel boost"><h2><span class="dot"></span>Daily boost</h2><div class="loading">Loading…</div></div>`;
+  if (!pool.length) return h`<div class="panel boost"><h2><span class="dot"></span>Daily boost</h2><div class="hint" style=${{ marginTop: 0 }}>No posts in the pool yet — the agent fills this every morning.</div></div>`;
+
+  const unseen = pool.filter(p => !seen.has(keyOf(p))).length;
+  const copy = () => cur && navigator.clipboard.writeText(cur.text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+
+  return h`<div class="panel boost">
+    <div class="head">
+      <h2><span class="dot"></span>Daily boost</h2>
+      <button class="btn refresh" onClick=${() => pick()}><span class="ico">↻</span> Give me a fresh one</button>
+    </div>
+    ${cur && h`<div>
+      <div style=${{ marginBottom: '8px' }}>
+        <span class="chip">${CHANNELS[cur.channel]?.name || cur.channel}</span>
+      </div>
+      <div class="post">${cur.text}</div>
+      <div class="meta">From ${cur.date || 'the pool'} · ${cur.publish_window_pt ? 'best ' + cur.publish_window_pt : ''}</div>
+      <div class="btn-row">
+        <button class="btn" onClick=${() => loadDraft(cur)}>Load into composer →</button>
+        <button class="btn ghost" onClick=${copy}>${copied ? 'Copied ✓' : 'Copy'}</button>
+        ${CHANNELS[cur.channel] && h`<a class="btn ghost" href=${CHANNELS[cur.channel].share(cur.utm_url || (SITE + '?utm_source=' + cur.channel), cur.text)} target="_blank" rel="noopener">Open in ${CHANNELS[cur.channel].name} →</a>`}
+      </div>
+      <div class="hint">${pool.length} posts in the pool · ${unseen} you haven't seen yet${unseen === 0 ? ' — you’ve seen them all, now recycling' : ''}. Hit ↻ for a different one any time.</div>
+    </div>`}
   </div>`;
 }
 
@@ -814,6 +893,8 @@ function App() {
     <div class="section-sub">${TABS[tab].sub}</div>
 
     ${tab === 'today' && h`<div>
+      <${DailyBoost} m=${mk} />
+      <div class="spacer"></div>
       <${StarterPack} m=${mk} />
       <div class="cols">
         <div>
