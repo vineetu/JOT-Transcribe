@@ -24,19 +24,22 @@ final class PromptPickerViewModel: ObservableObject {
     private let onApply: (Prompt) -> Void
     private let onClose: () -> Void
     private let onTogglePin: (String) -> Void
+    private let onToggleDefault: (String) -> Void
 
     init(
         store: PromptStore,
         activeProvider: String?,
         onApply: @escaping (Prompt) -> Void,
         onClose: @escaping () -> Void,
-        onTogglePin: @escaping (String) -> Void
+        onTogglePin: @escaping (String) -> Void,
+        onToggleDefault: @escaping (String) -> Void
     ) {
         self.store = store
         self.activeProvider = activeProvider
         self.onApply = onApply
         self.onClose = onClose
         self.onTogglePin = onTogglePin
+        self.onToggleDefault = onToggleDefault
         reload()
     }
 
@@ -86,6 +89,10 @@ final class PromptPickerViewModel: ObservableObject {
         store.isPinned(promptID)
     }
 
+    func isDefault(_ promptID: String) -> Bool {
+        store.isDefault(promptID)
+    }
+
     // MARK: - Actions
 
     func moveFocus(by delta: Int) {
@@ -114,6 +121,14 @@ final class PromptPickerViewModel: ObservableObject {
     func togglePinFocused() {
         guard let prompt = focusedPrompt else { return }
         onTogglePin(prompt.id)
+    }
+
+    /// Promote the focused prompt to the TAP default (or clear it if it
+    /// already is). Drives the picker's ⌘D action so the user can make the
+    /// prompt they're picking the new tap-default in one keystroke.
+    func toggleDefaultFocused() {
+        guard let prompt = focusedPrompt else { return }
+        onToggleDefault(prompt.id)
     }
 
     func togglePreview() {

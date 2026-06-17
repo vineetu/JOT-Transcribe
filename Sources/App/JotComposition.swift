@@ -584,6 +584,16 @@ enum JotComposition {
             promptPicker?.open()
         }
 
+        // Wire the TAP-default resolver: a TAP on the Rewrite hotkey fires
+        // the user-selected default prompt (Settings → Prompts or the
+        // picker's "Set as default") through the fixed-prompt path. Returns
+        // nil when no default is set / the selection no longer resolves, so
+        // the tap falls back to the editable shared Rewrite prompt.
+        rewriteController.defaultRewriteResolver = { [weak promptStore] in
+            guard let prompt = promptStore?.defaultPrompt() else { return nil }
+            return (body: prompt.body, title: prompt.title)
+        }
+
         // Speaker Labels piece A: lifecycle for the Sortformer diarization
         // model. Defaults to `.notSetUp` on existing installs — the
         // Settings pane CTA + post-stop labeling are gated on identities

@@ -437,7 +437,7 @@ enum InfoCircleAnchorRegistry {
         ("TranscriptionPane.autoPaste",                   "dictation"),
         ("TranscriptionPane.pressReturnAfterPasting",     "dictation"),
         ("RewritePane.cleanUpTranscriptWithAI",        "cleanup"),
-        ("RewritePane.customizePrompt",                "cleanup-prompt"),
+        ("PromptsPane.cleanupPrompt",                  "cleanup-prompt"),
         ("TranscriptionPane.keepLastTranscriptOnClipboard", "dictation"),
 
         // RewritePane
