@@ -52,6 +52,8 @@ enum ResetActions {
 
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
             // Relaunch captures setupComplete=false, so single-or-chord migration stays gated off.
+            // Clearing the domain also drops the Advanced flag, so after a soft reset it stays OFF
+            // (fresh-install behavior) — consistent with the new default-off intent for new installs.
 
             if preserveModelChoice {
                 if let id = preservedModelID {

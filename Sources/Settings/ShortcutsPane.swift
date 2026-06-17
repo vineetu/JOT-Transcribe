@@ -106,7 +106,7 @@ struct ShortcutsPane: View {
             Spacer(minLength: 8)
             InfoPopoverButton(
                 title: "Global shortcuts",
-                body: "Single-key bindings (Caps Lock, Fn, side modifiers, or a function key F1–F20) listen via NSEvent and require Accessibility permission. Chord bindings go through Carbon's hot-key API and must include at least one modifier (⌘ ⌥ ⌃ ⇧). Each row's overflow menu (the small sliders icon) lets you switch between the two.\n\nNote on function keys: F1–F12 only reach Jot as function keys when “Use F1, F2, etc. as standard function keys” is turned on in System Settings → Keyboard. With that setting off, hold Fn while pressing the key. F13–F20 always work but aren't present on every keyboard.",
+                body: "Single-key bindings (Caps Lock, Fn, side modifiers, or a function key F1–F20) listen via NSEvent and require Accessibility permission. Chord bindings go through Carbon's hot-key API and must include at least one modifier (⌘ ⌥ ⌃ ⇧). Each row's overflow menu (the small sliders icon) lets you switch between the two.\n\nNote on function keys: Jot observes these keys but can't suppress them. Function keys F1–F12 still trigger their normal app or system action in addition to Jot. F13–F20 (on keyboards that have them) are free of conflicts and recommended.",
                 helpAnchor: "modifier-required"
             )
             .id("ShortcutsPane.globalShortcuts")

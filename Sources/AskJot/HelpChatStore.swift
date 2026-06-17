@@ -1142,7 +1142,7 @@ final class HelpChatStore {
     Providers [cleanup-providers]: Apple Intelligence (on-device, free).
     Cloud (OpenAI, Anthropic, Gemini) with your API key. Ollama local.
 
-    Editable prompt [cleanup-prompt]: customize in Settings → AI.
+    Editable prompt [cleanup-prompt]: customize in Settings → Prompts.
 
     ## Prompts (optional)
 

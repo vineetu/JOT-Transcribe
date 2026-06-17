@@ -211,7 +211,7 @@ struct BasicsContent {
                     isExpandable: true,
                     detail: SubRowDetailContent(
                         prose: "Press Esc to discard without transcribing. Active only while recording so it doesn't steal Esc from other apps when you're not dictating.",
-                        warning: "Esc is hardcoded, not configurable. Chord shortcuts must include a modifier; single-key triggers use Jot's separate Caps Lock / Fn / right-modifier / function-key (F1–F20) path. Heads up: F1–F12 only reach Jot when “Use F1, F2, etc. as standard function keys” is on in System Settings → Keyboard — otherwise hold Fn. F13–F20 always work but aren't on every keyboard."
+                        warning: "Esc is hardcoded, not configurable. Chord shortcuts must include a modifier; single-key triggers use Jot's separate Caps Lock / Fn / right-modifier / function-key (F1–F20) path. Heads up: function keys F1–F12 still trigger their normal app or system action in addition to Jot — Jot observes them but can't suppress them. F13–F20 (on keyboards that have them) are free of conflicts and recommended."
                     )
                 ),
                 SubRow(
