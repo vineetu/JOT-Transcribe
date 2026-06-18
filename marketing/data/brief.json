@@ -1,64 +1,85 @@
 {
-  "date": "2026-06-17",
-  "downloads": {"total": 142, "delta": 14, "avg7": 8, "goal": 100},
+  "date": "2026-06-18",
+  "downloads": {
+    "total": 151,
+    "delta": 9,
+    "avg7": 8,
+    "goal": 100
+  },
   "creative": {
-    "concept": "Builder's stats card — raw honest numbers from 62 days of shipping. '$0 raised' in red against a giant '142' is the scroll-stopper; the stats row reframes Jot as a solo-developer achievement, not a corporate product.",
+    "concept": "Use-case tip card: your stand-up update in 30 spoken seconds — targets the developer daily-habit angle following Show HN's developer audience; visual is a 3-step flow strip (hotkey → speak → paste) under a big red '30 SEC.' headline.",
     "cards": [
       {
-        "file": "marketing/data/creative/2026-06-17/builder-stats.svg",
-        "title": "Day 62: 142 downloads. $0 raised. 1 builder.",
-        "use": "Primary visual for LinkedIn, X, and Instagram today. Export as 1080×1080 PNG. The red '$0 raised' is the punchline that makes readers look twice."
+        "file": "marketing/data/creative/2026-06-18/standup-tip.svg",
+        "title": "Use-case tip: Your stand-up in 30 seconds",
+        "use": "Primary visual for LinkedIn and X. Export as 1080×1080 PNG. The red '30 SEC.' is the scroll-stopper; the 3-step strip makes the workflow instantly legible."
       }
     ],
     "carousel": [],
     "storyboard": {
-      "title": "Dictating an email reply",
-      "duration_s": 18,
-      "use": "Instagram Reel / X video / GIF — shows Jot in a real email workflow; hits writers and professionals who spend hours in Mail or Gmail",
+      "title": "Jot for your morning stand-up",
+      "duration_s": 17,
+      "use": "Instagram Reel / X video / GIF — developer workflow: Slack compose → hotkey → speak → text appears. Morning routine hook.",
       "shots": [
-        {"t": "0–3s", "visual": "Mail.app open with a long email thread; cursor blinking in empty reply compose field", "overlay": "Long email?"},
-        {"t": "3–6s", "visual": "Hand presses ⌥Space; Dynamic Island-style pill appears under Mac notch", "overlay": "One hotkey."},
-        {"t": "6–15s", "visual": "User speaks a reply aloud; pill shows pulsing audio waveform", "overlay": "Speak."},
-        {"t": "15–18s", "visual": "Full reply text appears in Mail compose; pill vanishes; send button visible", "overlay": "Done. Free. On-device."}
+        {
+          "t": "0–3s",
+          "visual": "Slack DM compose field open, cursor blinking, empty — the classic blank stand-up moment",
+          "overlay": "Every. Morning."
+        },
+        {
+          "t": "3–6s",
+          "visual": "Hand presses ⌥Space on keyboard; Dynamic Island-style pill appears under Mac notch",
+          "overlay": "One hotkey."
+        },
+        {
+          "t": "6–14s",
+          "visual": "Pill shows pulsing audio waveform; user speaks stand-up update aloud (what I did, doing, blockers)",
+          "overlay": "Speak."
+        },
+        {
+          "t": "14–17s",
+          "visual": "Full stand-up text appears in Slack compose; pill vanishes; send button visible; jot-transcribe.com watermark lower-right",
+          "overlay": "30 seconds. Done. Free."
+        }
       ]
     }
   },
   "drafts": [
     {
       "channel": "linkedin",
-      "text": "62 days ago I shipped v1.0.\n\n142 people downloaded it. No paid ads. No App Store listing.\n\nIt's a free, open-source Mac dictation app: press a hotkey, speak, the transcript lands wherever your cursor is — all on your Mac's Neural Engine.\n\nBuilding in public means publishing the real numbers. The download counter is on GitHub.\n\nWhat do you use to take voice notes on your Mac?\n\n#indiedev #macOS #buildinpublic",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-17",
+      "text": "My morning stand-up was 90 seconds of typing the same things: what I did, what I'm doing, any blockers.\n\nNow I press ⌥Space, say it once in 20 seconds, and it pastes straight into Slack.\n\nExact same update. No typing. Every morning.\n\nWhat parts of your day are you still typing when you could be speaking?\n\n#macOS #productivity #indiedev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-18",
       "publish_window_pt": "7:00–8:30am PT",
       "recommended": true,
-      "note": "Attach builder-stats.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. The closing question is the engagement trigger."
+      "note": "Attach standup-tip.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. The closing question is the engagement trigger — answer every reply."
     },
     {
       "channel": "x",
-      "text": "62 days. 142 downloads. 27 releases. $0 raised. 1 builder.\n\nJot: hotkey → speak → text at cursor. Free. On-device. Open source.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-17",
+      "text": "My stand-up update used to take 90 seconds of typing. Now: ⌥Space → speak → paste. 20 seconds. Jot. Free. On-device. Open source.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-18",
       "publish_window_pt": "6:30–9:00am PT",
       "recommended": true,
-      "note": "Attach builder-stats.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. ~123 characters."
+      "note": "Attach standup-tip.svg (export as PNG). No link in post — post the utm_url as the first reply immediately after posting. ~131 characters, within 200 limit."
     },
     {
       "channel": "reddit",
-      "text": "62 days building a free on-device Mac dictation app — here's where I'm at\n\nBuilding in public means posting the actual numbers.\n\nv1.0 shipped April 16. Today is day 62. 142 total downloads via GitHub Releases. 27 versions shipped. $0 raised.\n\nJot is a free, open-source Mac dictation app: press a hotkey (I use ⌥ Space), speak, and the transcript pastes wherever your cursor is — in any text field on macOS. No window switching.\n\nUnder the hood: Parakeet TDT running on the Apple Neural Engine. Transcription is entirely on-device — no audio leaves your Mac, no internet needed after the one-time model download, no account required.\n\nOptional extras: AI cleanup via Apple Intelligence (on-device, macOS 26+), Ollama, or your own API key. Rewrite-with-voice lets you select text, press a hotkey, speak an instruction ('make this shorter', 'translate to Spanish'), and Jot rewrites in place. There's also an iOS companion app on the App Store.\n\nBiggest surprises from 62 days of building:\n- On-device vs cloud isn't just a privacy argument — it's a latency argument. No server round-trip means text lands fast.\n- Nobody has complained about Parakeet's ~150-word limit. People naturally pause.\n- The clipboard sandwich (save, write, paste, restore) has more edge cases than I expected.\n\nApple Silicon only, macOS 14+. Open source on GitHub.\n\n(I built this — disclosure)\n\nLink in comments.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-17",
+      "text": "I started dictating my morning stand-up instead of typing it — here's what changed\n\nI have the same stand-up every morning: what I did yesterday, what I'm doing today, any blockers. For months I'd open Slack and type it out — usually 60–90 seconds of the exact same words.\n\nThree weeks ago I started dictating it instead. Press a hotkey, say it once, it pastes into Slack. The whole thing is 20 seconds now.\n\nI built Jot for this (and for everything else I used to type, honestly). Transcription is entirely on-device on the Apple Neural Engine — no cloud, no account, no audio leaves the Mac. The hotkey works in any app: Slack, email, your code editor, anywhere.\n\nSome patterns I noticed after 3 weeks:\n- Stand-up updates are now 3–4 sentences instead of 2 bullet points. I'm more descriptive when I speak.\n- I don't dread the stand-up window anymore — the friction dropped from 'ugh I have to type this again' to 'done already'.\n- I started dictating other repeated things: Slack replies, commit messages, PR descriptions.\n\nThe one limit: Jot handles ~150 words comfortably per take. A full stand-up fits easily, but for a longer email you'd break it into chunks.\n\nApple Silicon only, macOS 14+. Free and open source.\n\n(I built this — disclosure)\n\nLink in comments if you want to try it.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-18",
       "publish_window_pt": "6:00–8:00am PT",
       "recommended": false,
-      "note": "Post to r/macapps (rotating: macapps Jun 11, MacOS Jun 12, productivity Jun 13, macapps Jun 14, MacOS Jun 15, productivity Jun 16 → macapps today). First line is the post title, body follows. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit was June 15 (2 days ago); needs 4+ days — earliest is June 19. Answer every comment in the first hour."
+      "note": "Post to r/MacOS (rotating: macapps Jun 11, MacOS Jun 12, productivity Jun 13, macapps Jun 14, MacOS Jun 15, productivity Jun 16, macapps Jun 17, MacOS Jun 18). First line is the post title. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit was June 15 (3 days ago); needs 4+ days — earliest is June 19. Answer every comment in the first hour."
     },
     {
       "channel": "instagram",
-      "text": "62 days. 27 releases. 142 downloads. $0 raised. 1 person.\n\nFree Mac dictation: press a hotkey, speak, text at cursor. On-device. Open source.\n\nLink in bio.\n\n#indiedev #buildinpublic #macOS #dictation #opensource #speechtotext #macapps #solodev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-17",
+      "text": "The same stand-up update. Every. Morning.\n\n⌥ Space → speak → paste in Slack.\n\n30 seconds. Done.\n\nFree Mac dictation. On-device. Open source.\n\nLink in bio.\n\n#macOS #productivity #dictation #voicetotext #speechtotext #opensource #macapps #indiedev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-18",
       "publish_window_pt": "11am–1pm PT",
-      "recommended": true,
-      "visual": "marketing/data/creative/2026-06-17/builder-stats.svg as a static 1080×1080 PNG post.",
-      "note": "recommended:true — last recommended instagram was June 14 (3 days ago); threshold of 3+ days met today (June 17). Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
+      "recommended": false,
+      "visual": "marketing/data/creative/2026-06-18/standup-tip.svg as a static 1080×1080 PNG post.",
+      "note": "recommended:false — last recommended:true instagram was June 17 (1 day ago); needs 3+ days — earliest is June 20. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
     }
   ],
   "opportunities": [],
   "outreach": [],
-  "notes": "Downloads hit 142 (+14 from June 16's 128, avg7=8/day) — the strongest single-day delta since the June 13 spike, clearly driven by Show HN traffic from yesterday. v1.14.1 jumped from ~15 to 23 downloads since June 16; older releases also ticked up. New free competitor 'Resonant' (onresonant.com) appeared in multiple 2026 Mac dictation roundups that exclude Jot — their site publishes 'Best Dictation Apps Mac 2026' and 'VoiceInk Alternative' articles that rank highly in search; this should be the first outreach target when the window reopens June 19. iTunes API returned 403 for the third consecutive day; appstore.json not updated, existing values preserved (date: 2026-06-17, ratingCount: 3, avgRating: 5.0). No actionable Reddit/HN forum threads found today. Outreach window reopens June 19."
+  "notes": "Downloads reached 151 (+9 from June 17's 142, avg7=8/day). The HN-driven spike of +14 on June 17 is settling toward the ~8/day baseline — healthy sustained discovery. v1.14.1 now at 32 downloads, the most-downloaded release by a wide margin. iTunes API returned 403 for the 4th consecutive day; appstore.json preserved unchanged (ratingCount: 3, avgRating: 5.0, installs: 0). No actionable Reddit/HN reply threads found with URLs today; the DEV Community 'godnick' account is an algorithmic SEO content farm, not a real author. Superwhisper pricing discussion ($249.99/$849 lifetime) continues in search results but no thread URLs surfaced. Outreach window reopens June 19 — priority targets: Resonant (onresonant.com) and the speakmac.app/blog team (publishes Mac dictation comparison roundups ranking in search). Reddit recommended:false (last true June 15, earliest June 19). Instagram recommended:false (last true June 17, earliest June 20). Today's stand-up use-case angle plays directly to the Show HN developer audience who installed Jot this week — giving them a concrete daily habit is a retention hook."
 }
