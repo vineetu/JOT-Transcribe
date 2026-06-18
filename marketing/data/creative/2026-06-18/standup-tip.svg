@@ -1,0 +1,63 @@
+<svg width="1080" height="1080" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Main panel -->
+  <rect x="52" y="52" width="976" height="976" fill="#161618" stroke="#2a2a2e" stroke-width="1.5" rx="18"/>
+
+  <!-- USE-CASE TIP label -->
+  <text x="540" y="148" text-anchor="middle" fill="#9a9a9f" font-size="24" letter-spacing="8" font-weight="500">USE-CASE TIP</text>
+
+  <!-- Headline row 1 -->
+  <text x="540" y="278" text-anchor="middle" fill="#f0f0f0" font-size="108" font-weight="700" letter-spacing="-3">YOUR</text>
+
+  <!-- Headline row 2 -->
+  <text x="540" y="392" text-anchor="middle" fill="#f0f0f0" font-size="108" font-weight="700" letter-spacing="-3">STAND-UP</text>
+
+  <!-- Headline row 3 — "30 SEC." with 30 in red -->
+  <text x="540" y="512" text-anchor="middle" font-size="118" font-weight="700" letter-spacing="-4">
+    <tspan fill="#CE231D">30</tspan><tspan fill="#f0f0f0"> SEC.</tspan>
+  </text>
+
+  <!-- Divider -->
+  <line x1="140" y1="574" x2="940" y2="574" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- 3-step flow row -->
+  <!-- Step 1 box -->
+  <rect x="122" y="604" width="228" height="110" fill="#0d0d0e" rx="14"/>
+  <text x="236" y="655" text-anchor="middle" fill="#f0f0f0" font-size="34" font-weight="700">⌥ Space</text>
+  <text x="236" y="690" text-anchor="middle" fill="#9a9a9f" font-size="22">press hotkey</text>
+
+  <!-- Arrow 1→2 -->
+  <text x="398" y="668" text-anchor="middle" fill="#9a9a9f" font-size="44">→</text>
+
+  <!-- Step 2 box -->
+  <rect x="440" y="604" width="200" height="110" fill="#0d0d0e" rx="14"/>
+  <text x="540" y="655" text-anchor="middle" fill="#f0f0f0" font-size="34" font-weight="700">Speak</text>
+  <text x="540" y="690" text-anchor="middle" fill="#9a9a9f" font-size="22">~20 seconds</text>
+
+  <!-- Arrow 2→3 -->
+  <text x="686" y="668" text-anchor="middle" fill="#9a9a9f" font-size="44">→</text>
+
+  <!-- Step 3 box -->
+  <rect x="730" y="604" width="228" height="110" fill="#0d0d0e" rx="14"/>
+  <text x="844" y="655" text-anchor="middle" fill="#f0f0f0" font-size="34" font-weight="700">Pasted</text>
+  <text x="844" y="690" text-anchor="middle" fill="#9a9a9f" font-size="22">in Slack / wherever</text>
+
+  <!-- Divider 2 -->
+  <line x1="140" y1="754" x2="940" y2="754" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Italic context line -->
+  <text x="540" y="810" text-anchor="middle" fill="#9a9a9f" font-size="28" font-style="italic">"what I did · what I'm doing · blockers"</text>
+
+  <!-- Second supporting line -->
+  <text x="540" y="860" text-anchor="middle" fill="#9a9a9f" font-size="26">Works in any app. On the Neural Engine. Never leaves your Mac.</text>
+
+  <!-- CTA strip -->
+  <rect x="310" y="898" width="460" height="60" fill="#0d0d0e" rx="10"/>
+  <text x="540" y="936" text-anchor="middle" fill="#f0f0f0" font-size="26" font-weight="600">Free · Open Source · Apple Silicon</text>
+
+  <!-- Footer -->
+  <circle cx="222" cy="991" r="7" fill="#CE231D"/>
+  <text x="242" y="997" fill="#9a9a9f" font-size="24" font-weight="400">jot-transcribe.com</text>
+</svg>
