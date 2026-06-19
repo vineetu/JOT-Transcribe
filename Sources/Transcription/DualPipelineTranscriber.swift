@@ -4,8 +4,10 @@ import Foundation
 /// preview engine alongside (or instead of) a batch final-transcript engine.
 ///
 /// This remains intentionally explicit rather than protocol-based:
-/// - legacy v2 uses TDT v2 batch + EOU streaming,
-/// - multilingual live preview uses TDT v3 batch + Nemotron streaming,
+/// - v2 / v3 / JA use a batch final transcript + a batch-pseudo-streaming
+///   `PreviewScheduler` live preview (re-runs the batch model over a trailing
+///   window),
+/// - the retired multilingual pairing uses TDT v3 batch + Nemotron streaming,
 /// - Nemotron English uses Nemotron streaming for both preview and final.
 final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
 
@@ -15,11 +17,10 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     }
 
     private enum StreamingEngine: Sendable {
-        case eou(StreamingTranscriber)
         case nemotron(NemotronStreamingTranscriber)
         /// Batch pseudo-streaming preview (`PreviewScheduler` re-runs the batch
-        /// model over a trailing window). Replaces `.eou` once routing/EOU
-        /// removal lands (design §4.2); added here as the stable seam.
+        /// model over a trailing window). The live preview path for v2 / v3 /
+        /// JA (design §4.2).
         case batchPreview(PreviewScheduler)
     }
 
@@ -27,12 +28,6 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     private let streamingEngine: StreamingEngine
     private let pendingLock = NSLock()
     private var pendingNemotronFinal: String?
-
-    /// Legacy v2 + EOU path.
-    init(batch: Transcriber, streaming: StreamingTranscriber) {
-        self.finalEngine = .batch(batch)
-        self.streamingEngine = .eou(streaming)
-    }
 
     /// Multilingual Parakeet v3 final transcript + Nemotron preview.
     init(batch: Transcriber, nemotronStreaming: NemotronStreamingTranscriber) {
@@ -43,8 +38,7 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     /// Batch final transcript + batch-pseudo-streaming preview. The
     /// `PreviewScheduler` must be constructed over the SAME `Transcriber` passed
     /// as `batch`, so the preview re-uses the loaded `AsrModels` (design §4.5).
-    /// Not yet routed by the factory — this is the seam the routing/EOU-removal
-    /// task plugs into.
+    /// This is the live preview path for v2 / v3 / JA.
     init(batch: Transcriber, batchPreview: PreviewScheduler) {
         self.finalEngine = .batch(batch)
         self.streamingEngine = .batchPreview(batchPreview)
@@ -104,9 +98,6 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
 
         let streamingResult: Result<Void, Error>?
         switch streamingEngine {
-        case .eou(let streaming):
-            do { try await streaming.ensureLoaded(); streamingResult = .success(()) }
-            catch { streamingResult = .failure(error) }
         case .nemotron(let nemotron):
             if case .nemotron = finalEngine {
                 // Nemotron-only: streaming == final, already probed above.
@@ -126,8 +117,6 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     private func ensureStreamingLoadedQuietly() async {
         do {
             switch streamingEngine {
-            case .eou(let streaming):
-                try await streaming.ensureLoaded()
             case .nemotron(let nemotron):
                 try await nemotron.ensureLoaded()
             case .batchPreview:
@@ -196,8 +185,6 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     ) async {
         clearPendingNemotronFinal()
         switch streamingEngine {
-        case .eou(let streaming):
-            await streaming.start(generation: generation, onPartial: onPartial)
         case .nemotron(let nemotron):
             await nemotron.start(generation: generation, onPartial: onPartial)
         case .batchPreview(let scheduler):
@@ -207,8 +194,6 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
 
     func enqueueStreaming(samples: [Float]) {
         switch streamingEngine {
-        case .eou(let streaming):
-            streaming.enqueue(samples: samples)
         case .nemotron(let nemotron):
             nemotron.enqueue(samples: samples)
         case .batchPreview(let scheduler):
@@ -219,8 +204,6 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     func finishStreaming() async -> String? {
         let final: String?
         switch streamingEngine {
-        case .eou(let streaming):
-            final = await streaming.finish()
         case .batchPreview(let scheduler):
             // Stop fence: drain + block further ticks BEFORE the caller runs the
             // final batch pass, so no preview decode overlaps it on the
@@ -250,8 +233,6 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     func cancelStreaming() async {
         clearPendingNemotronFinal()
         switch streamingEngine {
-        case .eou(let streaming):
-            await streaming.cancel()
         case .nemotron(let nemotron):
             await nemotron.cancel()
         case .batchPreview(let scheduler):

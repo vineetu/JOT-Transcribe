@@ -15,7 +15,7 @@ multilingual: 25 European langs, auto-detected per recording.
 languages: Jot supports these ASR models — pick one as primary at Settings → Transcription. Only the primary is hot in memory; switching unloads + reloads.
 <!-- FRAGMENT: jot-asr-languages -->
 japanese: yes — install the Parakeet 0.6B Japanese model from Settings → Transcription, then make it primary. v3 does NOT transcribe Japanese; the JA model is required.
-custom-vocabulary: experimental. Short list of names, acronyms, jargon Jot prefers. Biases recognizer — best-effort, not guarantee. Too many similar entries cause unpredictable preference. Edit at Settings → Vocabulary. Applies to v3, v3 int4, v3 + Nemotron preview, and v2+EOU. NOT applied to Japanese or Nemotron-only English — those models don't expose per-token timings the rescorer needs.
+custom-vocabulary: experimental. Short list of names, acronyms, jargon Jot prefers. Biases recognizer — best-effort, not guarantee. Too many similar entries cause unpredictable preference. Edit at Settings → Vocabulary. Applies to Parakeet v3, v3 int4, and v2. NOT applied to Japanese or Nemotron-only English — those models don't expose per-token timings the rescorer needs.
 
 ## Cleanup (optional, off default)
 LLM polishes transcript. Four passes: filler removal, grammar, number normalization, structure. Voice, word choice, register preserved — not style rewrite.

@@ -300,6 +300,15 @@ enum JotComposition {
         // `TranscriberHolder.startPendingNemotronUpgradeIfNeeded()`, so
         // dictation keeps working on the current model while Nemotron fetches.
         NemotronAutoUpgradeMigration.runIfNeeded(defaults: systemServices.userDefaults)
+        // One-shot cleanup of the orphaned EOU streaming bundle. EOU was
+        // removed in favour of batch-pseudo-streaming preview, so any
+        // `parakeet-eou-streaming/` directory left from a prior version is dead
+        // weight on disk. Gated behind a marker so it runs at most once.
+        let eouCleanupKey = "jot.modelChoice.eouBundleCleaned"
+        if !systemServices.userDefaults.bool(forKey: eouCleanupKey) {
+            ModelCache.shared.removeOrphanedEouBundle()
+            systemServices.userDefaults.set(true, forKey: eouCleanupKey)
+        }
         let transcriberHolder = TranscriberHolder(
             cache: .shared,
             defaults: systemServices.userDefaults,
@@ -322,17 +331,11 @@ enum JotComposition {
                     // `Transcriber.transcribe`; v2-gated post-processing + vocab
                     // on stop).
                     //
-                    // ROLLBACK: the EOU `StreamingTranscriber`, the `.eou`
-                    // StreamingEngine case, and the EOU download/cache logic are
-                    // left fully intact and dormant. Reverting this preview
-                    // swap is a one-arm change back to
-                    // `DualPipelineTranscriber(batch:streaming:)` over
-                    // `StreamingTranscriber(bundleDirectory: streamingURL)`.
-                    let eouBatch = Transcriber(modelID: modelID, language: language)
+                    let batch = Transcriber(modelID: modelID, language: language)
                     return DualPipelineTranscriber(
-                        batch: eouBatch,
+                        batch: batch,
                         batchPreview: PreviewScheduler(
-                            transcriber: eouBatch,
+                            transcriber: batch,
                             spaceless: language.isSpaceless
                         )
                     )

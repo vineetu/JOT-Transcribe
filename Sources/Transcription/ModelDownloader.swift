@@ -370,16 +370,15 @@ public actor ModelDownloader: ModelDownloading {
 
     private func batchProgressShare(for id: ParakeetModelID) -> Double {
         switch id {
-        case .tdt_0_6b_v2_en_streaming:
-            // TDT v2 ≈ 600 MB, EOU 120M ≈ 120 MB.
-            return 0.83
         case .tdt_0_6b_v3_nemotron_streaming:
             // v3 int8 batch ≈ 1.25 GB, Nemotron 1120ms ≈ 600 MB.
             return 1_250_000_000.0 / 1_850_000_000.0
-        case .tdt_0_6b_v3_eou_streaming:
-            // v3 int8 batch ≈ 461 MB on disk, EOU 160ms ≈ 428 MB on disk.
-            return 461_000_000.0 / 890_000_000.0
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja, .nemotron_en:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_eou_streaming,
+             .nemotron_en:
             return 1.0
         }
     }
@@ -413,11 +412,16 @@ public actor ModelDownloader: ModelDownloading {
         progress: @Sendable @escaping (Double) -> Void
     ) async throws {
         switch id {
-        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
-            try await downloadEouStreamingSide(id, progress: progress)
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             try await downloadNemotronStreamingSide(id, progress: progress)
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_eou_streaming:
+            // No separate streaming bundle — these fetch only their batch
+            // bundle via `downloadSingleBundle` (live preview re-uses the
+            // batch weights). Reaching here would be a routing bug.
             throw ModelDownloadError.corrupted
         }
     }
@@ -444,43 +448,6 @@ public actor ModelDownloader: ModelDownloading {
     static func repoDownloadFraction(_ fractionCompleted: Double) -> Double {
         let expanded = fractionCompleted / repoDownloadBandCeiling
         return max(0.0, min(1.0, expanded))
-    }
-
-    private func downloadEouStreamingSide(
-        _ id: ParakeetModelID,
-        progress: @Sendable @escaping (Double) -> Void
-    ) async throws {
-        guard let streamingURL = cache.streamingPartialCacheURL(for: id) else {
-            // Defensive: should be unreachable — `id.supportsStreaming`
-            // gated the call site. Treat the missing slot as a
-            // corruption rather than a silent success.
-            throw ModelDownloadError.corrupted
-        }
-
-        // `DownloadUtils.downloadRepo` writes to
-        // `<root>/<repo.folderName>/...`, where for `parakeetEou160`
-        // the folderName is `parakeet-eou-streaming/160ms`. We hand it
-        // the streaming root (the directory two levels above the
-        // 160ms slot) so the SDK's own layout produces our expected
-        // `streamingPartialCacheURL`.
-        let streamingRoot = streamingURL
-            .deletingLastPathComponent() // drop "160ms"
-            .deletingLastPathComponent() // drop "parakeet-eou-streaming"
-
-        let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
-            progress(Self.repoDownloadFraction(snapshot.fractionCompleted))
-        }
-
-        do {
-            try await DownloadUtils.downloadRepo(
-                .parakeetEou160,
-                to: streamingRoot,
-                variant: nil,
-                progressHandler: progressHandler
-            )
-        } catch {
-            throw ModelDownloadError.classify(error)
-        }
     }
 
     private func downloadNemotronStreamingSide(

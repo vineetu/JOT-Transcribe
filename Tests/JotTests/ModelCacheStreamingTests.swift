@@ -2,20 +2,22 @@ import Foundation
 import Testing
 @testable import Jot
 
-/// All-or-nothing cache invariant tests for streaming model options.
+/// Cache invariant tests for the model options.
 ///
-/// The legacy streaming option pairs TDT v2 (batch) with EOU 120M
-/// (streaming). The default streaming option pairs TDT v3 (batch) with
-/// Nemotron. Each composite cache must return `true` only when both bundles
-/// are fully present.
+/// v2 and v3 are now **batch-only** for caching purposes: EOU was removed and
+/// their live preview re-uses the batch weights via `PreviewScheduler`, so
+/// `isCached` requires only the batch bundle. The Nemotron options (multilingual
+/// v3 + Nemotron, and Nemotron-only English) still pair a separate streaming
+/// bundle — those composite caches return `true` only when both bundles are
+/// present.
 ///
 /// Tests stage filesystem layouts under a temp `ModelCache` root so
 /// the dev/CI machine's real `~/Library/Application Support/Jot/`
 /// tree is never touched. The "fully present" stagings reproduce
 /// FluidAudio's exact required-files set (TDT v2 via
-/// `AsrModels.modelsExist`, EOU via `ModelNames.ParakeetEOU.requiredModels`)
-/// rather than relying on real downloads — the cache check is what's
-/// under test, not the SDK loader.
+/// `AsrModels.modelsExist`, Nemotron via
+/// `ModelNames.NemotronStreaming.requiredModels`) rather than relying on real
+/// downloads — the cache check is what's under test, not the SDK loader.
 @MainActor
 @Suite(.serialized)
 struct ModelCacheStreamingTests {
@@ -75,25 +77,6 @@ struct ModelCacheStreamingTests {
             "Decoder.mlmodelc",
             "JointDecision.mlmodelc",
             "parakeet_vocab.json",
-        ]
-        for name in files {
-            let path = dir.appendingPathComponent(name)
-            if name.hasSuffix(".mlmodelc") {
-                try? FileManager.default.createDirectory(at: path, withIntermediateDirectories: true)
-            } else {
-                FileManager.default.createFile(atPath: path.path, contents: Data("{}".utf8))
-            }
-        }
-    }
-
-    private static func stageStreamingEOU(_ cache: ModelCache, id: ParakeetModelID) {
-        guard let dir = cache.streamingPartialCacheURL(for: id) else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let files = [
-            "streaming_encoder.mlmodelc",
-            "decoder.mlmodelc",
-            "joint_decision.mlmodelc",
-            "vocab.json",
         ]
         for name in files {
             let path = dir.appendingPathComponent(name)
@@ -180,93 +163,55 @@ struct ModelCacheStreamingTests {
         #expect(cache.isCached(.tdt_0_6b_v2_en_streaming) == false)
     }
 
-    /// Both bundles fully staged → cached. Positive control for the
-    /// other tests in this suite — without this, every "false" assertion
-    /// could pass for the wrong reason (e.g. a typo in stageBatchV2
-    /// would never produce a "fully present" rig and the negative
-    /// tests would all trivially succeed).
-    @Test func bothBundlesPresentReturnsTrue() throws {
+    /// v2 is now batch-only for caching: with EOU removed, the batch bundle
+    /// alone is sufficient (live preview re-uses the batch weights via
+    /// `PreviewScheduler`). Positive control for the other v2 assertions.
+    @Test func v2BatchOnlyPresentReturnsTrue() throws {
         let cache = try Self.freshTempCache()
         defer { Self.cleanup(cache) }
 
         Self.stageBatchV2(cache, id: .tdt_0_6b_v2_en_streaming)
-        Self.stageStreamingEOU(cache, id: .tdt_0_6b_v2_en_streaming)
 
         #expect(cache.isCached(.tdt_0_6b_v2_en_streaming) == true)
     }
 
-    /// Only the batch bundle staged → not cached. The streaming option
-    /// requires both halves; a partial cache must NOT report success
-    /// because the user would see "Installed" but the actual streaming
-    /// load would fail at runtime.
-    @Test func batchOnlyReturnsFalse() throws {
+    /// v2 with no batch bundle → not cached. The batch bundle is the only
+    /// requirement now; without it nothing is installed.
+    @Test func v2BatchMissingReturnsFalse() throws {
         let cache = try Self.freshTempCache()
         defer { Self.cleanup(cache) }
-
-        Self.stageBatchV2(cache, id: .tdt_0_6b_v2_en_streaming)
 
         #expect(cache.isCached(.tdt_0_6b_v2_en_streaming) == false)
     }
 
-    /// Only the streaming bundle staged → not cached. Symmetric to the
-    /// batch-only case — neither bundle alone is enough.
-    @Test func streamingOnlyReturnsFalse() throws {
-        let cache = try Self.freshTempCache()
-        defer { Self.cleanup(cache) }
-
-        Self.stageStreamingEOU(cache, id: .tdt_0_6b_v2_en_streaming)
-
-        #expect(cache.isCached(.tdt_0_6b_v2_en_streaming) == false)
-    }
-
-    /// EOU bundle missing one required file → not cached. Belt-and-
-    /// suspenders: a download that lost a file partway through must
-    /// not deceive the cache check.
-    @Test func streamingMissingOneFileReturnsFalse() throws {
+    /// removeCache clears the v2 batch bundle so a subsequent retry can't see
+    /// a partial earlier cache. After removeCache, isCached is false.
+    @Test func removeCacheClearsV2Batch() throws {
         let cache = try Self.freshTempCache()
         defer { Self.cleanup(cache) }
 
         Self.stageBatchV2(cache, id: .tdt_0_6b_v2_en_streaming)
-        Self.stageStreamingEOU(cache, id: .tdt_0_6b_v2_en_streaming)
-
-        // Yank vocab.json — FluidAudio requires it.
-        let vocab = cache.streamingPartialCacheURL(for: .tdt_0_6b_v2_en_streaming)!
-            .appendingPathComponent("vocab.json")
-        try? FileManager.default.removeItem(at: vocab)
-
-        #expect(cache.isCached(.tdt_0_6b_v2_en_streaming) == false)
-    }
-
-    /// removeCache cleans both bundle directories so a subsequent
-    /// retry can't see a partial earlier cache. Verifies the contract
-    /// from the user-visible side: after removeCache, isCached is false.
-    @Test func removeCacheClearsBothBundles() throws {
-        let cache = try Self.freshTempCache()
-        defer { Self.cleanup(cache) }
-
-        Self.stageBatchV2(cache, id: .tdt_0_6b_v2_en_streaming)
-        Self.stageStreamingEOU(cache, id: .tdt_0_6b_v2_en_streaming)
         #expect(cache.isCached(.tdt_0_6b_v2_en_streaming) == true)
 
         cache.removeCache(for: .tdt_0_6b_v2_en_streaming)
 
         #expect(cache.isCached(.tdt_0_6b_v2_en_streaming) == false)
         let batchDerived = Self.batchStagingURL(cache)
-        let streamingDir = cache.streamingPartialCacheURL(for: .tdt_0_6b_v2_en_streaming)!
         #expect(FileManager.default.fileExists(atPath: batchDerived.path) == false)
-        #expect(FileManager.default.fileExists(atPath: streamingDir.path) == false)
     }
 
-    /// streamingPartialCacheURL returns nil for non-streaming options.
-    /// Keeps existing v3 / JA call sites unaffected.
-    @Test func nonStreamingOptionHasNoStreamingURL() throws {
+    /// streamingPartialCacheURL returns a directory ONLY for the Nemotron
+    /// options — the only ones with a separate streaming bundle. v2 / v3 / JA
+    /// return nil now (their preview re-uses the batch weights).
+    @Test func onlyNemotronOptionsHaveStreamingURL() throws {
         let cache = try Self.freshTempCache()
         defer { Self.cleanup(cache) }
 
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v3) == nil)
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v3_int4) == nil)
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_ja) == nil)
-        #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v2_en_streaming) != nil)
+        #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v2_en_streaming) == nil)
+        #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v3_eou_streaming) == nil)
         #expect(cache.streamingPartialCacheURL(for: .tdt_0_6b_v3_nemotron_streaming) != nil)
         #expect(cache.streamingPartialCacheURL(for: .nemotron_en) != nil)
     }
@@ -366,14 +311,16 @@ struct ModelCacheStreamingTests {
     }
 
     /// Streaming present, batch absent → only the streaming side reports.
+    /// Uses the multilingual Nemotron option (the v3 batch is shared and absent
+    /// here; only the Nemotron streaming bundle is staged).
     @Test func stillPresentReportsStreamingSideOnly() throws {
         let cache = try Self.freshTempCache()
         defer { Self.cleanup(cache) }
 
-        Self.stageStreamingEOU(cache, id: .tdt_0_6b_v2_en_streaming)
+        Self.stageStreamingNemotron(cache, id: .tdt_0_6b_v3_nemotron_streaming)
 
-        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .batch) == false)
-        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .streaming) == true)
+        #expect(cache.stillPresent(.tdt_0_6b_v3_nemotron_streaming, side: .batch) == false)
+        #expect(cache.stillPresent(.tdt_0_6b_v3_nemotron_streaming, side: .streaming) == true)
     }
 
     /// Nemotron-only: the single streaming bundle backs both sides, so a
@@ -416,21 +363,22 @@ struct ModelCacheStreamingTests {
     }
 
     /// Surgical purge of ONLY the batch side leaves the streaming bundle
-    /// untouched — the symmetric case.
+    /// untouched — the symmetric case. Uses the multilingual Nemotron option,
+    /// the only one with two distinct on-disk sides now that EOU is gone.
     @Test func surgicalBatchPurgeKeepsStreaming() throws {
         let cache = try Self.freshTempCache()
         defer { Self.cleanup(cache) }
 
-        Self.stageBatchV2(cache, id: .tdt_0_6b_v2_en_streaming)
-        Self.stageStreamingEOU(cache, id: .tdt_0_6b_v2_en_streaming)
+        Self.stageBatchV3Default(cache)
+        Self.stageStreamingNemotron(cache, id: .tdt_0_6b_v3_nemotron_streaming)
 
         cache.removeCache(
-            for: .tdt_0_6b_v2_en_streaming,
+            for: .tdt_0_6b_v3_nemotron_streaming,
             removeBatch: true,
             removeStreaming: false
         )
 
-        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .batch) == false)
-        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .streaming) == true)
+        #expect(cache.stillPresent(.tdt_0_6b_v3_nemotron_streaming, side: .batch) == false)
+        #expect(cache.stillPresent(.tdt_0_6b_v3_nemotron_streaming, side: .streaming) == true)
     }
 }
