@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Slide counter -->
+  <text x="1020" y="54" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#9a9a9f">4 / 5</text>
+
+  <!-- Number badge -->
+  <circle cx="100" cy="130" r="44" fill="#CE231D"/>
+  <text x="100" y="143" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="bold" fill="#f0f0f0">3</text>
+
+  <!-- Point -->
+  <text x="100" y="260" font-family="Helvetica, Arial, sans-serif" font-size="56" font-weight="bold" fill="#f0f0f0">You're paying</text>
+  <text x="100" y="330" font-family="Helvetica, Arial, sans-serif" font-size="56" font-weight="bold" fill="#CE231D">$8–15/month</text>
+  <text x="100" y="400" font-family="Helvetica, Arial, sans-serif" font-size="56" font-weight="bold" fill="#f0f0f0">for this deal.</text>
+
+  <!-- Divider -->
+  <line x1="60" y1="450" x2="1020" y2="450" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Comparison table -->
+  <rect x="60" y="480" width="960" height="680" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Header row -->
+  <text x="340" y="540" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f" letter-spacing="3">PRICE / YEAR</text>
+  <text x="680" y="540" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f" letter-spacing="3">ON-DEVICE?</text>
+
+  <!-- Row 1: Wispr Flow -->
+  <line x1="100" y1="560" x2="1000" y2="560" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="180" y="608" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#f0f0f0">Wispr Flow</text>
+  <text x="340" y="608" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#CE231D">$180/yr</text>
+  <text x="680" y="608" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#CE231D">Cloud only</text>
+
+  <!-- Row 2: Superwhisper -->
+  <line x1="100" y1="628" x2="1000" y2="628" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="180" y="678" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#f0f0f0">Superwhisper Pro</text>
+  <text x="340" y="678" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#CE231D">$85/yr</text>
+  <text x="680" y="678" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">Optional</text>
+
+  <!-- Row 3: VoiceInk -->
+  <line x1="100" y1="698" x2="1000" y2="698" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="180" y="748" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#f0f0f0">VoiceInk</text>
+  <text x="340" y="748" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#CE231D">$40 one-time</text>
+  <text x="680" y="748" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">Yes</text>
+
+  <!-- Row 4: Jot — highlighted -->
+  <line x1="100" y1="768" x2="1000" y2="768" stroke="#2a2a2e" stroke-width="1"/>
+  <rect x="80" y="772" width="900" height="80" rx="10" fill="#f0f0f0" opacity="0.06"/>
+  <text x="180" y="822" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="bold" fill="#f0f0f0">Jot</text>
+  <text x="340" y="822" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="bold" fill="#f0f0f0">$0</text>
+  <text x="680" y="822" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#f0f0f0">Always</text>
+
+  <text x="540" y="920" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">Free. Open source. Your voice never leaves your Mac.</text>
+
+  <text x="540" y="1010" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#f0f0f0">The cheapest option is also</text>
+  <text x="540" y="1050" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#f0f0f0">the most private one.</text>
+
+  <!-- Footer -->
+  <circle cx="402" cy="1308" r="5" fill="#CE231D"/>
+  <text x="418" y="1313" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

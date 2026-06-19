@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Slide counter -->
+  <text x="1020" y="54" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#9a9a9f">5 / 5</text>
+
+  <!-- Top label -->
+  <text x="540" y="140" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f" letter-spacing="5">THE ALTERNATIVE</text>
+
+  <!-- Main headline -->
+  <text x="540" y="270" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="86" font-weight="bold" fill="#f0f0f0">Jot.</text>
+
+  <!-- Three pillars -->
+  <rect x="60" y="320" width="280" height="180" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="200" y="398" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="bold" fill="#f0f0f0">$0</text>
+  <text x="200" y="440" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">always free</text>
+  <text x="200" y="466" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">open source</text>
+
+  <rect x="400" y="320" width="280" height="180" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="398" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="bold" fill="#f0f0f0">On-device</text>
+  <text x="540" y="440" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">Apple Neural Engine</text>
+  <text x="540" y="466" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">works offline</text>
+
+  <rect x="740" y="320" width="280" height="180" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="880" y="398" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="bold" fill="#f0f0f0">Private</text>
+  <text x="880" y="440" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">no account</text>
+  <text x="880" y="466" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">no telemetry</text>
+
+  <!-- How it works -->
+  <text x="540" y="590" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">HOW IT WORKS</text>
+
+  <text x="180" y="660" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#f0f0f0">Hotkey</text>
+  <text x="180" y="696" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">press ⌥ Space</text>
+  <text x="384" y="672" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="32" fill="#CE231D">→</text>
+  <text x="540" y="660" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#f0f0f0">Speak</text>
+  <text x="540" y="696" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">say anything</text>
+  <text x="696" y="672" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="32" fill="#CE231D">→</text>
+  <text x="880" y="660" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="bold" fill="#f0f0f0">Text</text>
+  <text x="880" y="696" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">at your cursor</text>
+
+  <!-- Divider -->
+  <line x1="60" y1="740" x2="1020" y2="740" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- CTA -->
+  <text x="540" y="840" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#9a9a9f">Free download for Apple Silicon Mac</text>
+
+  <text x="540" y="960" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="70" font-weight="bold" fill="#f0f0f0">jot-transcribe</text>
+  <text x="540" y="1040" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="70" font-weight="bold" fill="#CE231D">.com</text>
+
+  <text x="540" y="1140" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">macOS 14+ · Apple Silicon only · no subscription</text>
+
+  <!-- Footer -->
+  <circle cx="402" cy="1308" r="5" fill="#CE231D"/>
+  <text x="418" y="1313" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
