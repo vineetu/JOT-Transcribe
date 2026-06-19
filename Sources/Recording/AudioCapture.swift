@@ -124,7 +124,8 @@ public actor AudioCapture: AudioCapturing {
     }
 
     /// Optional streaming-sink callback fanned out from the writer
-    /// queue to consumers like `StreamingTranscriber`. Set by
+    /// queue to the live-preview engine (`PreviewScheduler` or
+    /// `NemotronStreamingTranscriber`). Set by
     /// `VoiceInputPipeline` immediately after `start()` returns when
     /// the active model supports streaming (Phase 2). The sink fires
     /// from the writer queue with each converted 16 kHz mono Float32
@@ -1060,10 +1061,10 @@ fileprivate final class QueueState: @unchecked Sendable {
     /// Optional fan-out sink invoked under the writer queue with each
     /// converted 16 kHz mono Float32 chunk. Today wired by
     /// `VoiceInputPipeline.beginStreamingSession` to forward chunks to
-    /// `StreamingTranscriber.enqueue(samples:)`, which yields them
-    /// into a per-session AsyncStream consumed by FluidAudio's
-    /// `StreamingEouAsrManager.process(audioBuffer:)`. `nil` for
-    /// non-streaming pipelines (v3 / JA primary). The samples buffer
+    /// the active live-preview engine — `PreviewScheduler.enqueue(samples:)`
+    /// (batch-pseudo-streaming preview for v2 / v3 / JA) or
+    /// `NemotronStreamingTranscriber.enqueue(samples:)` (Nemotron). `nil`
+    /// when the active model has no live preview. The samples buffer
     /// is small (≤ 16 384 floats per chunk) so the `Array.init` copy
     /// is cheap; the sink consumer is responsible for ordering /
     /// concurrency hand-off.

@@ -10,7 +10,9 @@ public enum ModelSide: Sendable, Equatable {
     /// `.nemotron_en` there is no separate batch bundle; the streaming
     /// bundle backs both sides.
     case batch
-    /// The streaming/live-preview bundle (EOU or Nemotron).
+    /// The separate streaming/live-preview bundle (Nemotron). v2 / v3 / JA
+    /// have no separate streaming bundle — their live preview re-uses the
+    /// batch weights via `PreviewScheduler`.
     case streaming
 }
 
@@ -61,23 +63,22 @@ public struct ModelCache: Sendable {
         }
     }
 
-    /// Directory where the streaming-side model bundle for a streaming-
-    /// enabled option lives:
-    /// - EOU (v2 legacy + v3 default): `root/parakeet-eou-streaming/160ms/`
+    /// Directory where a *separate* streaming-side model bundle lives, for the
+    /// only options that still have one:
     /// - Nemotron: `root/nemotron-streaming-en-1120ms/`
     ///
-    /// The v3+EOU and v2+EOU options share the same on-disk EOU streaming
-    /// bundle; UI must protect against deletion of one while the other is
-    /// the active primary.
+    /// v2 / v3 / JA return `nil`: their live preview re-runs the batch weights
+    /// via `PreviewScheduler`, so there is no separate streaming bundle on
+    /// disk.
     public func streamingPartialCacheURL(for id: ParakeetModelID) -> URL? {
         switch id {
-        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
-            return root
-                .appendingPathComponent("parakeet-eou-streaming", isDirectory: true)
-                .appendingPathComponent("160ms", isDirectory: true)
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             return root.appendingPathComponent("nemotron-streaming-en-1120ms", isDirectory: true)
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             return nil
         }
     }
@@ -182,16 +183,33 @@ public struct ModelCache: Sendable {
         let fm = FileManager.default
         let requiredModels: Set<String>
         switch id {
-        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
-            requiredModels = ModelNames.ParakeetEOU.requiredModels
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             requiredModels = ModelNames.NemotronStreaming.requiredModels
-        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_eou_streaming:
             return false
         }
         return requiredModels.allSatisfy { name in
             fm.fileExists(atPath: directory.appendingPathComponent(name).path)
         }
+    }
+
+    /// Best-effort one-shot cleanup of the now-orphaned EOU streaming bundle.
+    ///
+    /// EOU was removed in favour of batch-pseudo-streaming preview
+    /// (`PreviewScheduler`), so the on-disk `parakeet-eou-streaming/` directory
+    /// is no longer downloaded, required, or referenced by any model. Existing
+    /// users who ran a prior version still have it on disk. This deletes ONLY
+    /// that literal directory; it never touches a batch bundle or the Nemotron
+    /// streaming bundle. Safe to call repeatedly (`try?`, missing dir is a
+    /// no-op) but `JotComposition` gates it behind a one-shot UserDefaults
+    /// marker so it costs nothing on subsequent launches.
+    public func removeOrphanedEouBundle() {
+        let eouDir = root.appendingPathComponent("parakeet-eou-streaming", isDirectory: true)
+        try? FileManager.default.removeItem(at: eouDir)
     }
 
     public func ensureRootExists() throws {

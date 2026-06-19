@@ -49,7 +49,7 @@ struct VocabularyPane: View {
     /// boundaries. The pane stays visible and editable — terms persist
     /// — but the master toggle is disabled and the headline disclosure
     /// tells the user why. Restoring boost happens automatically when
-    /// they swap primary to v3+EOU or v2+EOU.
+    /// they swap primary to Parakeet v3 or v2.
     private var lockedForNemotronPrimary: Bool {
         transcriberHolder.primaryModelID == .nemotron_en
     }
@@ -230,7 +230,7 @@ struct VocabularyPane: View {
                             // When JA or Nemotron-only is primary the toggle is
                             // visually disabled but the stored preference is
                             // preserved — flipping primary to a vocab-capable
-                            // model (v3+EOU, v2+EOU) restores the user's prior
+                            // model (Parakeet v3, v2) restores the user's prior
                             // on/off state without their having to retoggle.
                             Toggle("Enable vocabulary boosting", isOn: $store.isEnabled)
                                 .toggleStyle(.switch)
@@ -247,7 +247,7 @@ struct VocabularyPane: View {
                     Spacer()
                     InfoPopoverButton(
                         title: "Custom vocabulary",
-                        body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.\n\nExperimental — two paths depending on your primary model:\n\n• Parakeet v3 + EOU and v2 + EOU: acoustic CTC rescoring. Catches phonetic neighbors automatically.\n\n• Japanese: alias-based text substitution. Write your canonical spelling as a term, then add the writing systems the model might output as aliases (hiragana / katakana / romaji). Aliases drive the substitution. The inline alias UI was removed for MVP; for now, add aliases by editing the vocabulary file directly (one line per term: `Term: alias1, alias2`).\n\n• Nemotron-only English: not supported. Nemotron's streaming pipeline doesn't expose the token timings the rescorer needs.",
+                        body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.\n\nExperimental — two paths depending on your primary model:\n\n• Parakeet v3 and v2: acoustic CTC rescoring. Catches phonetic neighbors automatically.\n\n• Japanese: alias-based text substitution. Write your canonical spelling as a term, then add the writing systems the model might output as aliases (hiragana / katakana / romaji). Aliases drive the substitution. The inline alias UI was removed for MVP; for now, add aliases by editing the vocabulary file directly (one line per term: `Term: alias1, alias2`).\n\n• Nemotron-only English: not supported. Nemotron's streaming pipeline doesn't expose the token timings the rescorer needs.",
                         helpAnchor: "custom-vocabulary"
                     )
                 }
@@ -264,7 +264,7 @@ struct VocabularyPane: View {
 
     /// One-click affordance when the active primary doesn't support vocab.
     /// Swaps the holder to `tdt_0_6b_v3_eou_streaming` (the vocab-capable
-    /// multilingual primary added in v1.12). User's saved terms come right
+    /// multilingual Parakeet v3 primary). User's saved terms come right
     /// back the moment the swap completes.
     private var switchPrimaryButton: some View {
         Button {
@@ -272,7 +272,7 @@ struct VocabularyPane: View {
                 await transcriberHolder.setPrimary(.tdt_0_6b_v3_eou_streaming)
             }
         } label: {
-            Label("Switch to Parakeet v3 + EOU", systemImage: "arrow.triangle.2.circlepath")
+            Label("Switch to Parakeet v3", systemImage: "arrow.triangle.2.circlepath")
                 .font(.system(size: 12))
         }
         .controlSize(.small)

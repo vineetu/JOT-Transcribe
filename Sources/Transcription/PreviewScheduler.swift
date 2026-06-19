@@ -32,9 +32,9 @@ import os.log
 ///
 /// ## Concurrency shape
 ///
-/// One `PreviewScheduler` per recording slice (mirrors `StreamingTranscriber`'s
-/// lifecycle). A single consumer task drains chunks in mic order from a
-/// lock-protected `AsyncStream` (the FIFO pattern `StreamingTranscriber` uses);
+/// One `PreviewScheduler` per recording slice. A single consumer task drains
+/// chunks in mic order from a lock-protected `AsyncStream` (a FIFO drain that
+/// preserves audio order end-to-end from the writer queue);
 /// ticks run as fire-and-forget actor tasks, single-flight via
 /// `inFlight` + `pendingTrigger` (latest-wins, commit outranks volatile).
 ///
@@ -95,7 +95,7 @@ actor PreviewScheduler {
     private var onPartial: (@Sendable (String, UInt64) -> Void)?
     private var generation: UInt64 = 0
 
-    // MARK: Audio plumbing (FIFO drain — mirrors StreamingTranscriber)
+    // MARK: Audio plumbing (FIFO drain)
 
     private let continuationBox = ContinuationBox()
     private var consumerTask: Task<Void, Never>?
@@ -189,8 +189,7 @@ actor PreviewScheduler {
     /// Synchronous, nonisolated. Called from the audio capture writer queue
     /// (already FIFO) for each converted 16 kHz mono Float32 chunk. Yields into
     /// the per-session stream — the consumer task drains in order — so the
-    /// writer queue never blocks on an actor hop. Identical contract to
-    /// `StreamingTranscriber.enqueue`.
+    /// writer queue never blocks on an actor hop.
     nonisolated func enqueue(samples: [Float]) {
         guard !samples.isEmpty else { return }
         continuationBox.yield(samples)
@@ -214,8 +213,8 @@ actor PreviewScheduler {
 
     /// Abandon the session (Esc / cancel). Drops queued audio and stops ticks
     /// WITHOUT awaiting — a slow in-flight decode must not block cancel
-    /// responsiveness (mirrors `StreamingTranscriber.cancel`). Any result the
-    /// in-flight tick produces is discarded because `onPartial` is cleared.
+    /// responsiveness. Any result the in-flight tick produces is discarded
+    /// because `onPartial` is cleared.
     func cancel() async {
         stopped = true
         continuationBox.finish()
@@ -383,8 +382,7 @@ actor PreviewScheduler {
 
 /// Lock-protected wrapper around `AsyncStream.Continuation`, so the nonisolated
 /// `enqueue(samples:)` reaches the continuation without an actor hop, preserving
-/// FIFO from the audio writer queue end-to-end. (Same pattern as the private box
-/// in `StreamingTranscriber.swift`.)
+/// FIFO from the audio writer queue end-to-end.
 private final class ContinuationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: AsyncStream<[Float]>.Continuation?

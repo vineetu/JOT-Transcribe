@@ -4,8 +4,9 @@ import Foundation
 /// MainActor-isolated singleton owning the `@Published` streaming
 /// partial transcript that the recording pill reads.
 ///
-/// Why a singleton: partials are emitted from `StreamingTranscriber`
-/// (an actor that lives inside `DualPipelineTranscriber`), need to
+/// Why a singleton: partials are emitted from the live-preview engine
+/// (`PreviewScheduler` or `NemotronStreamingTranscriber`, an actor that
+/// lives inside `DualPipelineTranscriber`), need to
 /// reach `PillViewModel` (a MainActor `ObservableObject`), and apply
 /// uniformly to every voice-capture site (Dictation, Articulate
 /// voice-instruction, Ask Jot voice input). A shared store with

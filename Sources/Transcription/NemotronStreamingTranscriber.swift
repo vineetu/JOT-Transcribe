@@ -4,10 +4,11 @@ import FluidAudio
 import Foundation
 
 /// Actor wrapping FluidAudio's `StreamingNemotronAsrManager` (Nemotron
-/// 0.6B, 1120 ms chunks). This intentionally mirrors
-/// `StreamingTranscriber` without sharing a protocol abstraction: EOU and
-/// Nemotron have similar control flow but different SDK types and model
-/// cache layouts.
+/// 0.6B, 1120 ms chunks). This is the only remaining option backed by a
+/// separate streaming model bundle (v2 / v3 / JA drive their live preview
+/// from the batch weights via `PreviewScheduler`). It deliberately does not
+/// share a protocol abstraction with `PreviewScheduler` — the two have
+/// similar control flow but different SDK types and cache layouts.
 final actor NemotronStreamingTranscriber {
 
     private var manager: StreamingNemotronAsrManager?
