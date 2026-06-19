@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Slide counter -->
+  <text x="1020" y="54" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="16" fill="#9a9a9f">3 / 5</text>
+
+  <!-- Number badge -->
+  <circle cx="100" cy="130" r="44" fill="#CE231D"/>
+  <text x="100" y="143" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="bold" fill="#f0f0f0">2</text>
+
+  <!-- Point -->
+  <text x="100" y="260" font-family="Helvetica, Arial, sans-serif" font-size="56" font-weight="bold" fill="#f0f0f0">They can keep</text>
+  <text x="100" y="330" font-family="Helvetica, Arial, sans-serif" font-size="56" font-weight="bold" fill="#f0f0f0">your audio</text>
+  <text x="100" y="400" font-family="Helvetica, Arial, sans-serif" font-size="56" font-weight="bold" fill="#CE231D">under their</text>
+  <text x="100" y="470" font-family="Helvetica, Arial, sans-serif" font-size="56" font-weight="bold" fill="#CE231D">terms.</text>
+
+  <!-- Divider -->
+  <line x1="60" y1="520" x2="1020" y2="520" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Explanation panel -->
+  <rect x="60" y="550" width="960" height="620" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <text x="540" y="640" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">TYPICAL PRIVACY POLICY LANGUAGE</text>
+
+  <!-- Quote block -->
+  <rect x="100" y="670" width="880" height="200" rx="12" fill="#0d0d0e" stroke="#CE231D" stroke-width="1" opacity="0.7"/>
+  <text x="130" y="718" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f" font-style="italic">"We may retain voice recordings to improve transcription</text>
+  <text x="130" y="748" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f" font-style="italic">accuracy and develop our services for up to 24 months</text>
+  <text x="130" y="778" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f" font-style="italic">after your account is terminated."</text>
+  <text x="130" y="836" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#CE231D">— paraphrased from common cloud dictation terms of service</text>
+
+  <text x="540" y="940" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">Data breaches happen. AI training uses your data.</text>
+  <text x="540" y="972" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#9a9a9f">Acquisitions change what a company can do with it.</text>
+
+  <text x="540" y="1050" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="bold" fill="#f0f0f0">The ToS you didn't read protects them,</text>
+  <text x="540" y="1084" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="bold" fill="#f0f0f0">not you.</text>
+
+  <!-- Footer -->
+  <circle cx="402" cy="1308" r="5" fill="#CE231D"/>
+  <text x="418" y="1313" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

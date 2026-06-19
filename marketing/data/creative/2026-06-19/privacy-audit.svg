@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Top label -->
+  <text x="540" y="62" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f" letter-spacing="6">PRIVACY CHECK</text>
+
+  <!-- Headline -->
+  <text x="540" y="120" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="50" font-weight="bold" fill="#f0f0f0">Where does your voice go?</text>
+
+  <!-- Left panel: Cloud Apps -->
+  <rect x="40" y="150" width="466" height="830" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <text x="273" y="208" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#9a9a9f" letter-spacing="5">CLOUD APPS</text>
+
+  <!-- Cloud icon -->
+  <ellipse cx="273" cy="290" rx="64" ry="42" fill="none" stroke="#CE231D" stroke-width="2" opacity="0.7"/>
+  <ellipse cx="234" cy="308" rx="36" ry="26" fill="none" stroke="#CE231D" stroke-width="2" opacity="0.7"/>
+  <ellipse cx="312" cy="308" rx="36" ry="26" fill="none" stroke="#CE231D" stroke-width="2" opacity="0.7"/>
+  <rect x="210" y="318" width="126" height="24" fill="#161618"/>
+  <rect x="213" y="330" width="120" height="3" rx="2" fill="#CE231D" opacity="0.3"/>
+
+  <!-- Flow steps -->
+  <text x="273" y="395" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#9a9a9f">your voice</text>
+  <text x="273" y="432" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#CE231D">↓</text>
+  <text x="273" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#CE231D">leaves your Mac</text>
+  <text x="273" y="507" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#CE231D">↓</text>
+  <text x="273" y="545" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#CE231D">travels over the internet</text>
+  <text x="273" y="582" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#CE231D">↓</text>
+  <text x="273" y="620" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#CE231D">lives on their servers</text>
+  <text x="273" y="657" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#CE231D">↓</text>
+  <text x="273" y="695" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#CE231D">retained by their policy</text>
+
+  <!-- Divider -->
+  <line x1="80" y1="730" x2="466" y2="730" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Price -->
+  <text x="273" y="785" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="bold" fill="#CE231D">$8–15/mo</text>
+  <text x="273" y="832" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f">Wispr Flow · Superwhisper cloud</text>
+  <text x="273" y="858" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f">and most AI dictation apps</text>
+
+  <!-- Right panel: Jot -->
+  <rect x="574" y="150" width="466" height="830" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <text x="807" y="208" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="15" fill="#9a9a9f" letter-spacing="5">JOT</text>
+
+  <!-- Mac + chip icon -->
+  <rect x="757" y="258" width="100" height="70" rx="6" fill="none" stroke="#f0f0f0" stroke-width="2" opacity="0.35"/>
+  <rect x="791" y="328" width="32" height="8" rx="2" fill="#f0f0f0" opacity="0.25"/>
+  <rect x="767" y="336" width="80" height="3" rx="2" fill="#f0f0f0" opacity="0.15"/>
+  <!-- chip inside screen -->
+  <rect x="782" y="274" width="50" height="36" rx="4" fill="#CE231D" opacity="0.25"/>
+  <text x="807" y="298" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" font-weight="bold" fill="#f0f0f0" opacity="0.6">ANE</text>
+
+  <!-- Flow steps -->
+  <text x="807" y="395" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#9a9a9f">your voice</text>
+  <text x="807" y="432" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#f0f0f0">↓</text>
+  <text x="807" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#f0f0f0">Apple Neural Engine</text>
+  <text x="807" y="507" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#f0f0f0">↓</text>
+  <text x="807" y="545" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#f0f0f0">text lands at your cursor</text>
+  <text x="807" y="582" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#f0f0f0">↓</text>
+  <text x="807" y="620" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#f0f0f0">nothing ever leaves</text>
+  <text x="807" y="657" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#f0f0f0">↓</text>
+  <text x="807" y="695" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#f0f0f0">works fully offline</text>
+
+  <!-- Divider -->
+  <line x1="614" y1="730" x2="1000" y2="730" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Price -->
+  <text x="807" y="785" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="bold" fill="#f0f0f0">$0. Always.</text>
+  <text x="807" y="832" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f">free · open source · no account</text>
+  <text x="807" y="858" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f">Apple Silicon · macOS 14+</text>
+
+  <!-- Footer -->
+  <circle cx="402" cy="1047" r="5" fill="#CE231D"/>
+  <text x="418" y="1052" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
