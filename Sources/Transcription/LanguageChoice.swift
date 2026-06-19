@@ -158,6 +158,29 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
+    /// Whether this language's script is written **without inter-word spaces**
+    /// (CJK / space-free scripts). Drives preview-only string assembly in
+    /// `PreviewScheduler.join` — a spaceless language must glue the committed
+    /// tail to the volatile tail with no separator, otherwise the live preview
+    /// shows a spurious space at every window boundary.
+    ///
+    /// `true` for Japanese today. Future Chinese / Korean would also be `true`
+    /// when added; every Latin / Cyrillic / Greek language is `false`.
+    ///
+    /// This is **preview-only**: the final batch transcript is produced by the
+    /// model itself and is unaffected by this flag.
+    public var isSpaceless: Bool {
+        switch self {
+        case .japanese:
+            return true
+        case .english, .spanish, .french, .german, .italian, .portuguese,
+             .romanian, .polish, .czech, .slovak, .slovenian, .croatian,
+             .bosnian, .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
+             .danish, .dutch, .finnish, .greek, .hungarian, .swedish:
+            return false
+        }
+    }
+
     /// Picker presentation order: English and Japanese first (the two model
     /// forks), then the European languages alphabetically by display name.
     public static var presentationOrder: [LanguageChoice] {

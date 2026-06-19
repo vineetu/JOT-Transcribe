@@ -37,6 +37,24 @@ public enum HardwareTier {
         isAppleSilicon && hasSixteenGBOrMore && chipClearsNemotronTier(chipBrandString)
     }
 
+    /// Whether an *existing English user* should be silently auto-upgraded to
+    /// Nemotron at launch (the one-shot `NemotronAutoUpgradeMigration`).
+    ///
+    /// This is deliberately a **higher RAM bar than `nemotronEligible`**:
+    ///  * `nemotronEligible` (the run/offer floor) requires **≥ 16 GB** — the
+    ///    threshold at which Nemotron is allowed to run at all.
+    ///  * `autoUpgradeToNemotronEligible` (the auto-*swap* gate) requires
+    ///    **≥ 24 GB** — we only push the heavier model onto users with comfortable
+    ///    headroom, since the swap is unsolicited (the user never asked for it).
+    ///
+    /// The chip bar is identical (≥ M2 Pro via `chipClearsNemotronTier`); only
+    /// the memory floor differs. A 16–24 GB English user can still *manually*
+    /// pick Nemotron (they clear `nemotronEligible`); they just won't be
+    /// auto-swapped.
+    public static var autoUpgradeToNemotronEligible: Bool {
+        isAppleSilicon && hasTwentyFourGBOrMore && chipClearsNemotronTier(chipBrandString)
+    }
+
     // MARK: - Raw detected facts (also useful for diagnostics / logging)
 
     /// `machdep.cpu.brand_string`, e.g. `"Apple M2 Pro"`. Constant per boot, so
@@ -63,6 +81,14 @@ public enum HardwareTier {
     /// threshold, different concern).
     public static var hasSixteenGBOrMore: Bool {
         physicalMemoryBytes >= UInt64(16) * 1_073_741_824
+    }
+
+    /// RAM bar for the *auto-upgrade* swap (distinct from the 16 GB run floor
+    /// above): ≥ 24 GiB. We only auto-swap existing English users to the heavier
+    /// Nemotron model when they have comfortable headroom, since the swap is
+    /// unsolicited. See `autoUpgradeToNemotronEligible`.
+    public static var hasTwentyFourGBOrMore: Bool {
+        physicalMemoryBytes >= UInt64(24) * 1_073_741_824
     }
 
     /// Chip half of the Nemotron gate: a Pro/Max/Ultra tier on an M2-or-newer

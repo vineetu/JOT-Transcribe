@@ -40,7 +40,144 @@ private final class MonotonicProgress: @unchecked Sendable {
     }
 }
 
-public actor ModelDownloader {
+/// Seam for the model-fetch step so callers can be unit-tested without a
+/// real HuggingFace download. `ModelDownloader` is the production conformer;
+/// the startup self-heal injects this via `TranscriberHolder.downloaderFactory`
+/// so tests can substitute a no-op fetcher (the same pattern as
+/// `TranscriberHolder.transcriberFactory`).
+public protocol ModelDownloading: Sendable {
+    func downloadIfMissing(
+        _ id: ParakeetModelID,
+        progress: @Sendable @escaping (Double) -> Void
+    ) async throws
+}
+
+/// Process-global single-in-flight registry, keyed by `ParakeetModelID`.
+///
+/// Two independent callers fetching the SAME model — e.g. the background
+/// startup self-heal AND the Settings → Transcription "Download" button — used
+/// to construct separate `ModelDownloader` instances and both call
+/// `DownloadUtils.downloadRepo(...)` into the SAME staging directory. That
+/// races FluidAudio's file-move step ("CFNetworkDownload_*.tmp couldn't be
+/// moved to decoder_joint.mlmodelc because the folder doesn't exist" — one
+/// task removes/recreates the parent dir while the other moves into it).
+///
+/// This coordinator collapses concurrent fetches of one id onto a single
+/// shared `Task`: the first caller starts it, later callers `await` the same
+/// task (forwarding the live progress to every observer) instead of starting
+/// a colliding download. The registry is `static` so it dedupes across every
+/// `ModelDownloader` instance, not just one.
+actor DownloadCoordinator {
+    static let shared = DownloadCoordinator()
+
+    /// An in-flight fetch for one model id: the running task plus the set of
+    /// observer progress closures to fan progress out to.
+    private final class InFlight: @unchecked Sendable {
+        var task: Task<Void, Error>?
+        var observers: [(Double) -> Void] = []
+        let lock = os_unfair_lock_t.allocate(capacity: 1)
+        init() { lock.initialize(to: os_unfair_lock()) }
+        deinit { lock.deallocate() }
+
+        func addObserver(_ o: @escaping (Double) -> Void) {
+            os_unfair_lock_lock(lock); defer { os_unfair_lock_unlock(lock) }
+            observers.append(o)
+        }
+        func broadcast(_ value: Double) {
+            os_unfair_lock_lock(lock)
+            let snapshot = observers
+            os_unfair_lock_unlock(lock)
+            for o in snapshot { o(value) }
+        }
+    }
+
+    private var inFlight: [ParakeetModelID: InFlight] = [:]
+
+    /// Success observers (self-heal Fix-b). Fired with the model id whenever a
+    /// download for that id completes successfully via this coordinator —
+    /// regardless of which path initiated it. `TranscriberHolder` registers one
+    /// so a model that becomes healthy through ANY download (a racing one, a
+    /// migration/upgrade fetch, etc.) drops a stale `.failed` repair state, even
+    /// if that path didn't itself touch `repairState`.
+    private var successObservers: [@Sendable (ParakeetModelID) -> Void] = []
+
+    func addSuccessObserver(_ observer: @escaping @Sendable (ParakeetModelID) -> Void) {
+        successObservers.append(observer)
+    }
+
+    private func notifySuccess(_ id: ParakeetModelID) {
+        for observer in successObservers { observer(id) }
+    }
+
+    /// Run `body` for `id` exactly once even if called concurrently. Progress
+    /// from the single underlying download is fanned out to every caller's
+    /// `progress` closure. Joiners observe the same task's success/failure.
+    func run(
+        _ id: ParakeetModelID,
+        progress: @escaping @Sendable (Double) -> Void,
+        body: @escaping @Sendable (_ report: @escaping @Sendable (Double) -> Void) async throws -> Void
+    ) async throws {
+        if let existing = inFlight[id] {
+            // Join the in-flight download: register our progress observer and
+            // await the same task — no second (colliding) fetch is started.
+            existing.addObserver(progress)
+            try await existing.task!.value
+            return
+        }
+
+        let entry = InFlight()
+        entry.addObserver(progress)
+        inFlight[id] = entry
+
+        let report: @Sendable (Double) -> Void = { value in
+            entry.broadcast(value)
+        }
+        // The registry entry must live exactly as long as the underlying
+        // download — NOT as long as the initiator's await. If the initiator's
+        // parent Task is cancelled mid-download, a `defer` on the initiator's
+        // await would clear the entry while the shared Task is still running,
+        // and a new caller arriving in that window would start a 2nd colliding
+        // `downloadRepo`. So the shared Task itself removes the entry as its
+        // final step (success AND failure), hopping back onto this actor
+        // BEFORE it returns — so by the time any awaiter's `task.value`
+        // resolves, the entry is already gone and `isDownloading(id)` is false.
+        // Reentrancy is safe: `clear`/`run`/`isDownloading` only touch
+        // `inFlight` synchronously and never await while mutating it.
+        // This `Task` inherits the coordinator actor's isolation (it's created
+        // inside an actor-isolated method), so `clear(id)` runs synchronously
+        // on the actor as the task's final step — no extra hop, deterministic.
+        let task = Task<Void, Error> {
+            do {
+                try await body(report)
+            } catch {
+                clear(id)
+                throw error
+            }
+            clear(id)
+            // Fix-b: a successful download of `id` — tell observers so a stale
+            // repair-failure for this model can self-clear regardless of which
+            // path initiated the download.
+            notifySuccess(id)
+        }
+        entry.task = task
+
+        try await task.value
+    }
+
+    /// Remove the in-flight entry for `id`. Called only from the shared Task as
+    /// its final step (success AND failure) so the entry's lifetime matches the
+    /// underlying download, not any particular caller's await.
+    private func clear(_ id: ParakeetModelID) {
+        inFlight[id] = nil
+    }
+
+    /// Whether a download for `id` is currently in flight.
+    func isDownloading(_ id: ParakeetModelID) -> Bool {
+        inFlight[id] != nil
+    }
+}
+
+public actor ModelDownloader: ModelDownloading {
     private let cache: ModelCache
 
     public init(cache: ModelCache = .shared) {
@@ -48,6 +185,11 @@ public actor ModelDownloader {
     }
 
     /// Fetch the model if it's not already fully present on disk.
+    ///
+    /// Routes through the process-global `DownloadCoordinator` so concurrent
+    /// fetches of the SAME id (e.g. background self-heal + the manual
+    /// Settings → Transcription Download button) join one shared task instead
+    /// of colliding in FluidAudio's staging-move step.
     ///
     /// - Parameters:
     ///   - id: which Parakeet variant to download. For multi-bundle
@@ -67,18 +209,33 @@ public actor ModelDownloader {
             return
         }
 
+        let cache = self.cache
+        try await DownloadCoordinator.shared.run(id, progress: progress) { report in
+            try await Self.performDownload(id, cache: cache, progress: report)
+        }
+    }
+
+    /// The actual fetch, invoked once per id by the coordinator. `nonisolated
+    /// static` so the coordinator can run it off this actor without a hop and
+    /// without capturing `self` (the only state it needs is `cache`).
+    nonisolated private static func performDownload(
+        _ id: ParakeetModelID,
+        cache: ModelCache,
+        progress: @Sendable @escaping (Double) -> Void
+    ) async throws {
         do {
             try cache.ensureRootExists()
         } catch {
             throw ModelDownloadError.classify(error)
         }
 
+        let downloader = ModelDownloader(cache: cache)
         if id == .nemotron_en {
-            try await downloadStreamingOnly(id, progress: progress)
+            try await downloader.downloadStreamingOnly(id, progress: progress)
         } else if id.supportsStreaming {
-            try await downloadMultiBundle(id, progress: progress)
+            try await downloader.downloadMultiBundle(id, progress: progress)
         } else {
-            try await downloadSingleBundle(id, progress: progress)
+            try await downloader.downloadSingleBundle(id, progress: progress)
         }
     }
 
@@ -265,6 +422,30 @@ public actor ModelDownloader {
         }
     }
 
+    /// The upper bound of FluidAudio `DownloadUtils.downloadRepo`'s **download**
+    /// phase. `downloadRepo` reports `fractionCompleted` in `[0, 0.5]` while
+    /// fetching bytes and reserves `[0.5, 1.0]` for the CoreML compile step
+    /// (which `downloadRepo` alone never runs). COUPLED to the SDK — re-check on
+    /// every FluidAudio bump (see `DownloadUtils.swift`, the `0.5 *` factors in
+    /// `downloadRepo`'s progress reports).
+    static let repoDownloadBandCeiling: Double = 0.5
+
+    /// Rescale a `DownloadUtils.downloadRepo` progress snapshot to a per-side
+    /// [0, 1] fraction.
+    ///
+    /// `downloadRepo` already reports **byte-weighted, monotonic** progress (it
+    /// sums `totalBytes` from the HF listing and drives a per-byte
+    /// `URLSessionDownloadDelegate`), but it confines the *download* phase to
+    /// the `[0, repoDownloadBandCeiling]` band. Our streaming-side fetches only
+    /// download — never compile — so the raw snapshot would stall at the ceiling
+    /// and then snap to 1.0 when our wrapper forces the terminal report.
+    /// Rescaling that download band to a full 0.0–1.0 per-side fraction restores
+    /// a smooth, byte-weighted 0→100% with no long stall at the ceiling.
+    static func repoDownloadFraction(_ fractionCompleted: Double) -> Double {
+        let expanded = fractionCompleted / repoDownloadBandCeiling
+        return max(0.0, min(1.0, expanded))
+    }
+
     private func downloadEouStreamingSide(
         _ id: ParakeetModelID,
         progress: @Sendable @escaping (Double) -> Void
@@ -287,7 +468,7 @@ public actor ModelDownloader {
             .deletingLastPathComponent() // drop "parakeet-eou-streaming"
 
         let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
-            progress(max(0.0, min(1.0, snapshot.fractionCompleted)))
+            progress(Self.repoDownloadFraction(snapshot.fractionCompleted))
         }
 
         do {
@@ -314,7 +495,7 @@ public actor ModelDownloader {
         }
 
         let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
-            progress(max(0.0, min(1.0, snapshot.fractionCompleted)))
+            progress(Self.repoDownloadFraction(snapshot.fractionCompleted))
         }
 
         do {

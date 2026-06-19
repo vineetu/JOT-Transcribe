@@ -55,13 +55,19 @@ final class OverlayWindowController {
         recorder: RecorderController,
         delivery: DeliveryService,
         rewriteController: RewriteController? = nil,
-        pipeline: VoiceInputPipeline
+        pipeline: VoiceInputPipeline,
+        transcriberHolder: TranscriberHolder? = nil
     ) {
         self.recorder = recorder
         self.delivery = delivery
         self.rewriteController = rewriteController
         self.pipeline = pipeline
-        self.pillViewModel = PillViewModel(recorder: recorder, delivery: delivery, rewriteController: rewriteController)
+        self.pillViewModel = PillViewModel(
+            recorder: recorder,
+            delivery: delivery,
+            rewriteController: rewriteController,
+            transcriberHolder: transcriberHolder
+        )
     }
 
     func install() {
@@ -284,6 +290,15 @@ final class OverlayWindowController {
                 return Self.streamingPillWidth
             }
             return Self.compactPillWidth
+        case .repairingModel(let modelName, _, let isError):
+            // Persistent self-heal pill: text-driven width so the progress /
+            // failure copy isn't truncated. The width is capped at
+            // `expandedPillWidth` inside `errorPillWidth`, so a long
+            // model name won't blow out the layout.
+            let label = isError
+                ? "Couldn’t download \(modelName) — open Settings"
+                : "Repairing transcription model — downloading \(modelName)… 100%"
+            return errorPillWidth(for: label)
         case .hidden, .transcribing, .condensing, .rewriting, .transforming, .success, .holdProgress:
             return Self.compactPillWidth
         }
@@ -318,9 +333,11 @@ final class OverlayWindowController {
             // click-through so a tap near the notch passes to whatever
             // app the user is working in.
             panel.ignoresMouseEvents = !model.isStreamingSessionActive
-        case .success, .error, .savedToRecents:
+        case .success, .error, .savedToRecents, .repairingModel:
             // v1.14: `.savedToRecents` is the click-to-open-Recents
             // affordance — must be tappable for the whole linger window.
+            // The repairing pill is tappable so it can route to Settings →
+            // Transcription on click.
             panel.ignoresMouseEvents = false
         }
     }

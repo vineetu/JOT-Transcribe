@@ -348,4 +348,89 @@ struct ModelCacheStreamingTests {
 
         #expect(cache.isCached(.tdt_0_6b_v3_nemotron_streaming) == true)
     }
+
+    // MARK: - Startup self-heal: per-side presence (`stillPresent`)
+
+    /// `stillPresent` reports each side independently. The self-heal uses this
+    /// to tell a *missing* side (skip purge, downloadIfMissing fetches it) from
+    /// a *present-but-load-failed* side (corrupt → purge). Batch present,
+    /// streaming absent.
+    @Test func stillPresentReportsBatchSideOnly() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        Self.stageBatchV2(cache, id: .tdt_0_6b_v2_en_streaming)
+
+        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .batch) == true)
+        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .streaming) == false)
+    }
+
+    /// Streaming present, batch absent → only the streaming side reports.
+    @Test func stillPresentReportsStreamingSideOnly() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        Self.stageStreamingEOU(cache, id: .tdt_0_6b_v2_en_streaming)
+
+        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .batch) == false)
+        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .streaming) == true)
+    }
+
+    /// Nemotron-only: the single streaming bundle backs both sides, so a
+    /// `.batch` query returns the streaming presence (single-side passthrough).
+    @Test func stillPresentNemotronTreatsBothSidesAsStreamingBundle() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        Self.stageStreamingNemotron(cache, id: .nemotron_en)
+
+        #expect(cache.stillPresent(.nemotron_en, side: .batch) == true)
+        #expect(cache.stillPresent(.nemotron_en, side: .streaming) == true)
+    }
+
+    // MARK: - Startup self-heal: surgical purge (M4)
+
+    /// Surgical purge of ONLY the streaming side leaves the SHARED v3 batch
+    /// bundle intact — the M4 invariant. A blunt `removeCache(for:)` would
+    /// evict the v3 batch bundle that other options depend on; the self-heal
+    /// must never do that.
+    @Test func surgicalStreamingPurgeKeepsSharedV3Batch() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        Self.stageBatchV3Default(cache)
+        Self.stageStreamingNemotron(cache, id: .tdt_0_6b_v3_nemotron_streaming)
+        #expect(cache.isCached(.tdt_0_6b_v3) == true)
+
+        // Purge ONLY the (simulated-corrupt) streaming side.
+        cache.removeCache(
+            for: .tdt_0_6b_v3_nemotron_streaming,
+            removeBatch: false,
+            removeStreaming: true
+        )
+
+        // Shared v3 batch bundle survives; only the streaming side is gone.
+        #expect(cache.stillPresent(.tdt_0_6b_v3_nemotron_streaming, side: .batch) == true)
+        #expect(cache.stillPresent(.tdt_0_6b_v3_nemotron_streaming, side: .streaming) == false)
+        #expect(cache.isCached(.tdt_0_6b_v3) == true)
+    }
+
+    /// Surgical purge of ONLY the batch side leaves the streaming bundle
+    /// untouched — the symmetric case.
+    @Test func surgicalBatchPurgeKeepsStreaming() throws {
+        let cache = try Self.freshTempCache()
+        defer { Self.cleanup(cache) }
+
+        Self.stageBatchV2(cache, id: .tdt_0_6b_v2_en_streaming)
+        Self.stageStreamingEOU(cache, id: .tdt_0_6b_v2_en_streaming)
+
+        cache.removeCache(
+            for: .tdt_0_6b_v2_en_streaming,
+            removeBatch: true,
+            removeStreaming: false
+        )
+
+        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .batch) == false)
+        #expect(cache.stillPresent(.tdt_0_6b_v2_en_streaming, side: .streaming) == true)
+    }
 }

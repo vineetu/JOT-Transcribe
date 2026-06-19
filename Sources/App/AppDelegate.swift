@@ -171,12 +171,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// doesn't pay the 4–6 s ANE specialization latency synchronously,
     /// and so the iOS 26.4-class MLModel load hang (Apple dev forum
     /// 770529) can't park a mid-session recorder in `.transcribing`.
-    /// Best-effort: if the model isn't downloaded yet, or pre-warm fails,
-    /// the recorder will surface a fast "model still loading" error on
-    /// first press rather than silently hanging.
+    ///
+    /// Startup model-integrity self-heal (design §Phase 1, review G1): this
+    /// prewarm is now ALSO the integrity probe. It is the SINGLE live launch
+    /// load on `holder.transcriber` — its result is observed (no longer a
+    /// discarded fire-and-forget) and routed into the self-heal so a missing /
+    /// corrupt model is detected at launch instead of reactively at the cursor.
+    /// We deliberately do NOT spin a second `Transcriber` to probe: that would
+    /// double the multi-GB ANE load and race FluidAudio's process-global
+    /// `sharedMLArrayCache`.
+    ///
+    /// Best-effort: if the model isn't downloaded yet, or the probe surfaces a
+    /// failure, the self-heal kicks in (re-download + route + persistent pill);
+    /// a hotkey pressed before it finishes still gets a fast user-visible state.
     private func prewarmTranscriber(_ services: AppServices) {
-        Task.detached(priority: .utility) { [pipeline = services.pipeline] in
-            try? await pipeline.ensureTranscriberLoaded()
+        let holder = services.transcriberHolder
+        Task.detached(priority: .utility) { [holder] in
+            let result = await holder.probeActiveModelOnLaunch()
+            await MainActor.run {
+                if result.allHealthy {
+                    holder.markActiveModelHealthy()
+                }
+            }
+            if !result.allHealthy {
+                await holder.beginSelfHeal(failedSides: result.failedSides)
+            }
         }
     }
 
@@ -284,6 +303,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
 
         services.recordingPersister.start()
+
+        // Phase 4 (startup self-heal design): drive the pending
+        // migration / Nemotron-upgrade downloads at LAUNCH, not only from
+        // `JotAppWindow.onAppear` — otherwise hotkey-only users (who may never
+        // open the window) never get them. Both are idempotent once-flag
+        // guarded, so the retained `onAppear` calls are harmless duplicates.
+        // These also retire their pending markers, which the self-heal's launch
+        // deferral guard reads to avoid running a 3rd concurrent download.
+        services.transcriberHolder.startPendingMigrationDownloadIfNeeded()
+        services.transcriberHolder.startPendingNemotronUpgradeIfNeeded()
 
         // Sound chimes: prewarm the five bundled WAVs and subscribe to
         // recorder state so transitions fire audio cues. Prewarm runs on

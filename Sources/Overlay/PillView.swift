@@ -131,6 +131,11 @@ struct PillView: View {
                 pillBody {
                     HoldProgressContent(progress: progress, reduceMotion: reduceMotion)
                 }
+            case .repairingModel(let modelName, let progress, let isError):
+                pillBody {
+                    RepairingContent(modelName: modelName, progress: progress, isError: isError)
+                }
+                .onTapGesture { model.invokeRepairPillTap() }
             }
         }
         // Pin to the top of the hosting window so the pill's top edge lines
@@ -695,6 +700,54 @@ private struct SavedToRecentsContent: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Recording saved to Recents. Click to open.")
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
+    }
+}
+
+// MARK: - Repairing model (startup self-heal)
+
+/// Rendered for `PillState.repairingModel` (design §Phase 3). Persistent —
+/// shows download progress while the active transcription model re-downloads
+/// after a failed launch integrity probe, or a failure affordance once the
+/// heal could not complete. Tapping routes to Settings → Transcription.
+private struct RepairingContent: View {
+    let modelName: String
+    let progress: Double?
+    let isError: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if isError {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(nsColor: .systemOrange))
+            } else {
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(nsColor: .systemBlue))
+            }
+            Text(label)
+                .font(.system(size: 12, weight: .regular))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .monospacedDigit()
+                .frame(maxWidth: PillView.errorTextMaxWidth, alignment: .leading)
+            Image(systemName: "arrow.up.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.6))
+        }
+        .accessibilityLabel(label + ". Click to open Settings.")
+        .transition(.opacity.animation(.easeOut(duration: 0.14)))
+    }
+
+    private var label: String {
+        if isError {
+            return "Couldn’t download \(modelName) — open Settings"
+        }
+        if let progress {
+            return "Repairing transcription model — downloading \(modelName)… \(Int(progress * 100))%"
+        }
+        return "Repairing transcription model — downloading \(modelName)…"
     }
 }
 

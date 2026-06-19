@@ -1,6 +1,19 @@
 import FluidAudio
 import Foundation
 
+/// The two engine sides a model bundle can have on disk. The startup
+/// integrity self-heal reports per-side load failures and purges only the
+/// failed side (see `DualPipelineTranscriber.probeIntegrity`,
+/// `ModelCache.removeCache(for:removeBatch:removeStreaming:)`).
+public enum ModelSide: Sendable, Equatable {
+    /// The batch final-transcript bundle (FluidAudio `AsrModels`). For
+    /// `.nemotron_en` there is no separate batch bundle; the streaming
+    /// bundle backs both sides.
+    case batch
+    /// The streaming/live-preview bundle (EOU or Nemotron).
+    case streaming
+}
+
 /// Owns the on-disk location of downloaded Parakeet/Nemotron models.
 ///
 /// Root lives under the app's Application Support container rather than
@@ -93,7 +106,38 @@ public struct ModelCache: Sendable {
             .appendingPathComponent("1120ms", isDirectory: true)
     }
 
+    /// Per-side presence of a model's on-disk bundle. Used by the
+    /// startup integrity self-heal (`TranscriberHolder.beginSelfHeal`) to
+    /// disambiguate a *missing* side (downloadIfMissing will fetch it) from
+    /// a *present-but-load-failed* side (corrupt — purge then re-download).
+    /// Mirrors `isCached`'s presence semantics, scoped to one engine side:
+    /// `.batch` → `batchBundleExists`, `.streaming` → `streamingPartialBundleExists`.
+    /// For `.nemotron_en` the streaming bundle IS both sides, so a `.batch`
+    /// query returns the streaming presence too (matching `isCached`'s
+    /// single-side passthrough).
+    func stillPresent(_ id: ParakeetModelID, side: ModelSide) -> Bool {
+        if id == .nemotron_en {
+            // Nemotron has no separate batch bundle; the streaming bundle
+            // backs both preview and final. Treat either side query as the
+            // streaming presence so the self-heal's per-side purge/verify
+            // works on the single real bundle.
+            return streamingPartialBundleExists(for: id)
+        }
+        switch side {
+        case .batch:
+            return batchBundleExists(for: id)
+        case .streaming:
+            return streamingPartialBundleExists(for: id)
+        }
+    }
+
     /// True when every file the loader will need is on disk.
+    ///
+    /// NOTE: this is a **presence/completeness** check, NOT an integrity
+    /// check — a truncated/corrupt-but-present file passes `isCached` and
+    /// only fails later at *load*. The startup self-heal relies on a strict
+    /// load probe (`DualPipelineTranscriber.probeIntegrity`) to catch
+    /// corruption that presence alone cannot.
     ///
     /// Batch Parakeet options delegate to FluidAudio's
     /// `AsrModels.modelsExist`, which is the authoritative check for "every
@@ -164,6 +208,10 @@ public struct ModelCache: Sendable {
         removeCache(for: id, removeBatch: true, removeStreaming: true)
     }
 
+    /// Surgically remove only the requested side(s). The startup self-heal
+    /// uses this (NEVER the blunt `removeCache(for:)`) so purging a corrupt
+    /// streaming side never evicts the SHARED v3 batch bundle that other
+    /// options depend on.
     func removeCache(for id: ParakeetModelID, removeBatch: Bool, removeStreaming: Bool) {
         let fm = FileManager.default
         if removeBatch {

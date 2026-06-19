@@ -30,6 +30,13 @@ final class VoiceInputPipeline {
         /// sessions don't see this — they get success-with-metadata via
         /// `StopAndTranscribeResult.partialDueToDisconnect`.
         case disconnectedMidVoiceCommand
+        /// The active model is being self-healed (re-downloaded) and there is
+        /// no installed alternate English model to fall back to, so recording
+        /// cannot start yet (design §Phase 5). The persistent repairing pill
+        /// (driven off `TranscriberHolder.$repairState`) is the surface; the
+        /// recorder maps this to a clear "downloading model…" message rather
+        /// than a bare error.
+        case repairInProgress
     }
 
     /// Result tuple returned by `stopAndTranscribe(_:)`. Adds
@@ -62,8 +69,25 @@ final class VoiceInputPipeline {
     /// the live one, so a model swap mid-session propagates without
     /// re-wiring the pipeline.
     private let holder: TranscriberHolder
-    var transcriber: any Transcribing { holder.transcriber }
+    /// Per-session transient transcriber override (design §Phase 5). When the
+    /// active model is being self-healed and isn't loadable, recording-start
+    /// resolves a transient alternate English model into this slot for the
+    /// duration of the session; cleared in `clearPhase()`. When `nil`, reads
+    /// fall through to the live active `holder.transcriber`. Resolved ONCE at
+    /// recording start (never mid-session — review m6) so a model swap never
+    /// becomes visible inside a recording.
+    private var sessionTranscriberOverride: (any Transcribing)?
+    var transcriber: any Transcribing { sessionTranscriberOverride ?? holder.transcriber }
     private let permissions: any PermissionsObserving
+
+    /// One-shot notice surfaced when a session ran on a transient fallback
+    /// transcriber during a repair (e.g. "Temporarily using <alt> while
+    /// <active> re-downloads"). Read-and-cleared by `RecorderController`.
+    /// NOTE: only the recorder path consumes this (via
+    /// `consumeTransientFallbackNotice()`); it is reset to `nil` at the start
+    /// of every `startRecording(...)`, so a `.rewrite`-owned session that used
+    /// the fallback never leaves a stale notice for a later recorder session.
+    private(set) var lastTransientFallbackNotice: String?
 
     private var phase: Phase = .idle
     private var generationCounter: UInt64 = 0
@@ -133,6 +157,25 @@ final class VoiceInputPipeline {
             throw PipelineError.busy
         }
 
+        // Phase 5 ("never block"): resolve which transcriber this session
+        // uses BEFORE issuing the token (review m6 — resolved at recording
+        // start, never mid-session). In steady state this is the live active
+        // transcriber; during a repair where the active model isn't loadable
+        // it's a transient alternate English model. `nil` means a repair is in
+        // flight and no alternate is installed → cannot record yet.
+        lastTransientFallbackNotice = nil
+        sessionTranscriberOverride = nil
+        switch await holder.resolveSessionTranscriber() {
+        case .active:
+            // Steady-state path: keep the slot nil so reads track a live swap.
+            break
+        case .transient(let alt, let notice):
+            sessionTranscriberOverride = alt
+            lastTransientFallbackNotice = notice
+        case .blocked:
+            throw PipelineError.repairInProgress
+        }
+
         let token = issueToken(owner: owner)
         phase = .recording(token, startedAt: Date())
         disconnectCallback = onDisconnect
@@ -146,8 +189,11 @@ final class VoiceInputPipeline {
         // stream and drain as soon as the model is ready. So even the
         // first recording after app launch shows a live preview (just
         // with a few extra seconds before the first partial appears).
-        // Non-streaming primaries (v3 / JA) skip entirely — the
-        // downcast fails and `dual` stays nil.
+        // Primaries with no live-preview engine (bare-batch v3) skip
+        // entirely — the downcast fails and `dual` stays nil. JA is now a
+        // `DualPipelineTranscriber` (batch final + `.batchPreview`
+        // scheduler), so it streams its preview here like the other
+        // streaming primaries.
         if let dual = transcriber as? DualPipelineTranscriber {
             await beginStreamingSession(token: token, dual: dual)
         }
@@ -396,6 +442,11 @@ final class VoiceInputPipeline {
 
     private func transcribe(recording: AudioRecording, token: Token) async throws -> String {
         let transcriber = self.transcriber
+        // True iff this session is running on the ACTIVE model (no Phase-5
+        // transient fallback override). A successful transcription on the
+        // active model proves it loaded fine — used to self-clear a stale
+        // `repairState` (design self-heal Fix-a).
+        let usedActiveModel = (sessionTranscriberOverride == nil)
 
         return try await withCheckedThrowingContinuation { continuation in
             let lock = NSLock()
@@ -438,6 +489,13 @@ final class VoiceInputPipeline {
                             return
                         }
                         self.phase = .idle
+                        // Proven-healthy signal: a successful transcription on
+                        // the ACTIVE model clears any stale `.failed` repair
+                        // state so the failure pill never nags after the model
+                        // is actually working (self-heal Fix-a).
+                        if usedActiveModel {
+                            self.holder.noteActiveModelHealthy()
+                        }
                         resumeOnce(.success(result.text))
                     }
                 } catch TranscriberError.audioTooShort {
@@ -534,7 +592,19 @@ final class VoiceInputPipeline {
         if disconnectedGenerations.count > 16 {
             disconnectedGenerations = Set(disconnectedGenerations.suffix(16))
         }
+        // Drop the per-session transient transcriber so the next session
+        // re-resolves against the (possibly now-healed) active model.
+        sessionTranscriberOverride = nil
         phase = .idle
+    }
+
+    /// Read-and-clear accessor for the one-shot transient-fallback notice
+    /// (Phase 5). `RecorderController` surfaces it as a pill `.notice(...)`
+    /// after a successful delivery, the same way mic-fallback notices flow.
+    func consumeTransientFallbackNotice() -> String? {
+        let notice = lastTransientFallbackNotice
+        if notice != nil { lastTransientFallbackNotice = nil }
+        return notice
     }
 
     /// Async accessor for the active capture's fallback info — used by

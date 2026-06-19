@@ -32,6 +32,8 @@ User-facing features in the shipping build. This is the product surface — not 
   - **Paragraph segmentation** — pause-based `\n\n` breaks when FluidAudio returns token timings.
   - v3 (default + int4 + Nemotron-paired), Japanese, and Nemotron-only deliberately skip this chain — they already emit clean, cased, punctuated text natively, and running the regex pass on top can regress correct casing.
 - **In-app model download** — each model is fetched from within Jot on first use with a progress bar.
+- **Startup self-healing** — at launch (and after an auto-update relaunch) Jot verifies the active transcription model actually *loads*, not just that its files are present — so a truncated or corrupt model (interrupted download, disk issue) is caught proactively instead of at the cursor when you next dictate. If a model side is broken, Jot surgically re-downloads only the affected part (never the shared multilingual batch bundle), shows the progress on a window-independent status pill, and opens Settings → Transcription so you can see what's happening. The re-download retries on the next launch if it fails.
+- **Never blocks dictation during a repair** — if your active model is re-downloading and you press the dictation hotkey, Jot temporarily transcribes on another installed English model (preferring Parakeet v2) and shows a "Temporarily using … while … re-downloads" notice, then flips back automatically once the repair completes. Only when no alternate English model is installed do you wait for the download (with a live progress pill).
 
 **Related:** [Recording & Dictation](#recording--dictation), [Settings → Transcription](#transcription), [Settings → Vocabulary](#vocabulary), [Setup Wizard](#setup-wizard), [Status Indicator](#status-indicator).
 

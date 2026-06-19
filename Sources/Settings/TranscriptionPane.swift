@@ -167,14 +167,25 @@ struct TranscriptionPane: View {
         let model = holder.primaryModelID
         let installed = holder.installedModelIDs.contains(model)
         let state = rowState[model] ?? RowState()
+        // A startup self-heal / repair always targets the ACTIVE model
+        // (`activeModelID == primaryModelID`), which is the model this row
+        // describes. When a repair is in flight, drive the row off
+        // `holder.repairState` instead of the manual `rowState`, and hide the
+        // manual "Download" button so the user can't kick a 2nd colliding
+        // download (Fix 3b). The single-in-flight `DownloadCoordinator` would
+        // join them anyway, but hiding the button removes the temptation and
+        // keeps the UI honest about what's happening.
+        let repair = holder.repairState
 
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(languageStatusSubtitle(model: model, installed: installed, state: state))
+                Text(languageStatusSubtitle(model: model, installed: installed, state: state, repair: repair))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                 Spacer()
-                if state.isDownloading {
+                if let repair {
+                    repairTrailing(repair)
+                } else if state.isDownloading {
                     HStack(spacing: 6) {
                         ProgressView(value: state.progress)
                             .frame(width: 100)
@@ -196,13 +207,18 @@ struct TranscriptionPane: View {
                         .controlSize(.small)
                 }
             }
-            if let error = state.error {
+            if let repair, case .failed = repair {
+                Text("Couldn’t finish downloading \(repair.modelName). It will retry on next launch, or use Download above.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let error = state.error, repair == nil {
                 Text(error)
                     .font(.system(size: 11))
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if !installed && !state.isDownloading {
+            if repair == nil && !installed && !state.isDownloading {
                 Text("Download required.")
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
@@ -210,12 +226,48 @@ struct TranscriptionPane: View {
         }
     }
 
+    /// Trailing accessory while a self-heal/repair is in flight for the active
+    /// model: a live progress bar driven by `repairState` (no Download button,
+    /// so no colliding manual fetch). On `.failed`, a small Retry that routes
+    /// to the manual download path.
+    @ViewBuilder
+    private func repairTrailing(_ repair: TranscriberHolder.RepairState) -> some View {
+        switch repair {
+        case .downloading(_, let progress):
+            HStack(spacing: 6) {
+                if let progress {
+                    ProgressView(value: progress)
+                        .frame(width: 100)
+                    Text("\(Int(progress * 100))%")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+        case .failed:
+            Button("Retry") { startDownload(holder.primaryModelID) }
+                .controlSize(.small)
+        }
+    }
+
     private func languageStatusSubtitle(
         model: ParakeetModelID,
         installed: Bool,
-        state: RowState
+        state: RowState,
+        repair: TranscriberHolder.RepairState?
     ) -> String {
         let footprint = footprintLabel(for: model)
+        if let repair {
+            switch repair {
+            case .downloading:
+                return "Repairing — downloading… · \(footprint)"
+            case .failed:
+                return "Repair failed · \(footprint)"
+            }
+        }
         if state.isDownloading {
             return "Downloading… · \(footprint)"
         }
@@ -281,6 +333,19 @@ struct TranscriptionPane: View {
     }
 
     private func startDownload(_ model: ParakeetModelID) {
+        // The ACTIVE model is the one a self-heal repairs. Route its manual
+        // download / Retry THROUGH `repairState` (via `runManualRepair`) so a
+        // successful retry clears the failure UI everywhere (this row, the
+        // persistent pill, the window banner) and shows live progress while it
+        // runs — instead of leaving stale `.failed` chrome until relaunch. The
+        // shared `DownloadCoordinator` collapses this with any in-flight
+        // self-heal of the same id. NON-active models keep the local `rowState`
+        // path (they have no `repairState` of their own).
+        if model == holder.primaryModelID {
+            Task { await holder.runManualRepair(model) }
+            return
+        }
+
         rowState[model] = RowState(isDownloading: true, progress: 0, error: nil)
 
         Task {

@@ -82,6 +82,13 @@ actor PreviewScheduler {
     /// shared instance (design §4.5).
     private let transcriber: Transcriber
 
+    /// Whether the active language is written without inter-word spaces (CJK /
+    /// space-free scripts, e.g. Japanese). When `true`, `join` glues the
+    /// committed and volatile preview tails with no separator. Preview-only —
+    /// the final batch transcript is unaffected. Defaults to `false` so the
+    /// space-delimited languages (and any caller that omits it) are unchanged.
+    private let spaceless: Bool
+
     /// Publish callback + generation token, wired per session by `begin`.
     /// Identical contract to the EOU engine's `onPartial` — the closure itself
     /// performs the MainActor hop into `StreamingPartialStore`.
@@ -130,8 +137,9 @@ actor PreviewScheduler {
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "preview-scheduler")
 
-    init(transcriber: Transcriber) {
+    init(transcriber: Transcriber, spaceless: Bool = false) {
         self.transcriber = transcriber
+        self.spaceless = spaceless
     }
 
     // MARK: Session lifecycle
@@ -320,7 +328,7 @@ actor PreviewScheduler {
         switch trigger {
         case .commit:
             if let text, !text.isEmpty {
-                committedText = Self.join(committedText, text)
+                committedText = join(committedText, text)
                 windowStartTotal = max(windowStartTotal, windowEnd)
                 emptyRetries = 0
             } else {
@@ -344,18 +352,32 @@ actor PreviewScheduler {
 
         let display = trigger == .commit
             ? committedText
-            : Self.join(committedText, volatileTail)
+            : join(committedText, volatileTail)
         guard !display.isEmpty else { return }
         // Publish via the EOU-style callback (it performs its own MainActor hop).
         onPartial?(display, generation)
     }
 
-    private static func join(_ a: String, _ b: String) -> String {
+    /// Glue the committed prefix and the volatile/committed tail for display.
+    /// Space-delimited languages insert a single separating space; spaceless
+    /// (CJK) languages concatenate directly, since Japanese (and any future
+    /// Chinese / Korean) text has no inter-word spaces and a separator would
+    /// show a spurious gap at every window boundary. Preview-only — the final
+    /// transcript is produced by the batch model and is unaffected.
+    private func join(_ a: String, _ b: String) -> String {
+        Self.join(a, b, spaceless: spaceless)
+    }
+
+    /// Pure, testable join: trims both sides and concatenates with a single
+    /// space (space-delimited) or no separator (`spaceless` — CJK). Factored
+    /// out of the instance method so `PreviewSchedulerJoinTests` can exercise
+    /// the spaceless branch without spinning up an actor or real inference.
+    static func join(_ a: String, _ b: String, spaceless: Bool) -> String {
         let lhs = a.trimmingCharacters(in: .whitespacesAndNewlines)
         let rhs = b.trimmingCharacters(in: .whitespacesAndNewlines)
         if lhs.isEmpty { return rhs }
         if rhs.isEmpty { return lhs }
-        return lhs + " " + rhs
+        return spaceless ? lhs + rhs : lhs + " " + rhs
     }
 }
 

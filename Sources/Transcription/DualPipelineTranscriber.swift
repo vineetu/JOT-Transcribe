@@ -71,6 +71,58 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         }
     }
 
+    /// Per-side strict integrity probe for the startup self-heal (design
+    /// §Phase 1, review B1 + G2). Unlike `ensureLoaded()`, this does NOT
+    /// route the streaming side through `ensureStreamingLoadedQuietly` — that
+    /// path swallows streaming load errors for *runtime degradation
+    /// tolerance*, which would let a batch-healthy / preview-corrupt bundle
+    /// pass and skip the heal. Here each side is loaded strictly and its
+    /// load result (success/failure) is reported back so the caller can purge
+    /// + re-download ONLY the side that actually failed.
+    ///
+    /// This loads the SAME live engines this instance already holds — it is
+    /// the single launch load (review G1), not a second loader, so there is
+    /// no double multi-GB ANE load and no race on FluidAudio's process-global
+    /// `sharedMLArrayCache`.
+    ///
+    /// `nil` for a side means "this configuration has no such side" (e.g. a
+    /// `.batchPreview` streaming engine re-uses the batch model, so there is
+    /// nothing distinct to load/fail on the streaming side).
+    func probeIntegrity() async -> (batch: Result<Void, Error>?, streaming: Result<Void, Error>?) {
+        let batchResult: Result<Void, Error>?
+        switch finalEngine {
+        case .batch(let batch):
+            do { try await batch.ensureLoaded(); batchResult = .success(()) }
+            catch { batchResult = .failure(error) }
+        case .nemotron(let nemotron):
+            // Nemotron-only: one engine backs both preview and final. Probe
+            // it once as the "batch" (final) side; the streaming side is the
+            // same engine and is reported as `nil` (single-side passthrough).
+            do { try await nemotron.ensureLoaded(); batchResult = .success(()) }
+            catch { batchResult = .failure(error) }
+        }
+
+        let streamingResult: Result<Void, Error>?
+        switch streamingEngine {
+        case .eou(let streaming):
+            do { try await streaming.ensureLoaded(); streamingResult = .success(()) }
+            catch { streamingResult = .failure(error) }
+        case .nemotron(let nemotron):
+            if case .nemotron = finalEngine {
+                // Nemotron-only: streaming == final, already probed above.
+                streamingResult = nil
+            } else {
+                do { try await nemotron.ensureLoaded(); streamingResult = .success(()) }
+                catch { streamingResult = .failure(error) }
+            }
+        case .batchPreview:
+            // Re-uses the batch final engine — nothing distinct to probe.
+            streamingResult = nil
+        }
+
+        return (batch: batchResult, streaming: streamingResult)
+    }
+
     private func ensureStreamingLoadedQuietly() async {
         do {
             switch streamingEngine {

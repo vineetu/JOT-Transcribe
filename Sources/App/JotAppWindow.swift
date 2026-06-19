@@ -177,6 +177,9 @@ struct JotAppWindow: View {
         .onAppear {
             navHistory.bind(selection: $selection)
             transcriberHolder.startPendingMigrationDownloadIfNeeded()
+            // Nemotron auto-upgrade (download-first-then-flip). Reuses the
+            // same `migrationDownloadBanner` above for progress/error UI.
+            transcriberHolder.startPendingNemotronUpgradeIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .jotWindowSetSidebarSelection)) { note in
             if let newSelection = note.userInfo?["selection"] as? AppSidebarSelection {
@@ -233,7 +236,14 @@ struct JotAppWindow: View {
 
     @ViewBuilder
     private var migrationDownloadBanner: some View {
-        if let progress = transcriberHolder.migrationDownloadProgress {
+        // Startup self-heal banner (design §Phase 3 / G4): render directly off
+        // `repairState`, sharing the migration banner's styling. Checked first
+        // so an in-flight heal is always visible when the window is open;
+        // self-heal defers when a migration download is pending, so the two
+        // producers don't fight for the banner in practice.
+        if let repair = transcriberHolder.repairState {
+            repairBanner(repair)
+        } else if let progress = transcriberHolder.migrationDownloadProgress {
             HStack(spacing: 10) {
                 ProgressView(value: progress)
                     .frame(width: 120)
@@ -250,6 +260,43 @@ struct JotAppWindow: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                 Text("Model download failed: \(error)")
+                    .font(.system(size: 12, weight: .medium))
+                    .lineLimit(2)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.regularMaterial)
+        }
+    }
+
+    @ViewBuilder
+    private func repairBanner(_ repair: TranscriberHolder.RepairState) -> some View {
+        switch repair {
+        case .downloading(let modelName, let progress):
+            HStack(spacing: 10) {
+                if let progress {
+                    ProgressView(value: progress)
+                        .frame(width: 120)
+                    Text("Repairing transcription model — downloading \(modelName)… \(Int(progress * 100))%")
+                        .font(.system(size: 12, weight: .medium))
+                        .monospacedDigit()
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Repairing transcription model — downloading \(modelName)…")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.regularMaterial)
+        case .failed(let modelName, _):
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("Couldn’t finish downloading \(modelName). Open Settings → Transcription to retry.")
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
                 Spacer()
