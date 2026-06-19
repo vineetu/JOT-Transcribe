@@ -468,3 +468,31 @@ ProcessInfo.processInfo.isOperatingSystemAtLeast(.init(majorVersion: 15, minorVe
    would *improve* the M1 margin and could change the gate. Re-evaluate on upgrade.
 6. **Does v2/v3 batch RAM footprint differ enough to matter on 8 GB?** Only v3's ~1.5 GB
    process peak is documented; v2 RAM is [Unknown]. Confirm before any 8 GB gating.
+
+## Addendum: Nemotron auto-upgrade for existing English users
+
+A one-shot, launch-time migration (`NemotronAutoUpgradeMigration`) silently moves
+**existing English** users onto Nemotron when the hardware clears a *stricter* bar than
+the run/offer gate above:
+
+- **Run/offer floor** (`HardwareTier.nemotronEligible`): chip ≥ M2 Pro **and ≥ 16 GB** —
+  the threshold at which Nemotron is allowed to run / be manually picked.
+- **Auto-swap gate** (`HardwareTier.autoUpgradeToNemotronEligible`): chip ≥ M2 Pro **and
+  ≥ 24 GB**. The chip predicate is identical (`chipClearsNemotronTier`); only the RAM
+  floor differs. The swap is unsolicited, so we require comfortable headroom (24 GB)
+  before pushing the heavier model — a 16–24 GB English user keeps their current model
+  and can still pick Nemotron manually.
+
+**Safety (no broken dictation).** The migration only sets a pending marker
+(`autoUpgradePendingKey`); it never writes `jot.defaultModelID`. The actual swap is
+**download-first-then-flip**, performed by
+`TranscriberHolder.startPendingNemotronUpgradeIfNeeded()`: the user's current model stays
+active while Nemotron downloads in the background (reusing the existing
+`migrationDownloadProgress`/`migrationDownloadError` banner), and `setPrimary(.nemotron_en)`
+runs only after the download fully succeeds. There is never a window where the active
+model points at an uninstalled bundle. On failure the pending marker is left set so the
+next launch retries (there is no manual picker for this auto path).
+
+**Gate (all must hold):** `autoUpgradeToNemotronEligible` AND
+`jot.transcriptionLanguage == "english"` AND the stored model resolves to a non-Nemotron
+model. Ordering: runs **after** `LanguageMigration` (which seeds the language key).

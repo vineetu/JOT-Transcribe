@@ -54,6 +54,9 @@ enum ResetActions {
             // Relaunch captures setupComplete=false, so single-or-chord migration stays gated off.
             // Clearing the domain also drops the Advanced flag, so after a soft reset it stays OFF
             // (fresh-install behavior) — consistent with the new default-off intent for new installs.
+            // The Nemotron auto-upgrade keys (NemotronAutoUpgradeMigration.migratedKey /
+            // .autoUpgradePendingKey) are intentionally NOT preserved below — the domain wipe
+            // clears them, so the one-shot gate is re-evaluated on the next launch.
 
             if preserveModelChoice {
                 if let id = preservedModelID {

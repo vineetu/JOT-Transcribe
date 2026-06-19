@@ -46,6 +46,14 @@ final class PillViewModel: ObservableObject {
         /// renders a fill / ring driven by this value. Yields to any
         /// active recorder / rewrite state — see `showHoldProgress(_:)`.
         case holdProgress(progress: Double)
+        /// Startup model-integrity self-heal (design §Phase 3). Persistent —
+        /// driven DIRECTLY off `TranscriberHolder.$repairState`, NOT the
+        /// recorder lifecycle, so it is never handed to `scheduleDismiss` /
+        /// `scheduleAutoRecoveryIfNeeded`. `modelName` names the model being
+        /// repaired; `progress` is `nil` until the first byte fraction lands;
+        /// `isError` is `true` once the heal has failed and the user has been
+        /// routed to Settings.
+        case repairingModel(modelName: String, progress: Double?, isError: Bool)
     }
 
     @Published private(set) var state: PillState = .hidden
@@ -106,6 +114,16 @@ final class PillViewModel: ObservableObject {
     /// path.
     var onSavedToRecentsTap: ((_ audioFileName: String?) -> Void)?
 
+    /// Tap handler for the persistent repairing pill (design §Phase 3). Routes
+    /// the user to Settings → Transcription — the same primary recovery surface
+    /// the holder opens on detection. Wired by composition.
+    var onRepairPillTap: (() -> Void)?
+
+    /// Called by `PillView` when the repairing pill is tapped.
+    func invokeRepairPillTap() {
+        onRepairPillTap?()
+    }
+
     /// v1.14: paired with `state == .savedToRecents`. Set by
     /// `showSavedToRecents(...)` and read by `invokeSavedToRecentsTap()`
     /// when the pill is clicked. Cleared on the next pill transition so
@@ -145,7 +163,26 @@ final class PillViewModel: ObservableObject {
     private weak var delivery: DeliveryService?
     private weak var rewriteController: RewriteController?
 
-    init(recorder: RecorderController, delivery: DeliveryService, rewriteController: RewriteController? = nil) {
+    /// Subscriber on `TranscriberHolder.$repairState` (design §Phase 3 / G4).
+    /// Drives the persistent repairing pill directly off the holder — this
+    /// path NEVER calls `scheduleDismiss`/`scheduleAutoRecoveryIfNeeded`, so
+    /// the pill stays up for the whole repair, independent of the recording
+    /// lifecycle.
+    private var repairCancellable: AnyCancellable?
+    /// Latest repair state mirrored from the holder. Read when a transient
+    /// recorder/rewrite state clears so the persistent repair pill reasserts.
+    private var latestRepairState: TranscriberHolder.RepairState?
+    /// Holder reference for the defensive self-clear guard (self-heal Fix-c):
+    /// before re-showing a `.failed` pill, check whether the active model is
+    /// actually present on disk and, if so, clear the stale failure instead.
+    private weak var transcriberHolder: TranscriberHolder?
+
+    init(
+        recorder: RecorderController,
+        delivery: DeliveryService,
+        rewriteController: RewriteController? = nil,
+        transcriberHolder: TranscriberHolder? = nil
+    ) {
         self.recorder = recorder
         self.delivery = delivery
         self.rewriteController = rewriteController
@@ -220,6 +257,79 @@ final class PillViewModel: ObservableObject {
                     self?.isPillExpanded = false
                 }
             }
+
+        // Persistent repairing pill — driven straight off the holder's
+        // self-heal producer. Yields to any in-flight recording/rewrite so it
+        // never masks live dictation, and reasserts once those clear.
+        self.transcriberHolder = transcriberHolder
+        if let transcriberHolder {
+            repairCancellable = transcriberHolder.$repairState
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] repair in
+                    self?.repairStateChanged(repair)
+                }
+        }
+    }
+
+    // MARK: - Repair (self-heal) transitions
+
+    /// Mirror the holder's `repairState` onto the pill. Persistent: this never
+    /// schedules a dismiss. Yields to an in-flight recorder/rewrite pipeline so
+    /// live dictation isn't masked; `reassertRepairIfNeeded()` brings the pill
+    /// back when those transient states clear.
+    private func repairStateChanged(_ repair: TranscriberHolder.RepairState?) {
+        latestRepairState = repair
+        guard let repair else {
+            // Heal finished — clear the pill only if it's currently the repair
+            // pill (don't stomp an in-flight recording/success/error).
+            if case .repairingModel = state {
+                transition(to: .hidden)
+            }
+            return
+        }
+        // Don't override an in-flight recording / transcribing / rewrite — the
+        // user is actively dictating (possibly on the transient fallback).
+        switch state {
+        case .recording, .transcribing, .transforming, .rewriting, .condensing, .holdProgress:
+            return
+        case .hidden, .success, .notice, .savedToRecents, .error, .repairingModel:
+            transition(to: Self.repairPillState(for: repair))
+        }
+    }
+
+    /// Re-show the persistent repair pill if a heal is still in flight and the
+    /// pill is currently idle/terminal. Called from the recorder/rewrite
+    /// `.idle` branches so the backup surface reappears after a recording.
+    private func reassertRepairIfNeeded() {
+        guard let repair = latestRepairState else { return }
+        // Defensive self-clear (self-heal Fix-c): never re-show a `.failed`
+        // pill for a model that is actually present on disk — the failure is
+        // stale (the download completed via some other path). Ask the holder to
+        // drop it; `installedModelIDs` reflects the on-disk presence scan. This
+        // is a cheap presence check (won't catch a corrupt-but-present bundle),
+        // but Fix-a (clear on a real successful transcription) covers that case.
+        if case .failed = repair,
+           let holder = transcriberHolder,
+           holder.installedModelIDs.contains(holder.activeModelID) {
+            holder.noteActiveModelHealthy()
+            latestRepairState = nil
+            return
+        }
+        switch state {
+        case .hidden:
+            transition(to: Self.repairPillState(for: repair))
+        default:
+            break
+        }
+    }
+
+    private static func repairPillState(for repair: TranscriberHolder.RepairState) -> PillState {
+        switch repair {
+        case .downloading(let modelName, let progress):
+            return .repairingModel(modelName: modelName, progress: progress, isError: false)
+        case .failed(let modelName, _):
+            return .repairingModel(modelName: modelName, progress: nil, isError: true)
+        }
     }
 
     private func streamingPartialChanged(_ partial: String?) {
@@ -253,7 +363,8 @@ final class PillViewModel: ObservableObject {
             transition(to: .holdProgress(progress: max(0.0, min(1.0, progress))))
             return true
         case .recording, .transcribing, .transforming, .rewriting,
-             .condensing, .success, .notice, .savedToRecents, .error:
+             .condensing, .success, .notice, .savedToRecents, .error,
+             .repairingModel:
             return false
         }
     }
@@ -299,10 +410,12 @@ final class PillViewModel: ObservableObject {
             // success/error/notice, leave that alone. If we're in recording or
             // transcribing, hide (e.g. a cancel).
             switch self.state {
-            case .success, .error, .notice, .savedToRecents, .hidden, .rewriting, .condensing, .holdProgress:
+            case .success, .error, .notice, .savedToRecents, .hidden, .rewriting, .condensing, .holdProgress, .repairingModel:
                 break
             case .recording, .transcribing, .transforming:
                 transition(to: .hidden)
+                // Backup repairing pill reasserts after a recording clears.
+                reassertRepairIfNeeded()
             }
         case .recording(let startedAt):
             recordingStartedAt = startedAt
@@ -327,10 +440,11 @@ final class PillViewModel: ObservableObject {
         switch rewriteState {
         case .idle:
             switch self.state {
-            case .success, .error, .notice, .savedToRecents, .hidden, .condensing, .holdProgress:
+            case .success, .error, .notice, .savedToRecents, .hidden, .condensing, .holdProgress, .repairingModel:
                 break
             case .recording, .transcribing, .rewriting, .transforming:
                 transition(to: .hidden)
+                reassertRepairIfNeeded()
             }
         case .capturing:
             break
@@ -406,6 +520,10 @@ final class PillViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
             self.state = .hidden
+            // A still-in-flight repair (incl. a terminal `.failed`) is the
+            // persistent backup surface — bring it back once this transient
+            // success/notice/error pill auto-dismisses.
+            self.reassertRepairIfNeeded()
         }
     }
 

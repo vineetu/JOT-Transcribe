@@ -274,11 +274,16 @@ final class RecorderController: ObservableObject {
             // Mid-record disconnect wins if both fired (it's the more
             // surprising signal).
             let fallbackInfo = await pipeline.lastFallbackInfo()
-            let composedNotice: String? = Self.composeFallbackNotice(
-                partialDueToDisconnect: partialDueToDisconnect,
-                recordingDuration: recording.duration,
-                fallbackInfo: fallbackInfo
-            )
+            // Phase 5: a transient-fallback notice ("Temporarily using <alt>
+            // while <active> re-downloads") wins over the mic-fallback notice
+            // — it's the more surprising signal and explains the (possibly
+            // different) transcription quality the user just saw.
+            let composedNotice: String? = pipeline.consumeTransientFallbackNotice()
+                ?? Self.composeFallbackNotice(
+                    partialDueToDisconnect: partialDueToDisconnect,
+                    recordingDuration: recording.duration,
+                    fallbackInfo: fallbackInfo
+                )
 
             let llmConfig = llmConfiguration
             let result = TranscriptionResult(
@@ -368,6 +373,12 @@ final class RecorderController: ObservableObject {
             state = .error("Could not start recording: \(error.localizedDescription)")
         } catch VoiceInputPipeline.PipelineError.modelMissing {
             state = .error("Transcription model is still loading — try again in a moment.")
+        } catch VoiceInputPipeline.PipelineError.repairInProgress {
+            // Phase 5: active model is re-downloading and no installed
+            // alternate English model is available to dictate on. The
+            // persistent repairing pill (driven off `repairState`) carries the
+            // live progress; this transient error nudges the user to wait.
+            state = .error("Repairing your transcription model — try again once the download finishes.")
         } catch VoiceInputPipeline.PipelineError.audioTooShort(let recording) {
             // If the recording was cut short by a mid-recording mic
             // disconnect AND fell below the 1 s transcriber floor, give

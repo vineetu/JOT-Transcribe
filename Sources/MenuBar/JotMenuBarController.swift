@@ -607,6 +607,15 @@ final class JotMenuBarController: NSObject {
         openUnifiedWindow(selection: .home)
     }
 
+    /// Startup model-integrity self-heal recovery surface (design §Phase 3).
+    /// Opens (or re-selects) the unified window on Settings → Transcription so
+    /// the user lands on the page showing the re-download progress. Called both
+    /// on detection (via `TranscriberHolder.routeToSettings`) and when the
+    /// persistent repairing pill is tapped.
+    func openTranscriptionSettings() {
+        openUnifiedWindow(selection: .settings(.transcription))
+    }
+
     @objc private func checkForUpdates() {
         checkForUpdatesAction()
     }

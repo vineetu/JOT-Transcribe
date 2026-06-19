@@ -293,6 +293,13 @@ enum JotComposition {
         // never clobbers `jot.defaultModelID`. Runs after the model
         // migrations above so it reads the post-migration stored model.
         LanguageMigration.runIfNeeded(defaults: systemServices.userDefaults)
+        // Nemotron auto-upgrade gate (one-shot). Runs AFTER LanguageMigration
+        // so it reads the seeded `jot.transcriptionLanguage` key. Only sets a
+        // pending marker — never touches `jot.defaultModelID`. The actual
+        // download-first-then-flip happens later in
+        // `TranscriberHolder.startPendingNemotronUpgradeIfNeeded()`, so
+        // dictation keeps working on the current model while Nemotron fetches.
+        NemotronAutoUpgradeMigration.runIfNeeded(defaults: systemServices.userDefaults)
         let transcriberHolder = TranscriberHolder(
             cache: .shared,
             defaults: systemServices.userDefaults,
@@ -302,15 +309,32 @@ enum JotComposition {
                 }
                 switch modelID {
                 case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
-                    // Both pair their batch model with the shared EOU
-                    // streaming bundle. v1.12 introduces v3+EOU; v2+EOU
-                    // remains as a deprecated migration anchor.
-                    guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
-                        return Transcriber(modelID: modelID, language: language)
-                    }
+                    // English (v2, ineligible hardware) and every European
+                    // language (v3) now drive their live preview through the
+                    // batch-pseudo-streaming `PreviewScheduler` — the SAME
+                    // engine validated for JA — instead of the EOU streaming
+                    // bundle. The scheduler re-runs the SAME batch `Transcriber`
+                    // instance over a trailing window, so the preview re-uses
+                    // the already-loaded `AsrModels` (single model load) and
+                    // tracks the final pass closely (design §8). `spaceless` is
+                    // `false` for Latin/Cyrillic, so `join` keeps the word
+                    // separator. The final transcript path is unchanged (batch
+                    // `Transcriber.transcribe`; v2-gated post-processing + vocab
+                    // on stop).
+                    //
+                    // ROLLBACK: the EOU `StreamingTranscriber`, the `.eou`
+                    // StreamingEngine case, and the EOU download/cache logic are
+                    // left fully intact and dormant. Reverting this preview
+                    // swap is a one-arm change back to
+                    // `DualPipelineTranscriber(batch:streaming:)` over
+                    // `StreamingTranscriber(bundleDirectory: streamingURL)`.
+                    let eouBatch = Transcriber(modelID: modelID, language: language)
                     return DualPipelineTranscriber(
-                        batch: Transcriber(modelID: modelID, language: language),
-                        streaming: StreamingTranscriber(bundleDirectory: streamingURL)
+                        batch: eouBatch,
+                        batchPreview: PreviewScheduler(
+                            transcriber: eouBatch,
+                            spaceless: language.isSpaceless
+                        )
                     )
                 case .tdt_0_6b_v3_nemotron_streaming:
                     // Pre-v1.12 pairing kept for users who land here briefly
@@ -333,7 +357,30 @@ enum JotComposition {
                     return DualPipelineTranscriber(
                         nemotron: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
                     )
-                case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_ja:
+                case .tdt_0_6b_ja:
+                    // Japanese: batch final transcript + batch-pseudo-streaming
+                    // live preview. JA has no paired streaming bundle
+                    // (`supportsStreaming == false`), so the `PreviewScheduler`
+                    // re-runs the SAME batch model over a trailing window to
+                    // drive the pill — the only path to a JA live preview
+                    // (docs/batch-pseudo-streaming/japanese-preview.md).
+                    //
+                    // The scheduler is constructed over the SAME `Transcriber`
+                    // instance passed as `batch:`, so the preview re-uses the
+                    // already-loaded `AsrModels` (no second model load), and
+                    // `spaceless: true` makes the preview join CJK text without
+                    // spurious inter-word spaces. The final transcript still
+                    // runs the JA batch model + `JapaneseVocabularySubstituter`
+                    // on stop (vocab deferred to the final pass, same as v2/v3).
+                    let jaBatch = Transcriber(modelID: modelID, language: language)
+                    return DualPipelineTranscriber(
+                        batch: jaBatch,
+                        batchPreview: PreviewScheduler(
+                            transcriber: jaBatch,
+                            spaceless: language.isSpaceless
+                        )
+                    )
+                case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
                     return Transcriber(modelID: modelID, language: language)
                 }
             },
@@ -550,8 +597,22 @@ enum JotComposition {
             recorder: recorder,
             delivery: delivery,
             rewriteController: rewriteController,
-            pipeline: pipeline
+            pipeline: pipeline,
+            transcriberHolder: transcriberHolder
         )
+
+        // Startup self-heal routing (design §Phase 3): the holder routes the
+        // user to Settings → Transcription on detection / failure, and the
+        // persistent repairing pill routes there on tap. Both go through the
+        // menu bar's `openTranscriptionSettings(...)` deep-link so the window
+        // is opened (or re-selected) from any launch state — hotkey-only users
+        // included. Captured weakly so neither closure retains the menu bar.
+        transcriberHolder.routeToSettings = { [weak menuBar] in
+            menuBar?.openTranscriptionSettings()
+        }
+        overlay.pillViewModel.onRepairPillTap = { [weak menuBar] in
+            menuBar?.openTranscriptionSettings()
+        }
 
         // Wire the Prompt Picker tap-vs-hold dispatcher onto the
         // `.rewrite` hotkey now that the overlay exists. The picker

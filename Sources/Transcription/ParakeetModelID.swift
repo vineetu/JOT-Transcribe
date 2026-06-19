@@ -60,7 +60,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         case .tdt_0_6b_v3_eou_streaming:
             return "Parakeet v3 (multilingual) + EOU live preview"
         case .nemotron_en:
-            return "Nemotron (English, lighter)"
+            return "Nemotron English"
         }
     }
 
