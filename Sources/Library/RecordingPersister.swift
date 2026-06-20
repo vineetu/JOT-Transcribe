@@ -75,6 +75,18 @@ final class RecordingPersister {
             return
         }
 
+        // Slice C linkage (make-or-break): commit the gate's pending vocabulary
+        // proposals against the row's stable id, immediately after the save —
+        // the transcript text is final by this point (the post-transform sink
+        // runs `lastTransformedTranscript` upstream). `commit` is actor-isolated
+        // (async); the row id is a `Sendable` UUID captured by value, so firing
+        // it in a detached `Task` from this main-actor sink is race-free. The
+        // anchor machinery in `CorrectionProvenance` reconciles the gate-time
+        // baseline to the saved text at first read — this is what absorbs the
+        // post-gate transform chain + any AI rewrite exactly once.
+        let recordingID = recording.id
+        Task { await CorrectionProvenance.shared.commit(transcriptID: recordingID) }
+
         // Speaker Labels piece A: kick off a best-effort post-stop
         // diarization pass. Gated on:
         //   • `state == .loaded` (model warm in memory)

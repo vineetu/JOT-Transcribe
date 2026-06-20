@@ -133,10 +133,13 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         }
     }
 
-    func transcribe(_ samples: [Float]) async throws -> TranscriptionResult {
+    func transcribe(
+        _ samples: [Float],
+        recordsProvenance: Bool
+    ) async throws -> TranscriptionResult {
         switch finalEngine {
         case .batch(let batch):
-            return try await batch.transcribe(samples)
+            return try await batch.transcribe(samples, recordsProvenance: recordsProvenance)
         case .nemotron(let nemotron):
             guard samples.count >= Int(AudioFormat.sampleRate) else {
                 throw TranscriberError.audioTooShort
@@ -155,14 +158,17 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         }
     }
 
-    func transcribeFile(_ url: URL) async throws -> TranscriptionResult {
+    func transcribeFile(
+        _ url: URL,
+        recordsProvenance: Bool
+    ) async throws -> TranscriptionResult {
         switch finalEngine {
         case .batch(let batch):
-            return try await batch.transcribeFile(url)
+            return try await batch.transcribeFile(url, recordsProvenance: recordsProvenance)
         case .nemotron:
             let fallback = Transcriber(modelID: .nemotron_en)
             try await fallback.ensureLoaded()
-            return try await fallback.transcribeFile(url)
+            return try await fallback.transcribeFile(url, recordsProvenance: recordsProvenance)
         }
     }
 

@@ -120,6 +120,67 @@ final class VocabularyStore: ObservableObject {
         return new
     }
 
+    /// Outcome of `addTerm(_:)`, so a caller (e.g. the recording-detail
+    /// "Add to Vocabulary" affordance) can phrase the right confirmation.
+    enum AddTermResult: Equatable {
+        /// The term was sanitized, persisted, and (when boosting is on)
+        /// queued for a rescorer rebuild. Carries the cleaned term so the
+        /// caller can echo exactly what landed in the list.
+        case added(String)
+        /// The cleaned term already exists in the list (case-insensitive
+        /// match on `text`) — nothing was written.
+        case duplicate(String)
+        /// The selection sanitized to something we won't store (empty
+        /// after stripping, or longer than `maxTermWords` tokens).
+        case rejected
+    }
+
+    /// Longest selection (in whitespace-separated tokens) we'll accept as a
+    /// vocabulary term from a free-text selection. Vocabulary terms are
+    /// single names or short proper-noun phrases; a paragraph-length
+    /// selection is almost certainly a mis-drag, not a term.
+    static let maxTermWords = 4
+
+    /// Add a single term harvested from a free-text selection (the
+    /// recording-detail "Add to Vocabulary" recourse for names the gate
+    /// never proposed). Sanitizes to the file-safe simple format
+    /// (strips `:`, `,`, `#` and collapses whitespace), rejects empty /
+    /// overlong selections, dedupes against the existing list, and on a
+    /// real add persists + (when enabled) triggers the rescorer rebuild so
+    /// FUTURE dictations boost it. Does not touch any transcript.
+    @discardableResult
+    func addTerm(_ raw: String) -> AddTermResult {
+        let cleaned = Self.sanitizeTerm(raw)
+        guard !cleaned.isEmpty else { return .rejected }
+        guard cleaned.split(whereSeparator: { $0 == " " }).count <= Self.maxTermWords else {
+            return .rejected
+        }
+        let lower = cleaned.lowercased()
+        if terms.contains(where: {
+            $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lower
+        }) {
+            return .duplicate(cleaned)
+        }
+        terms.append(VocabTerm(text: cleaned))
+        save()
+        return .added(cleaned)
+    }
+
+    /// File-safe sanitization for a term harvested from arbitrary selected
+    /// text. Strips the simple-format separators (`:`/`,`/`#`) so the term
+    /// can't break the parser or smuggle aliases, drops newlines, and
+    /// collapses internal runs of whitespace to single spaces.
+    static func sanitizeTerm(_ raw: String) -> String {
+        // Replace the simple-format separators (`:`/`,`/`#`) with spaces so
+        // the term can't break the parser or smuggle an alias list, then
+        // collapse all whitespace runs (incl. newlines/tabs) to single
+        // spaces and trim the ends.
+        let despecialed = String(raw.map { ":,#".contains($0) ? " " : $0 })
+        return despecialed
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+    }
+
     func delete(id: VocabTerm.ID) {
         terms.removeAll { $0.id == id }
         save()

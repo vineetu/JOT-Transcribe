@@ -25,6 +25,17 @@ final class HotkeyRouter {
     private var cancelEnabled = false
     private var pttPendingRelease = false
 
+    /// Slice D (ask-before-paste). Observes the pill's `isAwaitingAskCorrection`
+    /// so the ask-scoped Return / Esc shortcuts are enabled ONLY while a "Did you
+    /// mean X?" prompt is live — the same dynamic-enable discipline as
+    /// `cancelRecording`, so Jot never holds Return / Esc when there's nothing to
+    /// answer. Closures resolve the live ask; supplied by composition.
+    private var askActiveObserver: AnyCancellable?
+    private var askShortcutsEnabled = false
+    private var askConfirm: (() -> Void)?
+    private var askDismiss: (() -> Void)?
+    private var askHandlersInstalled = false
+
     /// When non-nil, every `.toggleRecording` press routes here instead
     /// of into `recorder.toggle()`. The Setup Wizard's Test step sets
     /// this on appear (so the user can validate the real hotkey path
@@ -225,6 +236,58 @@ final class HotkeyRouter {
                     rewriteState: newRewriteState
                 )
             }
+        }
+    }
+
+    /// Wire the ask-before-paste (Slice D) confirm / dismiss shortcuts.
+    /// Composition calls this once the overlay's `PillViewModel` exists, passing
+    /// its `$isAwaitingAskCorrection` publisher plus the confirm / dismiss
+    /// closures. We install the two global handlers once and dynamically
+    /// enable / disable them off the publisher so plain Return / Esc are only
+    /// ours while an ask is on screen. The KeyboardShortcuts library globally
+    /// captures an ENABLED shortcut, so a confirm-⏎ here is consumed (not
+    /// forwarded to the focused app) — satisfying §8 M3 (the confirm key must not
+    /// also fire the app); the bridge's `deliver()` runs auto-Enter itself if the
+    /// user has it on.
+    func installAskCorrectionDispatch(
+        isAwaiting: AnyPublisher<Bool, Never>,
+        onConfirm: @escaping () -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
+        askConfirm = onConfirm
+        askDismiss = onDismiss
+
+        if !askHandlersInstalled {
+            askHandlersInstalled = true
+            KeyboardShortcuts.onKeyDown(for: .confirmCorrection) { [weak self] in
+                self?.askConfirm?()
+            }
+            KeyboardShortcuts.onKeyDown(for: .dismissCorrection) { [weak self] in
+                self?.askDismiss?()
+            }
+            // Start disabled — no ask is live at wire-up time.
+            KeyboardShortcuts.disable(.confirmCorrection)
+            KeyboardShortcuts.disable(.dismissCorrection)
+            askShortcutsEnabled = false
+        }
+
+        askActiveObserver = isAwaiting
+            .sink { [weak self] awaiting in
+                self?.updateAskShortcutEnablement(awaiting)
+            }
+    }
+
+    private func updateAskShortcutEnablement(_ awaiting: Bool) {
+        guard awaiting != askShortcutsEnabled else { return }
+        askShortcutsEnabled = awaiting
+        if awaiting {
+            KeyboardShortcuts.enable(.confirmCorrection)
+            KeyboardShortcuts.enable(.dismissCorrection)
+            log.info("ask-correction shortcuts ENABLED (ask live)")
+        } else {
+            KeyboardShortcuts.disable(.confirmCorrection)
+            KeyboardShortcuts.disable(.dismissCorrection)
+            log.info("ask-correction shortcuts DISABLED (no ask)")
         }
     }
 

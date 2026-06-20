@@ -45,7 +45,7 @@ enum DebugSmoke {
             print("[DebugSmoke] captured \(recording.samples.count) samples (\(String(format: "%.2f", recording.duration))s) → \(recording.fileURL.path)")
 
             print("[DebugSmoke] transcribing…")
-            let result = try await transcriber.transcribe(recording.samples)
+            let result = try await transcriber.transcribe(recording.samples, recordsProvenance: false)
             print("[DebugSmoke] transcript: \(result.text)")
             print("[DebugSmoke] raw: \(result.rawText)")
             print("[DebugSmoke] duration: \(result.duration)s processingTime: \(result.processingTime)s confidence: \(result.confidence)")

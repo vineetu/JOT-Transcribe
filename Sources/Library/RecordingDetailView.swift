@@ -25,6 +25,15 @@ struct RecordingDetailView: View {
     /// `CopyTranscriptButton` provides in row contexts.
     @State private var didCopy = false
     @State private var copyResetTask: Task<Void, Never>?
+    /// Transient confirmation banner shown after "Add to Vocabulary" from a
+    /// transcript selection. `nil` = hidden. Auto-clears after a beat.
+    @State private var vocabAddMessage: String?
+    @State private var vocabAddResetTask: Task<Void, Never>?
+    /// Slice C: the correction-review model. Created lazily on first
+    /// `.task(id:)` once the environment `modelContext` is available (a `@State`
+    /// initializer can't read `@Environment`), then reloaded whenever the bound
+    /// recording changes. `nil` until seeded.
+    @State private var reviewModel: CorrectionReviewModel?
 
     var body: some View {
         ScrollView {
@@ -32,12 +41,24 @@ struct RecordingDetailView: View {
                 header
                 playbackBlock
                 transcriptBlock
+                if let reviewModel, !reviewModel.records.isEmpty {
+                    CorrectionReviewSection(model: reviewModel)
+                }
             }
             .padding(20)
             .frame(maxWidth: 760, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .toolbar { toolbarContent }
+        .task(id: recording.id) {
+            // Seed the review model with the live recording + env context, then
+            // reconcile its anchors against the current transcript. Re-runs when
+            // the bound recording changes (sidebar navigation), so the section
+            // always reflects THIS row's provenance.
+            let model = CorrectionReviewModel(recording: recording, modelContext: context)
+            reviewModel = model
+            await model.reload()
+        }
         .onAppear { player.load(url: RecordingStore.audioURL(for: recording)) }
         .onDisappear { player.stop() }
         .alert(
@@ -191,16 +212,39 @@ struct RecordingDetailView: View {
                         }
                     }
                     .padding(4)
-                } else {
-                    Text(displayedTranscript.isEmpty ? "(empty transcript)" : displayedTranscript)
+                } else if displayedTranscript.isEmpty {
+                    Text("(empty transcript)")
                         .font(.system(size: 13, design: .monospaced))
                         .lineSpacing(4)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                         .padding(4)
+                } else {
+                    // Selectable AppKit-backed text so the context menu can
+                    // read the selected substring for "Add to Vocabulary"
+                    // (Q2 — names the gate never proposed). Copy / Look Up /
+                    // drag-selection all behave like the plain Text it
+                    // replaces; it never edits the transcript.
+                    SelectableTranscriptText(text: displayedTranscript) { selection in
+                        addSelectionToVocabulary(selection)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(4)
                 }
             }
             .frame(minHeight: 180, maxHeight: 320)
+            .overlay(alignment: .bottom) {
+                if let vocabAddMessage {
+                    Text(vocabAddMessage)
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.thinMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(.separator))
+                        .padding(.bottom, 8)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+            }
         } label: {
             HStack {
                 Text(useLabeledView ? "Transcript (labeled)" : "Transcript")
@@ -261,7 +305,9 @@ struct RecordingDetailView: View {
         Task {
             defer { Task { @MainActor in isRetranscribing = false } }
             do {
-                let result = try await transcriber.transcribeFile(url)
+                // Detail re-transcribe owns the provenance slot: it commits the
+                // fresh gate proposals under the SAME recording id below.
+                let result = try await transcriber.transcribeFile(url, recordsProvenance: true)
                 // Decode audio off MainActor for the diarization pass.
                 // A bare `Task { }` inside an `@MainActor View` inherits
                 // MainActor isolation, so wrapping the synchronous read
@@ -305,6 +351,19 @@ struct RecordingDetailView: View {
                         recording.speakerTimeline = nil
                     }
                     try? context.save()
+                    // Slice C linkage: a re-transcribe re-runs the gate (which
+                    // refilled `pending` via `clearPending` + `record` inside
+                    // `transcribe`), so commit the fresh proposals under the SAME
+                    // recording id once the new text is saved. `commit` preserves
+                    // any existing verdicts/contributions (defensive re-commit),
+                    // and the anchor reconcile rebaselines to the new text at the
+                    // next review read. Accept stale-row fail-safe (the strict
+                    // span resolver drops marks it can't place).
+                    let recordingID = recording.id
+                    Task {
+                        await CorrectionProvenance.shared.commit(transcriptID: recordingID)
+                        await reviewModel?.reload()
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -396,6 +455,39 @@ struct RecordingDetailView: View {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
             didCopy = false
+        }
+    }
+
+    /// Q2 recourse (docs/vocabulary-gate/ask-ux.md §5): add a selected term
+    /// to the user's vocabulary so FUTURE dictations boost it. Sanitization,
+    /// length-gating, and dedup live in `VocabularyStore.addTerm`; on a real
+    /// add the store also triggers the rescorer rebuild (when boosting is on).
+    /// This never retro-edits the current transcript. Adding while the master
+    /// toggle is OFF still succeeds — we just hint that it won't apply yet.
+    private func addSelectionToVocabulary(_ selection: String) {
+        let store = VocabularyStore.shared
+        let result = store.addTerm(selection)
+        let message: String
+        switch result {
+        case .added(let term):
+            message = store.isEnabled
+                ? "Added \u{201C}\(term)\u{201D} to Vocabulary"
+                : "Added \u{201C}\(term)\u{201D} — enable Vocabulary boosting in Settings to apply it"
+        case .duplicate(let term):
+            message = "\u{201C}\(term)\u{201D} is already in your Vocabulary"
+        case .rejected:
+            message = "Select a single word or short phrase to add"
+        }
+        withAnimation(.easeOut(duration: 0.2)) {
+            vocabAddMessage = message
+        }
+        vocabAddResetTask?.cancel()
+        vocabAddResetTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_800_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.2)) {
+                vocabAddMessage = nil
+            }
         }
     }
 

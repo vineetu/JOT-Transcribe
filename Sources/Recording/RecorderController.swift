@@ -259,6 +259,12 @@ final class RecorderController: ObservableObject {
             let rawText = stopResult.text
             let recording = stopResult.recording
             let partialDueToDisconnect = stopResult.partialDueToDisconnect
+            // Slice D: the gate's corrections ride alongside the text. They stay
+            // valid as DATA across the async Transform task — the bridge
+            // string-matches `to` against the FINAL (possibly transformed) text,
+            // so even if Transform rewrites the transcript the {from,to} pairs are
+            // still meaningful (a non-match simply drops that ask).
+            let corrections = stopResult.corrections
             if pipelineToken == token {
                 pipelineToken = nil
             }
@@ -291,7 +297,8 @@ final class RecorderController: ObservableObject {
                 rawText: rawText,
                 duration: recording.duration,
                 processingTime: 0,
-                confidence: 0
+                confidence: 0,
+                corrections: corrections
             )
 
             if llmConfig.transformEnabled && llmConfig.isMinimallyConfigured {

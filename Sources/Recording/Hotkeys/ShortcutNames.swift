@@ -54,4 +54,22 @@ extension KeyboardShortcuts.Name {
         "articulate",
         default: .init(.slash, modifiers: [.option])
     )
+
+    /// Slice D (ask-before-paste). Confirm the live "Did you mean X?" pill —
+    /// apply the offered term and paste. Bound to plain Return, and like
+    /// `cancelRecording` it is **dynamic**: enabled ONLY while the pill is in
+    /// `.askCorrection`, disabled otherwise, so it never steals Return from
+    /// other apps. NOT shown in Settings (a hardcoded, non-rebindable key).
+    static let confirmCorrection = Self(
+        "confirmCorrection",
+        default: .init(.return, modifiers: [])
+    )
+
+    /// Slice D. Dismiss the live "Did you mean X?" pill — keep the original
+    /// word and paste. Bound to plain Esc; dynamic, enabled ONLY while the pill
+    /// is in `.askCorrection`. NOT shown in Settings.
+    static let dismissCorrection = Self(
+        "dismissCorrection",
+        default: .init(.escape, modifiers: [])
+    )
 }

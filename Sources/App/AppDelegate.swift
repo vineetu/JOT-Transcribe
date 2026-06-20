@@ -227,35 +227,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // value.
         deliveryBridge = services.recorder.$lastResult
             .compactMap { $0 }
-            .sink { [weak recorder = services.recorder,
+            .sink { [weak self,
+                     weak recorder = services.recorder,
                      weak delivery = services.delivery,
-                     weak overlay = services.overlay] _ in
-                Task { @MainActor [weak recorder, weak delivery, weak overlay] in
-                    guard let text = recorder?.lastTranscript, !text.isEmpty else { return }
-                    // v1.14: read-and-clear `skipNextPaste`. When the
-                    // user stopped via the in-app Record pill or Esc
-                    // (rather than the trigger hotkey), the recording
-                    // still persists to Recents but the paste step is
-                    // suppressed. Cleared here so the next session's
-                    // default behavior is restored unconditionally.
-                    if let recorder, recorder.skipNextPaste {
-                        recorder.skipNextPaste = false
-                        // Surface the click-to-open-Recents pill so the
-                        // user can find what they just saved. Capture
-                        // the audio file name now (companion publisher
-                        // `lastAudioRecording` is set immediately before
-                        // `lastResult` per the documented ordering
-                        // invariant) so the click handler can navigate
-                        // to the specific Recording detail even after
-                        // the recorder has moved on to a new session.
-                        let audioFile = recorder.lastAudioRecording?.fileURL.lastPathComponent
-                        overlay?.pillViewModel.showSavedToRecents(
-                            preview: text,
-                            audioFileName: audioFile
-                        )
-                        return
-                    }
-                    await delivery?.deliver(text)
+                     weak overlay = services.overlay] result in
+                Task { @MainActor [weak self, weak recorder, weak delivery, weak overlay] in
+                    guard let self, let recorder, let delivery else { return }
+                    self.handleDeliveryBridge(
+                        result: result,
+                        recorder: recorder,
+                        delivery: delivery,
+                        overlay: overlay
+                    )
                 }
             }
 
@@ -371,6 +354,201 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 break
             }
         }
+    }
+
+    /// The single dictation auto-paste choke point (`ask-ux.md` §1). Decides
+    /// among three paths for a freshly-landed transcript:
+    ///   1. `skipNextPaste` — the user stopped via the in-app pill / Esc: persist
+    ///      to Recents, surface the saved-to-Recents affordance, no paste.
+    ///   2. Ask-before-paste (Slice D) — one or more `askCandidate` corrections
+    ///      whose term is STILL present in the FINAL (possibly transformed) text:
+    ///      hold the paste, ask "Did you mean X?" sequentially, then deliver once.
+    ///   3. The unchanged fast path — deliver immediately (zero added latency).
+    @MainActor
+    private func handleDeliveryBridge(
+        result: TranscriptionResult,
+        recorder: RecorderController,
+        delivery: DeliveryService,
+        overlay: OverlayWindowController?
+    ) {
+        guard let text = recorder.lastTranscript, !text.isEmpty else { return }
+
+        // v1.14: read-and-clear `skipNextPaste`. When the user stopped via the
+        // in-app Record pill or Esc (rather than the trigger hotkey), the
+        // recording still persists to Recents but the paste step is suppressed.
+        if recorder.skipNextPaste {
+            recorder.skipNextPaste = false
+            let audioFile = recorder.lastAudioRecording?.fileURL.lastPathComponent
+            overlay?.pillViewModel.showSavedToRecents(
+                preview: text,
+                audioFileName: audioFile
+            )
+            return
+        }
+
+        // Slice D §8 B1 — Transform-safe hold. Char offsets are meaningless after
+        // the gate's downstream segmenter / Transform rewrite, so we DON'T splice
+        // by offset. Instead, take the gate's structured `{from,to}` ask
+        // candidates and string-match against the FINAL text:
+        //   * APPLIED candidate (silent-OOV, §9 (i)): the term `to` is already in
+        //     the text. Keep = leave it; keep-original = replace `to`→`from`.
+        //   * BLOCKED candidate (common-word near-miss, §9 (ii)): the original
+        //     `from` is in the text. Confirm = replace `from`→`to`; keep = leave it.
+        // Either way we anchor on a word that is ACTUALLY present; if Transform
+        // reworded BOTH away, the correction is moot → drop the ask (graceful
+        // fallback). Cap at 3 (anti-nag, §4).
+        let askable = result.corrections
+            .filter { $0.askCandidate }
+            .compactMap { AskItem(correction: $0, in: text) }
+            .prefix(3)
+
+        guard let pill = overlay?.pillViewModel, !askable.isEmpty else {
+            // Unchanged fast path — deliver immediately.
+            Task { @MainActor in await delivery.deliver(text) }
+            return
+        }
+
+        runAskSequence(
+            staged: text,
+            candidates: Array(askable),
+            index: 0,
+            delivery: delivery,
+            pill: pill
+        )
+    }
+
+    /// One resolvable ask, anchored on a word currently PRESENT in the staged
+    /// text (Slice D). `from`/`term` carry the gate's pair; `applied` records
+    /// which the gate did so the bridge knows which edit each decision implies.
+    private struct AskItem {
+        let from: String
+        let term: String
+        let applied: Bool
+
+        /// Build only if the relevant word is present in `text`; returns nil
+        /// (drop the ask) when neither anchor survived the downstream rewrite.
+        init?(correction c: VocabularyRescorerHolder.UXCorrection, in text: String) {
+            self.from = c.from
+            self.term = c.to
+            if AppDelegate.containsWholeWord(c.to, in: text) {
+                // The term is in the text → the gate APPLIED it.
+                self.applied = true
+            } else if AppDelegate.containsWholeWord(c.from, in: text) {
+                // The original is in the text → the gate BLOCKED it.
+                self.applied = false
+            } else {
+                return nil
+            }
+        }
+    }
+
+    /// Resolve the ask candidates SEQUENTIALLY in the one pill (§4), mutating the
+    /// staged text as each resolves, then `deliver()` exactly once when the queue
+    /// empties (§8 M4/M5 — every path terminates in one deliver). Recurses via the
+    /// pill's confirm / dismiss closures so the next ask only starts after the
+    /// current one resolves.
+    @MainActor
+    private func runAskSequence(
+        staged: String,
+        candidates: [AskItem],
+        index: Int,
+        delivery: DeliveryService,
+        pill: PillViewModel
+    ) {
+        guard index < candidates.count else {
+            // Queue drained — deliver the final staged text exactly once.
+            // Auto-Enter (if enabled) runs INSIDE deliver(), after the paste,
+            // which is correct relative to the resolved text (§8 M3).
+            Task { @MainActor in await delivery.deliver(staged) }
+            return
+        }
+
+        let c = candidates[index]
+        // The word this ask anchors on (term if applied, original if blocked).
+        // If a PRIOR ask's edit removed it from the staged text, the ask is moot
+        // — skip to the next without prompting.
+        let anchor = c.applied ? c.term : c.from
+        guard Self.containsWholeWord(anchor, in: staged) else {
+            runAskSequence(
+                staged: staged,
+                candidates: candidates,
+                index: index + 1,
+                delivery: delivery,
+                pill: pill
+            )
+            return
+        }
+
+        let next: (String) -> Void = { [weak self] newStaged in
+            self?.runAskSequence(
+                staged: newStaged,
+                candidates: candidates,
+                index: index + 1,
+                delivery: delivery,
+                pill: pill
+            )
+        }
+
+        // `original` shown on the Keep button is always the word the user spoke
+        // (`from`); `term` is always the offered vocabulary term.
+        pill.showAskCorrection(
+            original: c.from,
+            term: c.term,
+            onConfirm: {
+                // Confirm → the text should hold the TERM. For an applied
+                // candidate it already does; for a blocked one, splice from→term.
+                let confirmed = c.applied
+                    ? staged
+                    : Self.replaceWholeWord(c.from, with: c.term, in: staged)
+                // Learn it so future dictations auto-apply (rare/OOV) and stop
+                // asking (Q3). For a common original the gate still won't
+                // auto-apply, but the single confirm pastes the term this time.
+                Task { await CorrectionStore.shared.confirm(originalWord: c.from, term: c.term) }
+                next(confirmed)
+            },
+            onDismiss: {
+                // Keep-original → the text should hold the ORIGINAL word. For an
+                // applied candidate, splice term→from; for a blocked one it's
+                // already the original. Write nothing to the store (a passive
+                // ignore is not a rejection, §3).
+                let kept = c.applied
+                    ? Self.replaceWholeWord(c.term, with: c.from, in: staged)
+                    : staged
+                next(kept)
+            }
+        )
+    }
+
+    /// Whole-word, case-insensitive containment test. Mirrors the gate's
+    /// word-boundary logic so "Lisa" doesn't match inside "Lisbon".
+    nonisolated static func containsWholeWord(_ word: String, in text: String) -> Bool {
+        wholeWordRange(of: word, in: text) != nil
+    }
+
+    /// Replace the FIRST whole-word occurrence of `word` with `replacement`,
+    /// case-insensitive. Used for keep-original (term → original). Only the first
+    /// occurrence is touched — the de-duped correction set carries one entry per
+    /// `(from,to)` pair, and replacing all could over-revert a legitimately
+    /// repeated term.
+    nonisolated static func replaceWholeWord(_ word: String, with replacement: String, in text: String) -> String {
+        guard let range = wholeWordRange(of: word, in: text) else { return text }
+        return text.replacingCharacters(in: range, with: replacement)
+    }
+
+    /// First whole-word range of `word` in `text` (case-insensitive). A match is
+    /// whole-word only when the chars on either side are non-letters.
+    nonisolated private static func wholeWordRange(of word: String, in text: String) -> Range<String.Index>? {
+        guard !word.isEmpty else { return nil }
+        var search = text.startIndex
+        while let r = text.range(of: word, options: [.caseInsensitive], range: search..<text.endIndex) {
+            let before: Character? = r.lowerBound == text.startIndex ? nil : text[text.index(before: r.lowerBound)]
+            let after: Character? = r.upperBound == text.endIndex ? nil : text[r.upperBound]
+            let okBefore = !(before?.isLetter ?? false)
+            let okAfter = !(after?.isLetter ?? false)
+            if okBefore && okAfter { return r }
+            search = r.upperBound
+        }
+        return nil
     }
 
     private func presentSetupWizardIfNeeded(

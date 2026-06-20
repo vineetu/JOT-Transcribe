@@ -14,6 +14,23 @@
 		A000000000000000000000B5 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* Localizable.xcstrings */; };
 		A000000000000000000000B6 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* InfoPlist.xcstrings */; };
 		A000000000000000000000B7 /* prompt-library.json in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* prompt-library.json */; };
+		A000000000000000000000B8 /* common-words-en.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000017 /* common-words-en.txt */; };
+		A00000000000000000000D01 /* common-words-es.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C01 /* common-words-es.txt */; };
+		A00000000000000000000D02 /* common-words-fr.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C02 /* common-words-fr.txt */; };
+		A00000000000000000000D03 /* common-words-de.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C03 /* common-words-de.txt */; };
+		A00000000000000000000D04 /* common-words-it.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C04 /* common-words-it.txt */; };
+		A00000000000000000000D05 /* common-words-pt.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C05 /* common-words-pt.txt */; };
+		A00000000000000000000D06 /* common-words-ro.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C06 /* common-words-ro.txt */; };
+		A00000000000000000000D07 /* common-words-pl.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C07 /* common-words-pl.txt */; };
+		A00000000000000000000D08 /* common-words-cs.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C08 /* common-words-cs.txt */; };
+		A00000000000000000000D09 /* common-words-sk.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C09 /* common-words-sk.txt */; };
+		A00000000000000000000D10 /* common-words-sl.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C10 /* common-words-sl.txt */; };
+		A00000000000000000000D11 /* common-words-hr.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C11 /* common-words-hr.txt */; };
+		A00000000000000000000D12 /* common-words-nl.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C12 /* common-words-nl.txt */; };
+		A00000000000000000000D13 /* common-words-da.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C13 /* common-words-da.txt */; };
+		A00000000000000000000D14 /* common-words-sv.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C14 /* common-words-sv.txt */; };
+		A00000000000000000000D15 /* common-words-fi.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C15 /* common-words-fi.txt */; };
+		A00000000000000000000D16 /* common-words-hu.txt in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000C16 /* common-words-hu.txt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +43,23 @@
 		A00000000000000000000014 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A00000000000000000000015 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		A00000000000000000000016 /* prompt-library.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "prompt-library.json"; sourceTree = "<group>"; };
+		A00000000000000000000017 /* common-words-en.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-en.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C01 /* common-words-es.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-es.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C02 /* common-words-fr.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-fr.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C03 /* common-words-de.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-de.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C04 /* common-words-it.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-it.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C05 /* common-words-pt.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-pt.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C06 /* common-words-ro.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-ro.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C07 /* common-words-pl.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-pl.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C08 /* common-words-cs.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-cs.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C09 /* common-words-sk.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-sk.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C10 /* common-words-sl.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-sl.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C11 /* common-words-hr.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-hr.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C12 /* common-words-nl.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-nl.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C13 /* common-words-da.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-da.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C14 /* common-words-sv.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-sv.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C15 /* common-words-fi.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-fi.txt"; sourceTree = "<group>"; };
+		A00000000000000000000C16 /* common-words-hu.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "common-words-hu.txt"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -119,6 +153,23 @@
 				A00000000000000000000014 /* Localizable.xcstrings */,
 				A00000000000000000000015 /* InfoPlist.xcstrings */,
 				A00000000000000000000016 /* prompt-library.json */,
+				A00000000000000000000017 /* common-words-en.txt */,
+				A00000000000000000000C01 /* common-words-es.txt */,
+				A00000000000000000000C02 /* common-words-fr.txt */,
+				A00000000000000000000C03 /* common-words-de.txt */,
+				A00000000000000000000C04 /* common-words-it.txt */,
+				A00000000000000000000C05 /* common-words-pt.txt */,
+				A00000000000000000000C06 /* common-words-ro.txt */,
+				A00000000000000000000C07 /* common-words-pl.txt */,
+				A00000000000000000000C08 /* common-words-cs.txt */,
+				A00000000000000000000C09 /* common-words-sk.txt */,
+				A00000000000000000000C10 /* common-words-sl.txt */,
+				A00000000000000000000C11 /* common-words-hr.txt */,
+				A00000000000000000000C12 /* common-words-nl.txt */,
+				A00000000000000000000C13 /* common-words-da.txt */,
+				A00000000000000000000C14 /* common-words-sv.txt */,
+				A00000000000000000000C15 /* common-words-fi.txt */,
+				A00000000000000000000C16 /* common-words-hu.txt */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -248,6 +299,23 @@
 				A000000000000000000000B5 /* Localizable.xcstrings in Resources */,
 				A000000000000000000000B6 /* InfoPlist.xcstrings in Resources */,
 				A000000000000000000000B7 /* prompt-library.json in Resources */,
+				A000000000000000000000B8 /* common-words-en.txt in Resources */,
+				A00000000000000000000D01 /* common-words-es.txt in Resources */,
+				A00000000000000000000D02 /* common-words-fr.txt in Resources */,
+				A00000000000000000000D03 /* common-words-de.txt in Resources */,
+				A00000000000000000000D04 /* common-words-it.txt in Resources */,
+				A00000000000000000000D05 /* common-words-pt.txt in Resources */,
+				A00000000000000000000D06 /* common-words-ro.txt in Resources */,
+				A00000000000000000000D07 /* common-words-pl.txt in Resources */,
+				A00000000000000000000D08 /* common-words-cs.txt in Resources */,
+				A00000000000000000000D09 /* common-words-sk.txt in Resources */,
+				A00000000000000000000D10 /* common-words-sl.txt in Resources */,
+				A00000000000000000000D11 /* common-words-hr.txt in Resources */,
+				A00000000000000000000D12 /* common-words-nl.txt in Resources */,
+				A00000000000000000000D13 /* common-words-da.txt in Resources */,
+				A00000000000000000000D14 /* common-words-sv.txt in Resources */,
+				A00000000000000000000D15 /* common-words-fi.txt in Resources */,
+				A00000000000000000000D16 /* common-words-hu.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

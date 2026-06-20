@@ -125,10 +125,38 @@ public actor Transcriber: Transcribing {
     /// FluidAudio itself requires `samples.count >= sampleRate` (≥ 1 second
     /// of audio) — shorter buffers are rejected with `.audioTooShort` rather
     /// than forwarded, since the SDK error for that case is less specific.
-    public func transcribe(_ samples: [Float]) async throws -> TranscriptionResult {
+    ///
+    /// - Parameter recordsProvenance: when `true`, this call owns the shared
+    ///   `CorrectionProvenance` pending slot — it clears it on entry and the
+    ///   gate records fresh proposals into it for a later `commit(transcriptID:)`.
+    ///   Only the saving paths (recorder-owned dictation and the Library
+    ///   re-transcribe) pass `true`. Non-saving voice callers (Ask Jot, Rewrite)
+    ///   pass `false` (the default): they run during a real dictation's async
+    ///   transform window, so touching the shared slot would wipe or mis-attribute
+    ///   that dictation's pending proposals. When `false` the gate still runs and
+    ///   returns gated text — it just must not touch the provenance actor.
+    public func transcribe(
+        _ samples: [Float],
+        recordsProvenance: Bool = false
+    ) async throws -> TranscriptionResult {
         guard !isTranscribing else { throw TranscriberError.busy }
         guard samples.count >= Int(AudioFormat.sampleRate) else {
             throw TranscriberError.audioTooShort
+        }
+
+        // Slice C linkage: clear any stale gate proposals before every
+        // PROVENANCE-OWNING transcription. The gate fills
+        // `CorrectionProvenance.pending` at rescore time, but only the saving
+        // path (`RecordingPersister` / re-transcribe) ever calls `commit`.
+        // Non-saving voice callers (Ask Jot, Rewrite) run `transcribe(...)`
+        // too — and they fire DURING a real dictation's multi-second async
+        // transform window (the pipeline is already `.idle` before that
+        // dictation's `commit` lands). If those callers cleared/recorded here,
+        // they'd wipe the dictation's pending proposals or write their own
+        // under its id. Gating both side-effects on `recordsProvenance` keeps
+        // the shared slot owned exclusively by the saving path.
+        if recordsProvenance {
+            await CorrectionProvenance.shared.clearPending()
         }
 
         isTranscribing = true
@@ -142,7 +170,11 @@ public actor Transcriber: Transcribing {
              .tdt_0_6b_v3_nemotron_streaming,
              .tdt_0_6b_v3_eou_streaming:
             guard let manager else { throw TranscriberError.modelNotLoaded }
-            return try await transcribeWithAsrManager(samples, manager: manager)
+            return try await transcribeWithAsrManager(
+                samples,
+                manager: manager,
+                recordsProvenance: recordsProvenance
+            )
 
         case .nemotron_en:
             guard let nemotronBatch else { throw TranscriberError.modelNotLoaded }
@@ -152,7 +184,8 @@ public actor Transcriber: Transcribing {
 
     private func transcribeWithAsrManager(
         _ samples: [Float],
-        manager: AsrManager
+        manager: AsrManager,
+        recordsProvenance: Bool
     ) async throws -> TranscriptionResult {
         let result: ASRResult
         do {
@@ -199,24 +232,43 @@ public actor Transcriber: Transcribing {
         //   holder itself declines when the bundle isn't loaded
         //   (e.g. Nemotron-only).
         var transcriptText = result.text
+        // Slice D: the de-duped gate corrections for this pass. Threaded onto the
+        // returned `TranscriptionResult` so the delivery bridge can decide whether
+        // to hold the paste and ask. Empty unless the English-style CTC rescore
+        // path below actually produced corrections.
+        var corrections: [VocabularyRescorerHolder.UXCorrection] = []
         if modelID == .tdt_0_6b_ja {
-            let snapshot: (enabled: Bool, terms: [VocabTerm]) = await MainActor.run {
-                (VocabularyStore.shared.isEnabled, VocabularyStore.shared.terms)
-            }
-            if snapshot.enabled, !snapshot.terms.isEmpty {
-                transcriptText = JapaneseVocabularySubstituter.substitute(
-                    transcript: transcriptText,
-                    terms: snapshot.terms
-                )
-            }
+            // Slice D (piece 8): Japanese vocab substitution is OFF. JA dictation
+            // gets NO vocab substitution — the alias-based `JapaneseVocabularySubstituter`
+            // path is disabled here (JA transcription itself is unchanged; only the
+            // post-hoc vocab rewrite is removed). The acoustic CTC gate does not run
+            // on JA (no token timings / CTC JA spotter from FluidAudio), so there are
+            // no ask candidates on this path either.
+            //
+            // Previously this branch ran `JapaneseVocabularySubstituter.substitute(...)`
+            // when the vocabulary master toggle was on; that substitution is now
+            // intentionally skipped for Japanese. (No-op branch retained so the
+            // model-specific routing stays explicit.)
+            _ = transcriptText  // JA: pass the raw TDT text straight through.
         } else if let timings = result.tokenTimings {
             do {
                 if let rescored = try await VocabularyRescorerHolder.shared.rescore(
                     transcript: result.text,
                     tokenTimings: timings,
-                    audioSamples: samples
+                    audioSamples: samples,
+                    language: language,
+                    recordsProvenance: recordsProvenance
                 ) {
-                    transcriptText = rescored
+                    // Slice A: the gate returns the GATED text plus the de-duped
+                    // applied-correction set (`rescored.corrections`) for the
+                    // future pill/review UX. The UX wiring (feedback-ux.md) is a
+                    // later slice — for now we keep the gated text and don't drop
+                    // the correction set (it rides the gate's CorrectionProvenance
+                    // record; the in-band UX channel lands with the pill work).
+                    transcriptText = rescored.text
+                    // Slice D: carry the de-duped corrections out so the delivery
+                    // bridge can hold the paste and ask for `askCandidate` ones.
+                    corrections = rescored.corrections
                 }
             } catch {
                 log.error("vocabulary rescore failed — falling back to raw: \(error.localizedDescription)")
@@ -260,7 +312,8 @@ public actor Transcriber: Transcribing {
             rawText: result.text,
             duration: result.duration,
             processingTime: result.processingTime,
-            confidence: result.confidence
+            confidence: result.confidence,
+            corrections: corrections
         )
     }
 
@@ -412,12 +465,20 @@ public actor Transcriber: Transcribing {
     ///
     /// If the file's PCM format ever drifts from target (e.g. imported from
     /// elsewhere), we resample on the fly via `AVAudioConverter`.
-    public func transcribeFile(_ url: URL) async throws -> TranscriptionResult {
+    ///
+    /// - Parameter recordsProvenance: forwarded to `transcribe(_:recordsProvenance:)`.
+    ///   The Library detail re-transcribe passes `true` (it commits the fresh
+    ///   gate proposals under the same recording id); the list-row re-transcribe
+    ///   passes `false` (it only rewrites the transcript text, never commits).
+    public func transcribeFile(
+        _ url: URL,
+        recordsProvenance: Bool = false
+    ) async throws -> TranscriptionResult {
         try await ensureLoaded()
 
         let file = try AVAudioFile(forReading: url)
         let samples = try Self.readMono16kFloat(file: file)
-        return try await transcribe(samples)
+        return try await transcribe(samples, recordsProvenance: recordsProvenance)
     }
 
     /// Read `file` into `[Float]` at `AudioFormat.target`. Fast path when the
