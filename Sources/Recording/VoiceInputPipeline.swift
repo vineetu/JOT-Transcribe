@@ -48,6 +48,11 @@ final class VoiceInputPipeline {
         let text: String
         let recording: AudioRecording
         let partialDueToDisconnect: Bool
+        /// Slice D: the gate's de-duped vocabulary corrections for this pass.
+        /// The recorder carries these onto `lastResult` so the delivery bridge
+        /// can hold the paste and ask for `askCandidate` ones. Empty for the
+        /// no-vocab / no-correction path (the common case).
+        let corrections: [VocabularyRescorerHolder.UXCorrection]
     }
 
     private enum Phase {
@@ -317,11 +322,12 @@ final class VoiceInputPipeline {
             throw PipelineError.modelMissing
         }
 
-        let text = try await transcribe(recording: recording, token: token)
+        let output = try await transcribe(recording: recording, token: token)
         return StopAndTranscribeResult(
-            text: text,
+            text: output.text,
             recording: recording,
-            partialDueToDisconnect: disconnected
+            partialDueToDisconnect: disconnected,
+            corrections: output.corrections
         )
     }
 
@@ -440,7 +446,15 @@ final class VoiceInputPipeline {
         try await transcriber.ensureLoaded()
     }
 
-    private func transcribe(recording: AudioRecording, token: Token) async throws -> String {
+    /// Text + the gate's de-duped vocabulary corrections (Slice D). The
+    /// corrections are carried alongside the text so the delivery bridge can
+    /// hold the paste and ask for `askCandidate` ones.
+    private struct TranscribeOutput {
+        let text: String
+        let corrections: [VocabularyRescorerHolder.UXCorrection]
+    }
+
+    private func transcribe(recording: AudioRecording, token: Token) async throws -> TranscribeOutput {
         let transcriber = self.transcriber
         // True iff this session is running on the ACTIVE model (no Phase-5
         // transient fallback override). A successful transcription on the
@@ -452,14 +466,14 @@ final class VoiceInputPipeline {
             let lock = NSLock()
             var hasResumed = false
 
-            func resumeOnce(_ result: Result<String, Error>) {
+            func resumeOnce(_ result: Result<TranscribeOutput, Error>) {
                 lock.lock()
                 defer { lock.unlock() }
                 guard !hasResumed else { return }
                 hasResumed = true
                 switch result {
-                case .success(let value):
-                    continuation.resume(returning: value)
+                case .success(let output):
+                    continuation.resume(returning: output)
                 case .failure(let error):
                     continuation.resume(throwing: error)
                 }
@@ -480,7 +494,14 @@ final class VoiceInputPipeline {
 
             Task {
                 do {
-                    let result = try await transcriber.transcribe(recording.samples)
+                    // Only recorder-owned dictations own the shared provenance
+                    // slot. Rewrite / Ask-Jot voice flows (other `Owner`s) run
+                    // during a real dictation's async transform window, so they
+                    // must NOT touch it — see `Transcriber.transcribe`.
+                    let result = try await transcriber.transcribe(
+                        recording.samples,
+                        recordsProvenance: token.owner == .recorder
+                    )
                     await MainActor.run {
                         self.transcribeWatchdog?.cancel()
                         self.transcribeWatchdog = nil
@@ -496,7 +517,10 @@ final class VoiceInputPipeline {
                         if usedActiveModel {
                             self.holder.noteActiveModelHealthy()
                         }
-                        resumeOnce(.success(result.text))
+                        resumeOnce(.success(TranscribeOutput(
+                            text: result.text,
+                            corrections: result.corrections
+                        )))
                     }
                 } catch TranscriberError.audioTooShort {
                     await MainActor.run {

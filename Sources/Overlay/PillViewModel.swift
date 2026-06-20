@@ -40,6 +40,17 @@ final class PillViewModel: ObservableObject {
         /// rather than embedded in the case payload so `PillState`
         /// stays `Equatable`.
         case savedToRecents(preview: String)
+        /// Slice D (ask-before-paste, §9 Option B). The live "Did you mean
+        /// \"<term>\"?" prompt shown BEFORE the paste lands, while the delivery
+        /// bridge holds the staged text. `original` is the word currently in the
+        /// text (what TDT wrote, or — for the silent-OOV case — what the gate
+        /// would revert to on keep); `term` is the vocabulary term offered. The
+        /// resolution closures live on `PillViewModel` (`onAskConfirm` /
+        /// `onAskDismiss`), mirroring `savedToRecents`, so the case stays
+        /// `Equatable`. This state ALWAYS terminates via exactly one of those
+        /// closures — never via `scheduleDismiss` (which would hide WITHOUT
+        /// delivering and orphan the held paste; see §8 M4/M5).
+        case askCorrection(original: String, term: String)
         case error(message: String)
         /// Press-and-hold progress for the Prompt Picker entry. `progress`
         /// is 0.0 → 1.0 across the (threshold − grace) window — the pill
@@ -104,6 +115,32 @@ final class PillViewModel: ObservableObject {
     /// than `successLinger` so a user who Esc'd from a deep focus state
     /// has time to notice the pill and click.
     static let savedToRecentsLinger: TimeInterval = 5.0
+
+    /// Slice D: how long the ask pill waits for a decision before it
+    /// auto-resolves to keep-original + deliver (the safe default, §7). Long
+    /// enough that a user who looked away can still read + answer; short enough
+    /// that an ignored ask doesn't park the paste indefinitely.
+    static let askLinger: TimeInterval = 6.0
+
+    /// Slice D: true while the pill is showing a `.askCorrection` prompt that
+    /// has not yet resolved. `HotkeyRouter` observes this to enable the
+    /// ask-scoped Return / Esc shortcuts ONLY while an ask is live (mirroring
+    /// the dynamic `cancelRecording` machinery), and disable them otherwise so
+    /// Jot never steals Return / Esc from other apps.
+    @Published private(set) var isAwaitingAskCorrection: Bool = false
+
+    /// Slice D resolution closures, supplied by the delivery bridge for the
+    /// CURRENT ask. The bridge owns the staged text + the single `deliver()`;
+    /// these closures route the pill's confirm / dismiss decision back to it.
+    /// Stored on the view model (not in the case payload) so `PillState` stays
+    /// `Equatable`. Exactly one fires per ask (idempotent — `resolveAsk`
+    /// guarantees single resolution).
+    private var onAskConfirm: (() -> Void)?
+    private var onAskDismiss: (() -> Void)?
+    /// Dedicated dismiss task for the ask timeout. Kept SEPARATE from
+    /// `dismissTask` so an unrelated pill transition's `dismissTask?.cancel()`
+    /// can never silently kill the ask's auto-resolve (§8 M4/M5).
+    private var askTimeoutTask: Task<Void, Never>?
 
     /// v1.14: click handler invoked when the user taps the saved-to-
     /// Recents pill. Takes the audio filename captured at the moment
@@ -292,6 +329,10 @@ final class PillViewModel: ObservableObject {
         switch state {
         case .recording, .transcribing, .transforming, .rewriting, .condensing, .holdProgress:
             return
+        case .askCorrection:
+            // An in-flight ask is holding a paste decision — don't mask it with
+            // the (persistent) repair pill; it reasserts once the ask resolves.
+            return
         case .hidden, .success, .notice, .savedToRecents, .error, .repairingModel:
             transition(to: Self.repairPillState(for: repair))
         }
@@ -364,7 +405,7 @@ final class PillViewModel: ObservableObject {
             return true
         case .recording, .transcribing, .transforming, .rewriting,
              .condensing, .success, .notice, .savedToRecents, .error,
-             .repairingModel:
+             .repairingModel, .askCorrection:
             return false
         }
     }
@@ -410,7 +451,10 @@ final class PillViewModel: ObservableObject {
             // success/error/notice, leave that alone. If we're in recording or
             // transcribing, hide (e.g. a cancel).
             switch self.state {
-            case .success, .error, .notice, .savedToRecents, .hidden, .rewriting, .condensing, .holdProgress, .repairingModel:
+            case .success, .error, .notice, .savedToRecents, .hidden, .rewriting, .condensing, .holdProgress, .repairingModel, .askCorrection:
+                // .askCorrection: the ask lives entirely POST-pipeline (the
+                // recorder is already .idle while the bridge holds the paste), so
+                // a hop through .idle must NOT tear it down.
                 break
             case .recording, .transcribing, .transforming:
                 transition(to: .hidden)
@@ -418,6 +462,11 @@ final class PillViewModel: ObservableObject {
                 reassertRepairIfNeeded()
             }
         case .recording(let startedAt):
+            // §6: a NEW recording ABANDONS any pending ask (the prior transcript
+            // is already safe in Recents) BEFORE the recording pill claims the
+            // surface — we deliberately do NOT fire the held paste, to avoid a
+            // late async paste landing in the new focus / stomping this pill.
+            forceResolvePendingAskKeepOriginal()
             recordingStartedAt = startedAt
             transition(to: .recording(elapsed: Date().timeIntervalSince(startedAt), streamingPartial: latestPartial))
             startTick()
@@ -440,7 +489,7 @@ final class PillViewModel: ObservableObject {
         switch rewriteState {
         case .idle:
             switch self.state {
-            case .success, .error, .notice, .savedToRecents, .hidden, .condensing, .holdProgress, .repairingModel:
+            case .success, .error, .notice, .savedToRecents, .hidden, .condensing, .holdProgress, .repairingModel, .askCorrection:
                 break
             case .recording, .transcribing, .rewriting, .transforming:
                 transition(to: .hidden)
@@ -588,6 +637,8 @@ final class PillViewModel: ObservableObject {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if case .error = state { return }
+        // Slice D: never stomp a live ask — the held paste must resolve first.
+        if isAwaitingAskCorrection { return }
         stopTick()
         transition(to: .notice(message: trimmed))
         scheduleDismiss(after: Self.successLinger)
@@ -614,6 +665,85 @@ final class PillViewModel: ObservableObject {
     /// No-op if the handler hasn't been wired by composition.
     func invokeSavedToRecentsTap() {
         onSavedToRecentsTap?(pendingSavedRecordingAudioFile)
+    }
+
+    // MARK: - Ask-before-paste (Slice D)
+
+    /// Show the live "Did you mean \"<term>\"?" prompt and hold here until the
+    /// user confirms / dismisses, the ask times out, or an outside click /
+    /// new recording force-resolves it. The delivery bridge supplies the
+    /// resolution closures — `onConfirm` applies the term + delivers, `onDismiss`
+    /// keeps the original + delivers. Exactly ONE of them runs (single-resolution
+    /// invariant), then the ask is torn down. The bridge sequences multiple
+    /// candidates by calling this again from inside its own closures.
+    func showAskCorrection(
+        original: String,
+        term: String,
+        onConfirm: @escaping () -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
+        // Tear down any in-flight ask WITHOUT delivering — the bridge that
+        // started this new ask is the single owner of the deliver() decision and
+        // is driving the sequence; a stale closure firing here would double-fire.
+        askTimeoutTask?.cancel()
+        askTimeoutTask = nil
+        onAskConfirm = onConfirm
+        onAskDismiss = onDismiss
+        isAwaitingAskCorrection = true
+        stopTick()
+        transition(to: .askCorrection(original: original, term: term))
+        // Auto-resolve to keep-original after the linger. Dedicated task so an
+        // unrelated transition can't cancel it (§8 M4/M5).
+        askTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.askLinger * 1_000_000_000))
+            guard !Task.isCancelled, let self else { return }
+            self.resolveAsk(confirmed: false)
+        }
+    }
+
+    /// Confirm the current ask (⏎ / Apply button) — apply the offered term.
+    func confirmAsk() { resolveAsk(confirmed: true) }
+
+    /// Dismiss the current ask (esc / Keep button / outside-click / timeout) —
+    /// keep the original word.
+    func dismissAsk() { resolveAsk(confirmed: false) }
+
+    /// THE single resolution path for an ask (§8 M4/M5). Idempotent: the first
+    /// call consumes the closures and fires exactly one of them; subsequent calls
+    /// are no-ops. ALWAYS ends by invoking a bridge closure — both of which
+    /// terminate in exactly one `deliver()` — so the held paste can never be
+    /// silently dropped. Does NOT itself transition the pill to a terminal state;
+    /// the bridge either starts the next ask (sequential) or, on the last one,
+    /// the resulting `deliver()` drives the normal success pill.
+    private func resolveAsk(confirmed: Bool) {
+        // Snapshot-and-clear so a re-entrant call (e.g. outside-click racing the
+        // timeout) can't fire twice.
+        guard isAwaitingAskCorrection else { return }
+        let confirm = onAskConfirm
+        let dismiss = onAskDismiss
+        onAskConfirm = nil
+        onAskDismiss = nil
+        isAwaitingAskCorrection = false
+        askTimeoutTask?.cancel()
+        askTimeoutTask = nil
+        if confirmed { confirm?() } else { dismiss?() }
+    }
+
+    /// Force-abandon a pending ask when a NEW recording begins (the recorder is
+    /// about to claim the pill). §6 offers two options — deliver-kept-original, or
+    /// abandon since the recording is already saved to Recents. We ABANDON: the
+    /// alternative (firing the deliver chain here) would async-paste the prior
+    /// transcript into whatever now has focus AND stomp the fresh `.recording`
+    /// pill with a late `.success`. The user can paste-last or open Recents to
+    /// recover the abandoned transcript. Closures are dropped WITHOUT firing, and
+    /// the ask is torn down so the recording pill takes over cleanly.
+    func forceResolvePendingAskKeepOriginal() {
+        guard isAwaitingAskCorrection else { return }
+        onAskConfirm = nil
+        onAskDismiss = nil
+        isAwaitingAskCorrection = false
+        askTimeoutTask?.cancel()
+        askTimeoutTask = nil
     }
 
     /// Format a duration as `mm:ss` — caps at `99:59`, which is fine because

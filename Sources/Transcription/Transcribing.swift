@@ -28,12 +28,22 @@ protocol Transcribing: Sendable {
     /// `TranscriptionResult` (text + rawText + duration +
     /// processingTime + confidence). Throws `TranscriberError.busy`
     /// if a previous call is still running.
-    func transcribe(_ samples: [Float]) async throws -> TranscriptionResult
+    ///
+    /// `recordsProvenance` gates the shared `CorrectionProvenance` pending
+    /// slot: only saving callers (recorder dictation, Library detail
+    /// re-transcribe) pass `true`. See the concrete `Transcriber`.
+    func transcribe(
+        _ samples: [Float],
+        recordsProvenance: Bool
+    ) async throws -> TranscriptionResult
 
     /// Transcribe a WAV file at `url` (assumed canonical 16 kHz mono
     /// Float32 format). Used by Library's re-transcribe action and
     /// the Wizard's TestStep.
-    func transcribeFile(_ url: URL) async throws -> TranscriptionResult
+    func transcribeFile(
+        _ url: URL,
+        recordsProvenance: Bool
+    ) async throws -> TranscriptionResult
 
     /// True once the model is loaded on the ANE and ready to infer.
     /// Async-getter form so actor conformers can satisfy from outside

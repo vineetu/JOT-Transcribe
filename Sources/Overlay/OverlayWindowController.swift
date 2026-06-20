@@ -28,6 +28,9 @@ final class OverlayWindowController {
     private var stateCancellable: AnyCancellable?
     private var expansionCancellable: AnyCancellable?
     private var streamingActiveCancellable: AnyCancellable?
+    /// Slice D: installs the outside-click monitors while an ask is awaiting so
+    /// a click anywhere off the pill resolves it to keep-original.
+    private var askActiveCancellable: AnyCancellable?
 
     /// NSEvent monitors installed while the pill is expanded so any
     /// click outside the pill's panel collapses it. Cleared when the
@@ -127,9 +130,9 @@ final class OverlayWindowController {
         // the user clicks anywhere off it.
         expansionCancellable = model.$isPillExpanded
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] expanded in
+            .sink { [weak self] _ in
                 self?.updateFrame()
-                self?.applyOutsideClickMonitor(expanded: expanded)
+                self?.refreshOutsideClickMonitor()
             }
         // Refresh click-through when a streaming session begins or
         // ends. Without this, a v3-then-streaming sequence would keep
@@ -141,6 +144,31 @@ final class OverlayWindowController {
                 guard let self else { return }
                 self.applyClickThrough(for: self.model.state)
             }
+        // Slice D: while an ask is awaiting, a click anywhere off the pill
+        // resolves it to keep-original (the safe default, §2). Reuse the same
+        // outside-click monitor pair the expanded pill uses.
+        askActiveCancellable = model.$isAwaitingAskCorrection
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.refreshOutsideClickMonitor()
+            }
+    }
+
+    /// Outside-click monitors are needed while EITHER the recording pill is
+    /// expanded OR an ask is awaiting. Single source of truth so the two
+    /// observers can't fight over install/remove.
+    private func refreshOutsideClickMonitor() {
+        applyOutsideClickMonitor(expanded: model.isPillExpanded || model.isAwaitingAskCorrection)
+    }
+
+    /// Route an outside click to the right action: resolve a live ask to
+    /// keep-original, else collapse an expanded recording pill.
+    private func handleOutsideClick() {
+        if model.isAwaitingAskCorrection {
+            model.dismissAsk()
+        } else {
+            model.collapsePillExpandedIfNeeded()
+        }
     }
 
     deinit {
@@ -194,7 +222,7 @@ final class OverlayWindowController {
         if outsideClickGlobalMonitor == nil {
             outsideClickGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: matching) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    self?.model.collapsePillExpandedIfNeeded()
+                    self?.handleOutsideClick()
                 }
             }
         }
@@ -202,12 +230,12 @@ final class OverlayWindowController {
         if outsideClickLocalMonitor == nil {
             outsideClickLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: matching) { [weak self] event in
                 // Click on the overlay panel itself: let the pill's
-                // own .onTapGesture handle expand/collapse.
+                // own .onTapGesture / buttons handle it.
                 if let panel = self?.panel, event.window === panel {
                     return event
                 }
                 Task { @MainActor [weak self] in
-                    self?.model.collapsePillExpandedIfNeeded()
+                    self?.handleOutsideClick()
                 }
                 return event
             }
@@ -299,6 +327,13 @@ final class OverlayWindowController {
                 ? "Couldn’t download \(modelName) — open Settings"
                 : "Repairing transcription model — downloading \(modelName)… 100%"
             return errorPillWidth(for: label)
+        case .askCorrection(let original, let term):
+            // Slice D: lays out as [dot | "Did you mean “term”?" | Apply | Keep
+            // “original”]. Size it to fit both words plus the two buttons so
+            // neither truncates. Reuse the text-driven sizing on a synthetic
+            // label that approximates the combined content width.
+            let label = "Did you mean “\(term)”?   ⏎ Apply   esc Keep “\(original)”"
+            return errorPillWidth(for: label)
         case .hidden, .transcribing, .condensing, .rewriting, .transforming, .success, .holdProgress:
             return Self.compactPillWidth
         }
@@ -333,11 +368,14 @@ final class OverlayWindowController {
             // click-through so a tap near the notch passes to whatever
             // app the user is working in.
             panel.ignoresMouseEvents = !model.isStreamingSessionActive
-        case .success, .error, .savedToRecents, .repairingModel:
+        case .success, .error, .savedToRecents, .repairingModel, .askCorrection:
             // v1.14: `.savedToRecents` is the click-to-open-Recents
             // affordance — must be tappable for the whole linger window.
             // The repairing pill is tappable so it can route to Settings →
             // Transcription on click.
+            // Slice D: `.askCorrection` has two real buttons — it MUST receive
+            // mouse events (apply click-through, §4) so the user can answer
+            // without the keyboard.
             panel.ignoresMouseEvents = false
         }
     }

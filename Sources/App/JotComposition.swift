@@ -617,6 +617,17 @@ enum JotComposition {
             menuBar?.openTranscriptionSettings()
         }
 
+        // Slice D (ask-before-paste): wire the ask-scoped ⏎ / esc shortcuts to
+        // the live ask. The router enables them only while the pill is in
+        // `.askCorrection` (off `$isAwaitingAskCorrection`); the confirm / dismiss
+        // closures route straight to the pill's single resolution path, the same
+        // one the on-pill buttons and outside-click use.
+        hotkeyRouter.installAskCorrectionDispatch(
+            isAwaiting: overlay.pillViewModel.$isAwaitingAskCorrection.eraseToAnyPublisher(),
+            onConfirm: { [weak pillVM = overlay.pillViewModel] in pillVM?.confirmAsk() },
+            onDismiss: { [weak pillVM = overlay.pillViewModel] in pillVM?.dismissAsk() }
+        )
+
         // Wire the Prompt Picker tap-vs-hold dispatcher onto the
         // `.rewrite` hotkey now that the overlay exists. The picker
         // opener itself is set later (when the PromptPickerController

@@ -444,7 +444,9 @@ struct RecordingsListView: View {
         let url = RecordingStore.audioURL(for: r)
         Task {
             do {
-                let result = try await transcriber.transcribeFile(url)
+                // List-row re-transcribe only rewrites transcript text; it never
+                // commits provenance, so it must not touch the shared slot.
+                let result = try await transcriber.transcribeFile(url, recordsProvenance: false)
                 await MainActor.run {
                     r.rawTranscript = result.rawText
                     r.transcript = result.text

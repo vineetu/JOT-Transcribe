@@ -98,6 +98,12 @@ enum RecordingStore {
     static func delete(_ recording: Recording, from context: ModelContext) {
         let url = audioURL(for: recording)
         try? FileManager.default.removeItem(at: url)
+        // Slice C linkage: drop this recording's correction-provenance side-JSON
+        // so deleting a row doesn't orphan its proposals on disk. `discard` is
+        // actor-isolated (async); the id is a value-typed UUID captured before
+        // the row leaves the context, so the detached `Task` is race-free.
+        let recordingID = recording.id
+        Task { await CorrectionProvenance.shared.discard(transcriptID: recordingID) }
         context.delete(recording)
     }
 

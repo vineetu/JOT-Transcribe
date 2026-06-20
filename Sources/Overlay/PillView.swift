@@ -136,6 +136,15 @@ struct PillView: View {
                     RepairingContent(modelName: modelName, progress: progress, isError: isError)
                 }
                 .onTapGesture { model.invokeRepairPillTap() }
+            case .askCorrection(let original, let term):
+                pillBody {
+                    AskCorrectionContent(
+                        original: original,
+                        term: term,
+                        onConfirm: { model.confirmAsk() },
+                        onDismiss: { model.dismissAsk() }
+                    )
+                }
             }
         }
         // Pin to the top of the hosting window so the pill's top edge lines
@@ -699,6 +708,72 @@ private struct SavedToRecentsContent: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Recording saved to Recents. Click to open.")
+        .transition(.opacity.animation(.easeOut(duration: 0.14)))
+    }
+}
+
+// MARK: - Ask before paste (Slice D)
+
+/// Rendered for `PillState.askCorrection`. The live "Did you mean \"<term>\"?"
+/// prompt shown while the delivery bridge holds the staged paste. Amber accent
+/// dot ("needs your call", distinct from the green success dot). Two REAL
+/// buttons so the ask is fully usable without the keyboard (accessibility), plus
+/// ⏎ / esc glyph hints that mirror the ask-scoped global shortcuts. Confirm =
+/// apply the term; Keep = keep the original word. Either way the bridge delivers
+/// exactly once afterward.
+private struct AskCorrectionContent: View {
+    let original: String
+    let term: String
+    let onConfirm: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(Color(nsColor: .systemOrange))
+                .frame(width: 7, height: 7)
+            Text("Did you mean")
+                .font(.system(size: 12))
+                .foregroundStyle(.white.opacity(0.85))
+            Text("“\(term)”?")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 6)
+
+            Button(action: onConfirm) {
+                HStack(spacing: 4) {
+                    Text("⏎").font(.system(size: 11, weight: .semibold))
+                    Text("Apply").font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule(style: .continuous).fill(Color.white.opacity(0.16))
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Apply \(term)")
+
+            Button(action: onDismiss) {
+                HStack(spacing: 4) {
+                    Text("esc").font(.system(size: 10, weight: .semibold))
+                    Text("Keep “\(original)”").font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(.white.opacity(0.8))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule(style: .continuous).fill(Color.white.opacity(0.08))
+                )
+                .lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Keep \(original)")
+        }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
     }
 }

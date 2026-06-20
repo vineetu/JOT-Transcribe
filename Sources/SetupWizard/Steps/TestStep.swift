@@ -483,7 +483,7 @@ struct TestStep: View {
             do {
                 let recording = try await capture.stop()
                 phase = .transcribing
-                let result = try await transcriber.transcribe(recording.samples)
+                let result = try await transcriber.transcribe(recording.samples, recordsProvenance: false)
                 transcript = result.text
                 coordinator.testTranscript = result.text
                 phase = .done
