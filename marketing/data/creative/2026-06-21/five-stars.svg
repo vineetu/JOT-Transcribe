@@ -1,0 +1,31 @@
+<svg width="1080" height="1080" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Card panel -->
+  <rect x="60" y="60" width="960" height="960" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Stars row -->
+  <text x="540" y="200" text-anchor="middle" fill="#f0f0f0" font-size="56" letter-spacing="22">★★★★★</text>
+
+  <!-- Big number "4" — the unexpected scroll-stopper -->
+  <text x="540" y="510" text-anchor="middle" fill="#f0f0f0" font-size="300" font-weight="700">4</text>
+
+  <!-- "ratings." label in secondary -->
+  <text x="540" y="600" text-anchor="middle" fill="#9a9a9f" font-size="58" font-weight="400">ratings.</text>
+
+  <!-- Red punchline -->
+  <text x="540" y="700" text-anchor="middle" fill="#CE231D" font-size="70" font-weight="700">All five stars.</text>
+
+  <!-- Context line -->
+  <text x="540" y="776" text-anchor="middle" fill="#9a9a9f" font-size="30">Jot Transcribe · App Store · June 2026</text>
+
+  <!-- Divider -->
+  <line x1="120" y1="870" x2="960" y2="870" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Footer: red dot + URL -->
+  <circle cx="120" cy="938" r="9" fill="#CE231D"/>
+  <text x="148" y="947" fill="#9a9a9f" font-size="30">jot-transcribe.com</text>
+
+</svg>
