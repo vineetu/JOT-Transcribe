@@ -1,5 +1,5 @@
 {
-  "date": "2026-06-20",
+  "date": "2026-06-21",
   "downloads": {
     "total": 152,
     "delta": null,
@@ -7,39 +7,39 @@
     "goal": 100
   },
   "creative": {
-    "concept": "Before/after commit message card: 'fix bug' (typed, 2 words) vs a full descriptive commit (spoken with Jot, 13 words). Developer audience hook — bad commits aren't laziness, they're typing friction. Doubles down on the HN developer base from June 16.",
+    "concept": "Social proof + gratitude: '4 ratings. All five stars.' — a humble solo-builder moment using the App Store as proof. The giant '4' is the unexpected scroll-stopper; the red punchline reframes a tiny number as a perfect score. Fresh format: social proof has never appeared in a prior card.",
     "cards": [
       {
-        "file": "marketing/data/creative/2026-06-20/commit-before-after.svg",
-        "title": "Before/after: commit messages typed vs spoken",
-        "use": "Primary visual for LinkedIn, X, and Instagram. Export as 1080×1080 PNG. The '2 vs 13 words' contrast is the scroll-stopper; the symmetrical left/right panel layout invites direct comparison at a glance."
+        "file": "marketing/data/creative/2026-06-21/five-stars.svg",
+        "title": "4 ratings. All five stars.",
+        "use": "Primary visual for LinkedIn and X. Export as 1080×1080 PNG. Also works as a standalone Instagram static post."
       }
     ],
     "carousel": [],
     "storyboard": {
-      "title": "The commit message your future self actually understands",
+      "title": "Jot for writers — blank page to first draft",
       "duration_s": 17,
-      "use": "Instagram Reel / X video / GIF — developer workflow hook in the terminal; targets the HN/dev audience who found Jot on June 16",
+      "use": "Instagram Reel / X video / GIF — writer's blank-page anxiety angle; fresh audience after a week of developer-focused content",
       "shots": [
         {
           "t": "0–3s",
-          "visual": "Terminal open, cursor after 'git commit -m \"', empty — blank stare at the prompt",
-          "overlay": "What do you write here?"
+          "visual": "Pages app open, blank document, blinking cursor under 'Chapter 1' heading — nothing else on screen",
+          "overlay": "Blank page."
         },
         {
-          "t": "3–5s",
-          "visual": "Keystrokes: 'fix bu' starts to appear; dev stops, deletes it; presses ⌥ Space; Dynamic Island pill appears under Mac notch",
-          "overlay": "Speak it instead."
+          "t": "3–6s",
+          "visual": "Hand presses ⌥Space on keyboard; Dynamic Island pill appears pulsing under the Mac notch",
+          "overlay": "One hotkey."
         },
         {
-          "t": "5–14s",
-          "visual": "Pill pulses with audio waveform; developer speaks the full commit message aloud naturally",
+          "t": "6–14s",
+          "visual": "Pill shows audio waveform as user speaks a paragraph aloud; words fill the Pages document line by line",
           "overlay": "Speak."
         },
         {
           "t": "14–17s",
-          "visual": "Full 13-word commit fills the terminal prompt; pill vanishes; git log scrolls showing the clean entry",
-          "overlay": "Future you says thanks."
+          "visual": "Full paragraph in Pages; pill has vanished; cursor blinks at end of text; jot-transcribe.com watermark lower-right",
+          "overlay": "First draft. Free. On-device."
         }
       ]
     }
@@ -47,39 +47,58 @@
   "drafts": [
     {
       "channel": "linkedin",
-      "text": "Bad commit messages aren't laziness. They're a typing-friction problem.\n\nWhen writing hurts, you write less. So commit messages become \"fix bug\" instead of what actually happened.\n\nI built Jot for exactly this. Press ⌥ Space, speak your commit, it lands in the terminal. 4 seconds. Full context.\n\nYour future self will understand the git log.\n\nWhat does your commit history look like at 11pm on a Friday?\n\n#macOS #indiedev #buildinpublic",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-20",
+      "text": "4 people rated Jot Transcribe on the App Store.\n\nAll four gave it 5 stars.\n\nI don't know who any of you are, but you made my week.\n\nJot is a free, on-device Mac dictation app: press a hotkey, speak, and the transcript lands at your cursor in any app. No cloud. No subscription. No account.\n\nWhat tiny piece of feedback has kept YOUR project going?\n\n#indiedev #macOS #buildinpublic",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-21",
       "publish_window_pt": "7:00–8:30am PT",
       "recommended": true,
-      "note": "Attach commit-before-after.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. The closing question is the engagement trigger — devs who've written 'fix bug' at 11pm will feel this."
+      "note": "Attach five-stars.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. The closing question is the engagement trigger — reply to every comment, especially other solo builders who share their own 'smallest feedback' stories."
     },
     {
       "channel": "x",
-      "text": "Bad commit messages aren't laziness — they're typing friction.\n\n⌥ Space → speak → \"fix null deref when audio device disconnects mid-session\" → 4 sec. Free Mac dictation. On-device.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-20",
+      "text": "4 App Store ratings. All five stars.\n\nI don't know who you are, but: thank you.\n\nJot is free, on-device Mac dictation — hotkey, speak, text at cursor. Zero cloud. Zero subscription.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-21",
       "publish_window_pt": "6:30–9:00am PT",
       "recommended": true,
-      "note": "Attach commit-before-after.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. ~168 characters, within 200 limit."
+      "note": "Attach five-stars.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. ~161 characters, within the 200 limit."
     },
     {
       "channel": "reddit",
-      "text": "I started dictating my git commit messages — my git log is now actually readable (I made this)\n\nFor years my commit messages were terrible. Not because I didn't care — because typing a good one at the end of a long session felt like extra work. So they all became 'fix bug' or 'wip' or 'update'.\n\nI started using Jot (the app I built) to dictate them instead. The workflow:\n1. Reach the commit step in the terminal\n2. Press ⌥ Space\n3. Speak the actual thing that happened: \"fix null pointer exception when audio device disconnects mid-session on M-series Macs\"\n4. It pastes directly into the terminal prompt\n\nTotal time: about 4 seconds. The commit message is now 13 words instead of 2.\n\nThree things I noticed:\n- I write more context when I speak it. The friction of typing made me compress everything.\n- Future code reviews are faster — the commit message actually explains the why.\n- I now speak PR descriptions and code comments the same way. Same friction problem everywhere.\n\nJot runs on the Apple Neural Engine — no cloud, no audio leaves the Mac, works offline. Free, open source, Apple Silicon only, macOS 14+.\n\n(I built this — disclosure)\n\nLink in comments.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-20",
+      "text": "My free Mac dictation app has 4 App Store ratings. Every single one is 5 stars. (I built it)\n\nI shipped Jot Transcribe on the App Store about a month ago — a companion to my free, open-source macOS dictation app. It sits at 4 total ratings.\n\nEvery single one is 5 stars.\n\nBuilding something alone means you spend a lot of time wondering if it's actually useful to anyone. Those 4 ratings felt like an answer.\n\nThe core idea behind Jot (both Mac and iOS): press a hotkey or tap a button, speak, and the transcript pastes wherever your cursor is. All transcription runs on-device — on the Apple Neural Engine on Mac, on the iOS device itself. No cloud, no account, no audio leaves your machine.\n\nThe Mac app has optional AI cleanup via Apple Intelligence, Ollama, or your own API key. There's a rewrite-with-voice mode (select text, speak an instruction, Jot rewrites in place) and language support for French, Spanish, German, Japanese, and more with automatic model selection.\n\nApple Silicon only, macOS 14+, free, open source.\n\nIf anyone here has used Jot and has honest feedback — good or bad — I'd genuinely appreciate it. And if you're curious about any technical decisions (ANE pipeline, clipboard sandwich, model selection logic), happy to get into the details.\n\n(I built this — disclosure)\n\nLink in comments.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-21",
       "publish_window_pt": "6:00–8:00am PT",
       "recommended": false,
-      "note": "Post to r/macapps (rotation: macapps Jun 11, MacOS Jun 12, productivity Jun 13, macapps Jun 14, MacOS Jun 15, productivity Jun 16, macapps Jun 17, MacOS Jun 18, productivity Jun 19, macapps Jun 20). First line is the post title, rest is the body. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit was June 19 (1 day ago); needs 4+ days — earliest is June 23. Answer every comment in the first hour."
+      "note": "Post to r/MacOS. recommended:false — last recommended:true reddit was June 19 (2 days ago); needs 4+ days — earliest is June 23. First line is the post title; the rest is the body. Replace 'Link in comments' with the actual utm_url as the first comment. Answer every comment in the first hour."
     },
     {
       "channel": "instagram",
-      "text": "Your commit messages are terrible. Not laziness — typing is just too much friction.\n\nHotkey → speak → 13-word commit in 4 seconds.\n\nFree Mac dictation. On-device. Open source.\n\nLink in bio.\n\n#macOS #developer #git #dictation #voicetotext #speechtotext #opensource #indiedev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-20",
+      "text": "4 ratings on the App Store. Every single one: 5 stars.\n\nIf that's you — thank you. You have no idea.\n\nFree Mac dictation. Link in bio.\n\n#indiedev #buildinpublic #macOS #dictation #opensource #macapps #solodev #appstore",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-21",
       "publish_window_pt": "11am–1pm PT",
-      "recommended": true,
-      "visual": "marketing/data/creative/2026-06-20/commit-before-after.svg as a static 1080×1080 PNG post.",
-      "note": "recommended:true — last recommended:true instagram was June 17 (3 days ago); threshold of 3+ days met today (June 20). Caption is 35 words (under 40 limit) + 8 hashtags. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
+      "recommended": false,
+      "visual": "marketing/data/creative/2026-06-21/five-stars.svg as a static 1080×1080 PNG post.",
+      "note": "recommended:false — last recommended:true instagram was June 20 (1 day ago); needs 3+ days — earliest is June 23. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
     }
   ],
-  "opportunities": [],
+  "opportunities": [
+    {
+      "url": "https://medium.com/@ryanshrott/best-mac-dictation-apps-in-2026-dictaflow-wispr-flow-superwhisper-and-apple-dictation-compared-11911c671817",
+      "title": "Best Mac Dictation Apps in 2026: DictaFlow, Wispr Flow, Superwhisper, and Apple Dictation Compared",
+      "why": "Popular Medium comparison — covers paid and free options but misses the only fully free, open-source, on-device option. Medium allows public comments; a one-sentence gap-fill is low-effort and genuinely useful to readers.",
+      "suggested_reply": "Great breakdown! One worth adding: Jot (jot-transcribe.com) — free, open-source, runs entirely on-device on the Apple Neural Engine. No subscription, no account, no audio ever leaves the Mac. I built it as a free alternative to the paid options you cover. Might be worth a free-tier callout in a future update. (Disclosure: I'm the developer.)"
+    },
+    {
+      "url": "https://www.getvoibe.com/blog/superwhisper-alternatives/",
+      "title": "11 Best Superwhisper Alternatives in 2026 (Reviewed) — Voibe",
+      "why": "High-SEO roundup ranking for 'superwhisper free alternative' — Jot almost certainly not listed. A single honest comment pointing out the only fully-free open-source option in the space is a natural fit and serves readers genuinely comparison-shopping.",
+      "suggested_reply": "You might want to add Jot to this list — it's the only fully free, open-source on-device option for Mac. Press a hotkey, speak, text lands at your cursor in any app. Runs on the Apple Neural Engine, no cloud, no subscription, no account. I built it. Full disclosure."
+    },
+    {
+      "url": "https://www.onresonant.com/resources/best-dictation-tools-reddit",
+      "title": "Best Dictation Tools in 2026 (What Reddit Actually Recommends) — Resonant",
+      "why": "Competitor-authored article aggregating Reddit dictation recommendations — if Jot doesn't appear, it signals that Jot needs more Reddit thread presence. Fetch this manually to confirm whether Jot is listed; if not, the June 23 recommended Reddit post (r/MacOS) is the right vehicle to seed honest coverage.",
+      "suggested_reply": null
+    }
+  ],
   "outreach": [],
-  "notes": "GitHub API returned HTTP 403 on two attempts (retry per instructions); download total carried forward at 152 (June 19 value); real delta unknown. avg7=5 computed as (152−119)/7 over the June 13→June 20 window. appstore.json already reflected today's date from a prior run; iTunes API also 403; file preserved unchanged (ratingCount: 3, avgRating: 5, installs: 0). No outreach today (last June 19, within 7-day window; next window opens June 26). Resonant (onresonant.com) now surfaces prominently in searches for 'best dictation tools Mac 2026 reddit' — their blog compares competitors but excludes Jot; priority outreach target on June 26. AlternativeTo.net free submission (Wispr Flow + Superwhisper alternatives pages) remains the single highest-leverage zero-cost action — Jot still not listed after multiple brief cycles. No actionable Reddit or HN threads from last 7 days surfaced with concrete URLs. Today's commit-message angle is a direct retention hook for the HN developer cohort who installed Jot June 16–17 — devs commit every day, giving that cohort a reason to make Jot a permanent workflow habit. Saturday timing: LinkedIn/X reach ~30–40% lower than weekday peaks; Instagram performs comparably on weekends and is the priority channel today (recommended:true, first eligible day)."
+  "notes": "GitHub releases API returned 403 for the seventh consecutive day; download total carried forward at 152 from June 19 (avg7=5, formula: (152-120)/7 using June 14 as the 8-entry-back anchor). iTunes API also 403; appstore.json date updated to June 21, all values preserved (ratingCount: 4, avgRating: 5.0, installs: 0). Today's creative pivots to a fresh emotional angle — the App Store's 4 perfect ratings — after a week of developer-focused content (commits, standups, git log). The '4 ratings, all five stars' hook is genuinely humble and makes an unexpectedly strong engagement trigger on LinkedIn: solo builders will reply with their own 'smallest feedback that kept me going' stories, extending the thread organically. The writer's storyboard (blank page → first draft) opens a new audience segment not targeted yet: writers, journalists, and students. Two comment opportunities found: Ryan Shrott's Medium article and the Voibe Superwhisper-alternatives roundup — both rank in search and both exclude Jot. No outreach today (last June 19, window opens June 26); priority outreach targets for June 26: speakmac.app/blog/best-private-dictation-apps-for-mac-2026 and machow2.com (both published 2026 private/offline dictation roundups that rank highly and exclude Jot). Reddit and Instagram: recommended:false (reddit earliest June 23, instagram earliest June 23)."
 }
