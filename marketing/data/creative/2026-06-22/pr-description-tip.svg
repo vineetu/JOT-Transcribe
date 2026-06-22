@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="960" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Label -->
+  <text x="540" y="152" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="4">USE-CASE TIP</text>
+
+  <!-- Headline -->
+  <text x="540" y="292" font-family="Helvetica, Arial, sans-serif" font-size="88" font-weight="800" fill="#f0f0f0" text-anchor="middle">Your PR</text>
+  <text x="540" y="392" font-family="Helvetica, Arial, sans-serif" font-size="88" font-weight="800" fill="#f0f0f0" text-anchor="middle">description.</text>
+
+  <!-- Accent -->
+  <text x="540" y="468" font-family="Helvetica, Arial, sans-serif" font-size="44" font-weight="700" fill="#CE231D" text-anchor="middle">Doesn't need typing.</text>
+
+  <!-- Divider -->
+  <line x1="160" y1="514" x2="920" y2="514" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Step boxes: width 240, gap 45, total 810, start x=(1080-810)/2=135 -->
+
+  <!-- Step 1: x=135 -->
+  <rect x="135" y="544" width="240" height="176" rx="14" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1.5"/>
+  <text x="255" y="600" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="3">STEP 1</text>
+  <text x="255" y="648" font-family="Helvetica, Arial, sans-serif" font-size="32" font-weight="700" fill="#f0f0f0" text-anchor="middle">git diff</text>
+  <text x="255" y="688" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f" text-anchor="middle">review the change</text>
+
+  <!-- Arrow 1: center x=375+22=397 -->
+  <text x="397" y="645" font-family="Helvetica, Arial, sans-serif" font-size="36" fill="#2a2a2e" text-anchor="middle">→</text>
+
+  <!-- Step 2: x=420 -->
+  <rect x="420" y="544" width="240" height="176" rx="14" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1.5"/>
+  <text x="540" y="600" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="3">STEP 2</text>
+  <text x="540" y="648" font-family="Helvetica, Arial, sans-serif" font-size="32" font-weight="700" fill="#f0f0f0" text-anchor="middle">⌥ Space</text>
+  <text x="540" y="688" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f" text-anchor="middle">press the hotkey</text>
+
+  <!-- Arrow 2: center x=660+22=682 -->
+  <text x="682" y="645" font-family="Helvetica, Arial, sans-serif" font-size="36" fill="#2a2a2e" text-anchor="middle">→</text>
+
+  <!-- Step 3: x=705 -->
+  <rect x="705" y="544" width="240" height="176" rx="14" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1.5"/>
+  <text x="825" y="600" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="3">STEP 3</text>
+  <text x="825" y="648" font-family="Helvetica, Arial, sans-serif" font-size="32" font-weight="700" fill="#f0f0f0" text-anchor="middle">Speak it.</text>
+  <text x="825" y="688" font-family="Helvetica, Arial, sans-serif" font-size="17" fill="#9a9a9f" text-anchor="middle">Jot pastes it.</text>
+
+  <!-- Bottom copy -->
+  <text x="540" y="808" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="600" fill="#f0f0f0" text-anchor="middle">30 seconds. Reviewers thank you.</text>
+  <text x="540" y="856" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f" text-anchor="middle">Free · On-device · Open source · Apple Silicon</text>
+
+  <!-- Footer -->
+  <circle cx="422" cy="962" r="7" fill="#CE231D"/>
+  <text x="440" y="967" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="1230" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Slide number -->
+  <text x="540" y="174" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="4">2 / 6</text>
+
+  <!-- Big number -->
+  <text x="540" y="590" font-family="Helvetica, Arial, sans-serif" font-size="220" font-weight="800" fill="#f0f0f0" text-anchor="middle">27</text>
+
+  <!-- Label -->
+  <text x="540" y="680" font-family="Helvetica, Arial, sans-serif" font-size="58" font-weight="600" fill="#9a9a9f" text-anchor="middle">versions shipped.</text>
+
+  <!-- Sub detail -->
+  <text x="540" y="766" font-family="Helvetica, Arial, sans-serif" font-size="28" fill="#9a9a9f" text-anchor="middle">v1.0 → v1.14.1</text>
+  <text x="540" y="808" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f" text-anchor="middle">April 16 – June 22, 2026</text>
+
+  <!-- Red accent note -->
+  <text x="540" y="900" font-family="Helvetica, Arial, sans-serif" font-size="32" font-weight="600" fill="#CE231D" text-anchor="middle">One builder. No team.</text>
+
+  <!-- Footer -->
+  <circle cx="422" cy="1248" r="7" fill="#CE231D"/>
+  <text x="440" y="1253" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

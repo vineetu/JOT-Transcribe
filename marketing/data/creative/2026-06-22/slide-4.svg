@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="1230" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Slide number -->
+  <text x="540" y="174" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="4">4 / 6</text>
+
+  <!-- Big number -->
+  <text x="540" y="570" font-family="Helvetica, Arial, sans-serif" font-size="220" font-weight="800" fill="#f0f0f0" text-anchor="middle">4</text>
+
+  <!-- Label -->
+  <text x="540" y="656" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="600" fill="#9a9a9f" text-anchor="middle">App Store ratings.</text>
+
+  <!-- Stars -->
+  <text x="540" y="756" font-family="Helvetica, Arial, sans-serif" font-size="72" fill="#f0f0f0" text-anchor="middle">★★★★★</text>
+
+  <!-- Red punchline -->
+  <text x="540" y="844" font-family="Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#CE231D" text-anchor="middle">All five stars.</text>
+
+  <!-- Sub note -->
+  <text x="540" y="930" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">Jot Transcribe · iOS App Store</text>
+
+  <!-- Footer -->
+  <circle cx="422" cy="1248" r="7" fill="#CE231D"/>
+  <text x="440" y="1253" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

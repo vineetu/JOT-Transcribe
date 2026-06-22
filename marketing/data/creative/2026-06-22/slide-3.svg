@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="1230" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Slide number -->
+  <text x="540" y="174" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="4">3 / 6</text>
+
+  <!-- Big stat -->
+  <text x="540" y="540" font-family="Helvetica, Arial, sans-serif" font-size="180" font-weight="800" fill="#f0f0f0" text-anchor="middle">190+</text>
+  <text x="540" y="634" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="600" fill="#9a9a9f" text-anchor="middle">downloads.</text>
+
+  <!-- Divider -->
+  <line x1="240" y1="694" x2="840" y2="694" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Zero ads lines -->
+  <text x="540" y="768" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#f0f0f0" text-anchor="middle"><tspan fill="#CE231D">Zero</tspan> ads.</text>
+  <text x="540" y="822" font-family="Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#f0f0f0" text-anchor="middle"><tspan fill="#CE231D">Zero</tspan> PR placements.</text>
+  <text x="540" y="892" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f" text-anchor="middle">Purely organic discovery.</text>
+
+  <!-- Footer -->
+  <circle cx="422" cy="1248" r="7" fill="#CE231D"/>
+  <text x="440" y="1253" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
