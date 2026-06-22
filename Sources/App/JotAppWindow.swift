@@ -226,10 +226,15 @@ struct JotAppWindow: View {
     }
 
     private func handlePrimaryModelChange(to newID: ParakeetModelID) {
-        if newID == .tdt_0_6b_ja || newID == .nemotron_en {
+        if newID == .tdt_0_6b_ja {
+            // Japanese drives vocabulary through alias substitution, not the
+            // CTC spotter — tear the spotter down.
             Task { await VocabularyRescorerHolder.shared.unload() }
         } else if VocabularyStore.shared.isEnabled,
                   let url = VocabularyStore.shared.fileURL {
+            // v2 / v3 / Nemotron all drive vocabulary through the CTC spotter.
+            // (Nemotron used to be unloaded here — that was correct before the
+            // no-fork CTC-spotter path existed; now Nemotron must prepare it.)
             Task { try? await VocabularyRescorerHolder.shared.prepare(vocabularyFileURL: url) }
         }
     }

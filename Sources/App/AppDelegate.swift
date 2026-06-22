@@ -297,6 +297,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         services.transcriberHolder.startPendingMigrationDownloadIfNeeded()
         services.transcriberHolder.startPendingNemotronUpgradeIfNeeded()
 
+        // Vocabulary spotter: prepare the CTC bundle at LAUNCH when boosting is
+        // on and the primary is CTC-capable (everything except JA, which uses
+        // alias substitution). Preparation was previously tied to the main
+        // window / Vocabulary pane appearing, so a hotkey-only user — never
+        // opening a window — got a `nil` spotter and ZERO vocabulary on every
+        // dictation. Best-effort; the holder logs its own failures.
+        // CTC-capable = everything except JA (alias substitution) and the Qwen3
+        // multilingual engine (Mandarin/Cantonese/Vietnamese — no custom-vocab
+        // wiring), so we don't prep a hundreds-MB spotter bundle a Qwen3 user
+        // never uses.
+        if VocabularyStore.shared.isEnabled,
+           services.transcriberHolder.primaryModelID != .tdt_0_6b_ja,
+           services.transcriberHolder.primaryModelID != .qwen3_multilingual,
+           let vocabURL = VocabularyStore.shared.fileURL {
+            Task { try? await VocabularyRescorerHolder.shared.prepare(vocabularyFileURL: vocabURL) }
+        }
+
+        // Semantic search (default ON): warm the embedding model (downloading it
+        // if needed) and backfill any not-yet-indexed recordings at launch. The
+        // Settings toggle's onChange only fires on an EDIT — it never fires when
+        // the stored default already matches ON — so without this kick the
+        // existing library is never indexed and search returns nothing until the
+        // user manually toggles. backfillMissing() guards its own re-entrancy.
+        if SemanticSearchSettings.isEnabled {
+            Task.detached(priority: .utility) { try? await EmbeddingGemmaService.shared.prewarm() }
+            Task(priority: .background) { await RecordingIndexer.shared?.backfillMissing() }
+        }
+
         // Sound chimes: prewarm the five bundled WAVs and subscribe to
         // recorder state so transitions fire audio cues. Prewarm runs on
         // a detached utility Task so the WAV decode + AVAudioPlayer
@@ -489,11 +517,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             )
         }
 
+        // Trimmed/ellipsized snippet of staged text on each side of the
+        // in-text anchor word, so the expanded ask can show the word in its
+        // sentence. The anchor is `term` when the gate APPLIED it, `from` when
+        // it BLOCKED it (matches `anchor` above and the `applied` flag).
+        let (contextBefore, contextAfter) = Self.askContext(around: anchor, in: staged)
+
         // `original` shown on the Keep button is always the word the user spoke
         // (`from`); `term` is always the offered vocabulary term.
         pill.showAskCorrection(
             original: c.from,
             term: c.term,
+            contextBefore: contextBefore,
+            contextAfter: contextAfter,
+            applied: c.applied,
             onConfirm: {
                 // Confirm → the text should hold the TERM. For an applied
                 // candidate it already does; for a blocked one, splice from→term.
@@ -515,6 +552,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                     ? Self.replaceWholeWord(c.term, with: c.from, in: staged)
                     : staged
                 next(kept)
+            },
+            onAccept: { [weak delivery] in
+                // Timeout (10s) / outside-click → match jot-mobile's keyboard:
+                // PASTE the accumulated gate defaults (staged as-is — prior asks'
+                // edits are already in it) IMMEDIATELY and END the sequence. Do
+                // NOT advance through the remaining asks' countdowns; "automatically
+                // paste it" means one shot, not a wait-through. Nothing learned.
+                // resolveAsk is idempotent so this is the single terminal deliver
+                // (§8 M4/M5).
+                Task { @MainActor in await delivery?.deliver(staged) }
             }
         )
     }
@@ -533,6 +580,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     nonisolated static func replaceWholeWord(_ word: String, with replacement: String, in text: String) -> String {
         guard let range = wholeWordRange(of: word, in: text) else { return text }
         return text.replacingCharacters(in: range, with: replacement)
+    }
+
+    /// Trimmed, ellipsized snippet of `text` on each side of the first
+    /// whole-word occurrence of `word`, for the expanded ask's context line.
+    /// Caps each side at `maxContextChars` and prefixes / suffixes a "…" when
+    /// truncated. Falls back to empty strings when `word` isn't found.
+    nonisolated static func askContext(around word: String, in text: String) -> (before: String, after: String) {
+        guard let range = wholeWordRange(of: word, in: text) else { return ("", "") }
+        let maxContextChars = 24
+        var before = String(text[text.startIndex..<range.lowerBound])
+        var after = String(text[range.upperBound..<text.endIndex])
+        if before.count > maxContextChars {
+            before = "…" + before.suffix(maxContextChars)
+        }
+        if after.count > maxContextChars {
+            after = after.prefix(maxContextChars) + "…"
+        }
+        return (before, after)
     }
 
     /// First whole-word range of `word` in `text` (case-insensitive). A match is

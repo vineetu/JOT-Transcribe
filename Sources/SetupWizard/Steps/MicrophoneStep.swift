@@ -623,14 +623,14 @@ private final class WizardInputDeviceWatcher: ObservableObject {
 
     init() {
         observer = NotificationCenter.default.addObserver(
-            forName: .AVCaptureDeviceWasConnected,
+            forName: AVCaptureDevice.wasConnectedNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refresh() }
         }
         disconnectedObserver = NotificationCenter.default.addObserver(
-            forName: .AVCaptureDeviceWasDisconnected,
+            forName: AVCaptureDevice.wasDisconnectedNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in

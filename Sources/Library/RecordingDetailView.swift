@@ -25,19 +25,26 @@ struct RecordingDetailView: View {
     /// `CopyTranscriptButton` provides in row contexts.
     @State private var didCopy = false
     @State private var copyResetTask: Task<Void, Never>?
-    /// Transient confirmation banner shown after "Add to Vocabulary" from a
-    /// transcript selection. `nil` = hidden. Auto-clears after a beat.
-    @State private var vocabAddMessage: String?
-    @State private var vocabAddResetTask: Task<Void, Never>?
     /// Slice C: the correction-review model. Created lazily on first
     /// `.task(id:)` once the environment `modelContext` is available (a `@State`
     /// initializer can't read `@Environment`), then reloaded whenever the bound
     /// recording changes. `nil` until seeded.
     @State private var reviewModel: CorrectionReviewModel?
+    /// Real laid-out content width, measured via `GeometryReader`. Handed to
+    /// the transcript view as its EXPLICIT layout width — width is an input,
+    /// not something the AppKit text view guesses (see `TranscriptReader`).
+    @State private var contentWidth: CGFloat = 0
+
+    /// Width the transcript reading column occupies: measured content width,
+    /// capped at the comfortable reading measure. Falls back to the measure
+    /// before the first layout pass reports a width.
+    private var transcriptReadingWidth: CGFloat {
+        contentWidth > 1 ? min(contentWidth, DetailMetrics.readingMeasure) : DetailMetrics.readingMeasure
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: DetailMetrics.blockSpacing) {
                 header
                 playbackBlock
                 transcriptBlock
@@ -45,8 +52,15 @@ struct RecordingDetailView: View {
                     CorrectionReviewSection(model: reviewModel)
                 }
             }
-            .padding(20)
-            .frame(maxWidth: 760, alignment: .leading)
+            .background(
+                GeometryReader { g in
+                    Color.clear.preference(key: ContentWidthKey.self, value: g.size.width)
+                }
+            )
+            .onPreferenceChange(ContentWidthKey.self) { contentWidth = $0 }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .frame(maxWidth: DetailMetrics.pageMeasure, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .toolbar { toolbarContent }
@@ -88,53 +102,62 @@ struct RecordingDetailView: View {
 
     // MARK: - Header
 
+    /// Friendly model name for the meta row — only shown when the stored raw
+    /// identifier maps to a known model (never surface the raw string).
+    private var friendlyModelName: String? {
+        ParakeetModelID(rawValue: recording.modelIdentifier)?.displayName
+    }
+
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("Title", text: $recording.title)
-                .textFieldStyle(.plain)
-                .font(.system(size: 20, weight: .semibold))
-            HStack(spacing: 8) {
+        DetailHeader(title: $recording.title) {
+            HStack(spacing: 6) {
                 Text(recording.createdAt.formatted(date: .abbreviated, time: .shortened))
                 Text("·")
                 Text(recording.formattedDuration)
                     .monospacedDigit()
+                if let model = friendlyModelName {
+                    Text("·")
+                    Text(model)
+                }
             }
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
         }
     }
 
-    // MARK: - Playback
+    // MARK: - Playback (slim bar; real waveform is a later release)
 
     private var playbackBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            WaveformView()
-            HStack(spacing: 12) {
-                Button {
-                    player.toggle()
-                } label: {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .frame(width: 16)
-                }
-                .buttonStyle(.borderless)
-                .disabled(!player.isReady)
-
-                Slider(
-                    value: Binding(
-                        get: { player.currentTime },
-                        set: { player.seek(to: $0) }
-                    ),
-                    in: 0...max(player.duration, 0.001)
-                )
-                .disabled(!player.isReady)
-
-                Text("\(format(player.currentTime)) / \(format(player.duration))")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+        HStack(spacing: 12) {
+            Button {
+                player.toggle()
+            } label: {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 13))
+                    .frame(width: 18, height: 18)
             }
+            .buttonStyle(.borderless)
+            .disabled(!player.isReady)
+
+            Slider(
+                value: Binding(
+                    get: { player.currentTime },
+                    set: { player.seek(to: $0) }
+                ),
+                in: 0...max(player.duration, 0.001)
+            )
+            .controlSize(.small)
+            .disabled(!player.isReady)
+
+            Text("\(format(player.currentTime)) / \(format(player.duration))")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
     }
 
     // MARK: - Transcript
@@ -188,68 +211,19 @@ struct RecordingDetailView: View {
     private var transcriptBlock: some View {
         // Decode the timeline once per body evaluation. During playback
         // the 100 ms tick re-renders this view; without the hoist the
-        // four downstream reads (header text, toggle visibility, toggle
-        // title, ForEach body) each re-decode the JSON payload.
+        // downstream reads (label text, toggle visibility, ForEach body)
+        // each re-decode the JSON payload.
         let segments = speakerSegments
         let colorMap = segments.map { Self.colorMap(for: $0) }
         let useLabeledView = segments != nil && !showRawTranscript
 
-        return GroupBox {
-            ScrollView {
-                if useLabeledView, let segments {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(seg.speakerLabel)
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(colorMap?[seg.speakerLabel] ?? .primary)
-                                Text(seg.text)
-                                    .font(.system(size: 13, design: .monospaced))
-                                    .lineSpacing(4)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .textSelection(.enabled)
-                            }
-                        }
-                    }
-                    .padding(4)
-                } else if displayedTranscript.isEmpty {
-                    Text("(empty transcript)")
-                        .font(.system(size: 13, design: .monospaced))
-                        .lineSpacing(4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .padding(4)
-                } else {
-                    // Selectable AppKit-backed text so the context menu can
-                    // read the selected substring for "Add to Vocabulary"
-                    // (Q2 — names the gate never proposed). Copy / Look Up /
-                    // drag-selection all behave like the plain Text it
-                    // replaces; it never edits the transcript.
-                    SelectableTranscriptText(text: displayedTranscript) { selection in
-                        addSelectionToVocabulary(selection)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(4)
-                }
-            }
-            .frame(minHeight: 180, maxHeight: 320)
-            .overlay(alignment: .bottom) {
-                if let vocabAddMessage {
-                    Text(vocabAddMessage)
-                        .font(.system(size: 11, weight: .medium))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(.thinMaterial, in: Capsule())
-                        .overlay(Capsule().strokeBorder(.separator))
-                        .padding(.bottom, 8)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
-            }
-        } label: {
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(useLabeledView ? "Transcript (labeled)" : "Transcript")
-                    .font(.system(size: 12, weight: .semibold))
+                Text(useLabeledView ? "Transcript · labeled" : "Transcript")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
                 if hasTransformedTranscript || segments != nil {
                     Spacer()
                     Toggle(segments != nil ? "Show plain" : "Show original", isOn: $showRawTranscript)
@@ -258,6 +232,40 @@ struct RecordingDetailView: View {
                         .font(.system(size: 11))
                 }
             }
+            transcriptBody(segments: segments, colorMap: colorMap, useLabeledView: useLabeledView)
+                .frame(maxWidth: DetailMetrics.readingMeasure, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptBody(
+        segments: [SpeakerTimelineSegment]?,
+        colorMap: [String: Color]?,
+        useLabeledView: Bool
+    ) -> some View {
+        if useLabeledView, let segments {
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(seg.speakerLabel)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(colorMap?[seg.speakerLabel] ?? .primary)
+                        ReadingProse(text: seg.text)
+                    }
+                }
+            }
+        } else if displayedTranscript.isEmpty {
+            ReadingProse(text: "", placeholder: "(empty transcript)")
+        } else if showRawTranscript {
+            // Raw/original transcript: still a serif reading surface, just
+            // without the inline vocab affordance (we only propose additions
+            // off the canonical transcript).
+            ReadingProse(text: displayedTranscript)
+        } else {
+            // Selectable serif transcript. Width is given explicitly (measured
+            // by the page); the view reports its own height. Right-click on a
+            // selection → "Add to Vocabulary…" mapping popover.
+            TranscriptReader(text: displayedTranscript, width: transcriptReadingWidth)
         }
     }
 
@@ -455,39 +463,6 @@ struct RecordingDetailView: View {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
             didCopy = false
-        }
-    }
-
-    /// Q2 recourse (docs/vocabulary-gate/ask-ux.md §5): add a selected term
-    /// to the user's vocabulary so FUTURE dictations boost it. Sanitization,
-    /// length-gating, and dedup live in `VocabularyStore.addTerm`; on a real
-    /// add the store also triggers the rescorer rebuild (when boosting is on).
-    /// This never retro-edits the current transcript. Adding while the master
-    /// toggle is OFF still succeeds — we just hint that it won't apply yet.
-    private func addSelectionToVocabulary(_ selection: String) {
-        let store = VocabularyStore.shared
-        let result = store.addTerm(selection)
-        let message: String
-        switch result {
-        case .added(let term):
-            message = store.isEnabled
-                ? "Added \u{201C}\(term)\u{201D} to Vocabulary"
-                : "Added \u{201C}\(term)\u{201D} — enable Vocabulary boosting in Settings to apply it"
-        case .duplicate(let term):
-            message = "\u{201C}\(term)\u{201D} is already in your Vocabulary"
-        case .rejected:
-            message = "Select a single word or short phrase to add"
-        }
-        withAnimation(.easeOut(duration: 0.2)) {
-            vocabAddMessage = message
-        }
-        vocabAddResetTask?.cancel()
-        vocabAddResetTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_800_000_000)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeIn(duration: 0.2)) {
-                vocabAddMessage = nil
-            }
         }
     }
 

@@ -92,11 +92,18 @@ if [[ -n "${JOT_EXTRA_SWIFT_FLAGS:-}" ]]; then
 fi
 
 log "Archiving ${SCHEME} (${CONFIGURATION}, arm64)"
+# ARCHS=arm64 + ONLY_ACTIVE_ARCH=YES force an arm64-only archive. Jot is
+# Apple-Silicon-only, and `-destination arch=arm64` alone does NOT constrain
+# SwiftPM dependency targets — they otherwise also build x86_64, where
+# CoreMLLLM (the AI-search embedder dep) fails to compile (Float16 on Intel).
+# These explicit build settings DO propagate to package targets.
 xcodebuild \
     -scheme "${SCHEME}" \
     -configuration "${CONFIGURATION}" \
     -destination 'platform=macOS,arch=arm64' \
     -archivePath "${ARCHIVE_PATH}" \
+    ARCHS=arm64 \
+    ONLY_ACTIVE_ARCH=YES \
     ${ARCHIVE_EXTRA_ARGS[@]+"${ARCHIVE_EXTRA_ARGS[@]}"} \
     archive
 

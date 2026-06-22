@@ -21,8 +21,10 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 
 ### Transcription
 - **Local-only.** Audio is transcribed on the device. It never crosses the network.
-- **Parakeet on the Apple Neural Engine.** Parakeet is the transcription engine, running on the Neural Engine (ANE) on Apple Silicon for low latency and low power draw. Rationale and benchmarks in `docs/research/parakeet-vs-moonshine-benchmark.md` and `docs/research/parakeet-vs-moonshine.md`.
-- **Model catalogue.** Several Parakeet models spanning a size / accuracy trade-off.
+- **Parakeet on the Apple Neural Engine.** Parakeet is the primary transcription engine, running on the Neural Engine (ANE) on Apple Silicon for low latency and low power draw. Rationale and benchmarks in `docs/research/parakeet-vs-moonshine-benchmark.md` and `docs/research/parakeet-vs-moonshine.md`.
+- **Language-driven model selection.** The user picks the language they speak; the app resolves and downloads the right on-device model (model names are an implementation detail, not surfaced in the picker). English uses a premium streaming engine on capable hardware and a batch engine elsewhere; European languages use a shared multilingual batch model; Japanese uses a dedicated model.
+- **Experimental additional languages.** Beyond the core set, an experimental on-device autoregressive model (Qwen3-ASR family) can transcribe additional languages — Mandarin, Cantonese, and Vietnamese to start, with more rolling out. These are batch-only (no live preview) and do not support custom vocabulary, are clearly marked Experimental, and download on first use.
+- **Model catalogue.** Several models spanning languages and a size / accuracy trade-off.
 - **In-app model management.** Downloading, selecting, and switching models happens inside the app with clear progress feedback.
 
 ### Output
@@ -39,9 +41,9 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 - **Editable prompts.** The cleanup (Transform) prompt is fully user-editable. For Rewrite, the user-editable surface is the shared-invariants block only — the per-branch tendency blocks that the classifier selects from are compile-time constants and not surfaced for editing, to keep the classifier/tendency contract intact. Both paths ship with "reset to default."
 
 ### Recordings library
-- **Browse history.** A chronologically grouped list of every recording with its transcript.
-- **Search.** Free-text search across title, subtitle, and transcript.
-- **Playback.** Inline waveform with play/pause and scrub.
+- **Browse history.** A chronologically grouped list of every recording with its transcript. The list pages in as the user scrolls (no fixed row cap).
+- **Search.** Free-text search across title, subtitle, and transcript. Substring search must always work. On top of it, an **on-device semantic search** layer ranks recordings by meaning so a recording can be found without its exact words; it indexes transcripts locally in the background, is on by default with an opt-out, and falls back cleanly to substring-only when disabled. Nothing about the index or queries leaves the device. (Semantic recall quality is tuned for English; other languages degrade gracefully to substring search.)
+- **Playback.** Inline player with play/pause and scrub.
 - **Rename inline.**
 - **Per-recording actions.** Re-transcribe, Reveal in finder/files, Delete (with confirmation).
 - **Retention controls.** User-selectable retention window (forever / 7 / 30 / 90 days) with automatic cleanup.
@@ -100,8 +102,8 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 - **Modest footprint.** The app should be unobtrusive in RAM and CPU when idle.
 
 ### Platform & environment
-- **macOS, Apple Silicon first.** Must feel like a native Mac citizen: HIG-aligned visuals, real menu bar integration, vibrancy where appropriate, dark/light mode support.
-- **Offline.** All core flows must work with no internet connection, except the initial model download.
+- **macOS 15+, Apple Silicon only.** Deployment floor raised from macOS 14 (Sonoma) to **macOS 15 (Sequoia)** to adopt the Core ML LLM / on-device embedding paths used by semantic search. Intel Macs remain out of scope. Must feel like a native Mac citizen: HIG-aligned visuals, real menu bar integration, vibrancy where appropriate, dark/light mode support.
+- **Offline.** All core flows must work with no internet connection, except first-use model downloads (transcription model; and, while semantic search is enabled, the one-time embedding-model download).
 - **Autostart.** Users can opt in to launch at login.
 
 ### Reliability

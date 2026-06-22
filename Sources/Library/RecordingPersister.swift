@@ -87,6 +87,13 @@ final class RecordingPersister {
         let recordingID = recording.id
         Task { await CorrectionProvenance.shared.commit(transcriptID: recordingID) }
 
+        // AI-search Stage B: index the new recording for semantic search. The
+        // transcript is FINAL at this point (the post-transform sink ran
+        // upstream, so `lastTransformedTranscript` is settled). Fire-and-forget,
+        // gated on the (default-ON, opt-out) toggle inside `index`; the embed runs on a
+        // detached `.utility` task so it never hitches the save path or the UI.
+        RecordingIndexer.shared?.index(recordingID: recordingID, text: transcript)
+
         // Speaker Labels piece A: kick off a best-effort post-stop
         // diarization pass. Gated on:
         //   • `state == .loaded` (model warm in memory)

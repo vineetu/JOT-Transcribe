@@ -166,6 +166,49 @@ final class VocabularyStore: ObservableObject {
         return .added(cleaned)
     }
 
+    /// Add (or extend) a vocabulary MAPPING from a transcript selection:
+    /// "when Jot hears `heard`, spell it as `term`". The selected `heard` text
+    /// becomes an ALIAS of the canonical `term`, so the gate treats the pair as
+    /// a user-confirmed plausible match and FUTURE dictations boost it
+    /// (e.g. select "We need" → spell as "Vineet"). Behavior:
+    ///   - sanitizes both sides; the `term` is the thing stored/capped.
+    ///   - if a term with the same text already exists, the alias is appended
+    ///     (deduped) rather than creating a duplicate term.
+    ///   - when `heard` is empty or equals `term`, this degrades to a plain
+    ///     term add (no alias) — same as `addTerm`.
+    /// Never edits any transcript.
+    @discardableResult
+    func addMapping(heard rawHeard: String, term rawTerm: String) -> AddTermResult {
+        let term = Self.sanitizeTerm(rawTerm)
+        let heard = Self.sanitizeTerm(rawHeard)
+        guard !term.isEmpty else { return .rejected }
+        guard term.split(whereSeparator: { $0 == " " }).count <= Self.maxTermWords else {
+            return .rejected
+        }
+
+        let aliasIsMeaningful = !heard.isEmpty && heard.lowercased() != term.lowercased()
+        let lowerTerm = term.lowercased()
+
+        if let idx = terms.firstIndex(where: {
+            $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lowerTerm
+        }) {
+            // Term already present — append the alias if it's new + meaningful.
+            if aliasIsMeaningful {
+                let existing = Set(terms[idx].aliases.map { $0.lowercased() })
+                if !existing.contains(heard.lowercased()) {
+                    terms[idx].aliases.append(heard)
+                    save()
+                    return .added(term)
+                }
+            }
+            return .duplicate(term)
+        }
+
+        terms.append(VocabTerm(text: term, aliases: aliasIsMeaningful ? [heard] : []))
+        save()
+        return .added(term)
+    }
+
     /// File-safe sanitization for a term harvested from arbitrary selected
     /// text. Strips the simple-format separators (`:`/`,`/`#`) so the term
     /// can't break the parser or smuggle aliases, drops newlines, and

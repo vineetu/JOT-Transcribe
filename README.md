@@ -12,7 +12,7 @@ Free, on-device dictation for Mac and iPhone. Press a hotkey, talk, and your wor
   <a href="https://jot-transcribe.com/">Website</a>
 </p>
 
-Apple Silicon · macOS 14+ · iPhone on the App Store · MIT-licensed · No account · No telemetry
+Apple Silicon · macOS 15+ · iPhone on the App Store · MIT-licensed · No account · No telemetry
 
 ---
 
@@ -47,7 +47,7 @@ Optional AI features (cleanup, Rewrite, Ask Jot) default to **Apple Intelligence
 
 ## Requirements
 
-- **Mac:** Apple Silicon, macOS Sonoma 14.0 or later
+- **Mac:** Apple Silicon, macOS Sequoia 15.0 or later
 - **iPhone:** see the App Store listing
 
 ## Building from source

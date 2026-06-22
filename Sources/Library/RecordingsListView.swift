@@ -11,45 +11,20 @@ import SwiftUI
 /// kind is differentiated by a leading SF Symbol; both kinds push their
 /// concrete model onto the navigation path and resolve to a per-kind
 /// detail view via `.navigationDestination`.
+/// Public list surface. Owns the **pagination window** (`visibleLimit`) and
+/// hands it to the inner `PagedRecordingsList`, whose `@Query` fetch limits are
+/// rebuilt from it on each bump. Bumping re-inits the inner view → `@Query`
+/// refetches a larger window, so live updates (new dictations appearing) are
+/// preserved while the list grows on scroll.
 struct RecordingsListView: View {
-    @Environment(\.modelContext) private var context
-    @EnvironmentObject private var transcriberHolder: TranscriberHolder
-    /// Per-kind queries fetch the top `mergedRowCap` rows of each kind
-    /// sorted by `createdAt` descending. The merge-and-cap below sorts
-    /// the (≤2N) row window globally and trims to N. Top-N per kind is
-    /// sufficient to compute the global top-N because each per-kind
-    /// fetch is itself date-sorted descending — any row that would be
-    /// in the global top-N must be in its own kind's top-N.
-    @Query(Self.recordingsDescriptor)
-    private var recordings: [Recording]
-    @Query(Self.rewritesDescriptor)
-    private var rewrites: [RewriteSession]
-
-    private static let mergedRowCap = 50
-
-    private static var recordingsDescriptor: FetchDescriptor<Recording> {
-        var d = FetchDescriptor<Recording>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-        d.fetchLimit = mergedRowCap
-        return d
-    }
-
-    private static var rewritesDescriptor: FetchDescriptor<RewriteSession> {
-        var d = FetchDescriptor<RewriteSession>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-        d.fetchLimit = mergedRowCap
-        return d
-    }
-
-    @State private var searchText: String = ""
-    @State private var path = NavigationPath()
-    @State private var pendingDelete: Recording?
-    @State private var pendingDeleteRewrite: RewriteSession?
-    @State private var retranscribeError: String?
     private let navigationTitle: String
     private let topContent: AnyView?
+    /// Rows visible right now. Starts small; grows by `pageSize` when the user
+    /// scrolls to the bottom (see `PagedRecordingsList.maybeLoadMore`).
+    @State private var visibleLimit = Self.initialPageSize
+
+    static let initialPageSize = 30
+    static let pageSize = 30
 
     init(navigationTitle: String = "Recordings") {
         self.navigationTitle = navigationTitle
@@ -64,8 +39,72 @@ struct RecordingsListView: View {
         self.topContent = AnyView(topContent())
     }
 
-    /// Result set the list renders. Empty search → the limited 50-row
-    /// `@Query` results merged. Non-empty search → unlimited
+    var body: some View {
+        PagedRecordingsList(
+            navigationTitle: navigationTitle,
+            topContent: topContent,
+            visibleLimit: visibleLimit,
+            onLoadMore: { visibleLimit += Self.pageSize }
+        )
+    }
+}
+
+/// Reusable recordings browser — date-merged list + inline search + detail
+/// navigation. The `@Query` fetch limits are set from `visibleLimit` at init;
+/// the parent bumps that to page in more rows.
+private struct PagedRecordingsList: View {
+    @Environment(\.modelContext) private var context
+    @EnvironmentObject private var transcriberHolder: TranscriberHolder
+    /// Per-kind queries fetch the top `visibleLimit` rows of each kind sorted
+    /// by `createdAt` descending. The merge-and-cap below sorts the (≤2N) row
+    /// window globally and trims to N. Top-N per kind is sufficient to compute
+    /// the global top-N because each per-kind fetch is itself date-sorted
+    /// descending — any row in the global top-N must be in its own kind's top-N.
+    @Query private var recordings: [Recording]
+    @Query private var rewrites: [RewriteSession]
+
+    private let visibleLimit: Int
+    private let onLoadMore: () -> Void
+
+    @State private var searchText: String = ""
+    /// AI-search Stage B: semantic-search controller. Lazily created on first
+    /// appear from the environment's `ModelContainer` (a `@State` can't read the
+    /// environment at init time). Publishes `semanticMatches`; nil until appear.
+    @State private var semanticController: SemanticSearchController?
+    @State private var path = NavigationPath()
+    @State private var pendingDelete: Recording?
+    @State private var pendingDeleteRewrite: RewriteSession?
+    @State private var retranscribeError: String?
+    private let navigationTitle: String
+    private let topContent: AnyView?
+
+    init(
+        navigationTitle: String,
+        topContent: AnyView?,
+        visibleLimit: Int,
+        onLoadMore: @escaping () -> Void
+    ) {
+        self.navigationTitle = navigationTitle
+        self.topContent = topContent
+        self.visibleLimit = visibleLimit
+        self.onLoadMore = onLoadMore
+
+        var rd = FetchDescriptor<Recording>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        rd.fetchLimit = visibleLimit
+        _recordings = Query(rd)
+
+        var wd = FetchDescriptor<RewriteSession>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        wd.fetchLimit = visibleLimit
+        _rewrites = Query(wd)
+    }
+
+    /// Result set the list renders. Empty search → the current
+    /// `visibleLimit`-windowed `@Query` results merged (the window grows as the
+    /// user scrolls; see `maybeLoadMore`). Non-empty search → unlimited
     /// `context.fetch`es so older items still match. The fetches re-issue
     /// on every keystroke; bounded by the total counts (a few hundred at
     /// most), and search activates rarely enough that the cost is
@@ -84,9 +123,20 @@ struct RecordingsListView: View {
 
         let needle = searchText.lowercased()
 
+        // AI-search Stage B (review M3): read `semanticMatches` UNCONDITIONALLY
+        // on the rendered path — NOT behind the `needle.isEmpty` early-return —
+        // so SwiftUI registers the dependency on this `@Observable` set and the
+        // async semantic results (which land a beat after the keystroke) trigger
+        // a recompute. The substring half stays instant; semantic augments it.
+        let semanticMatches = semanticController?.semanticMatches ?? []
+
         let recordingItems: [LibraryItem] = recordingsPool.compactMap { r in
             if needle.isEmpty { return .recording(r) }
-            if r.title.lowercased().contains(needle) || r.transcript.lowercased().contains(needle) {
+            // Substring ∪ semantic: a row surfaces if its title/transcript
+            // contains the needle OR its id is in the semantic match set.
+            if r.title.lowercased().contains(needle)
+                || r.transcript.lowercased().contains(needle)
+                || semanticMatches.contains(r.id) {
                 return .recording(r)
             }
             return nil
@@ -110,7 +160,7 @@ struct RecordingsListView: View {
         // hidden behind a stale rewrite (or vice versa). Search results
         // bypass the cap so older matches still surface.
         if searchText.isEmpty {
-            return Array(merged.prefix(Self.mergedRowCap))
+            return Array(merged.prefix(visibleLimit))
         }
         return merged
     }
@@ -133,6 +183,25 @@ struct RecordingsListView: View {
         NavigationStack(path: $path) {
             list
                 .navigationTitle(navigationTitle)
+                // AI-search Stage B: create the semantic controller from the
+                // environment container on first appear, and feed it the search
+                // text (debounced inside `search(query:)`). The substring filter
+                // in `filteredItems` stays synchronous; the controller's
+                // `semanticMatches` augments it asynchronously.
+                .onAppear {
+                    if semanticController == nil {
+                        semanticController = SemanticSearchController(container: context.container)
+                    }
+                    // Robustness: if the view appears with a pre-populated search
+                    // (return-navigation / future deep-link), seed the semantic
+                    // query now — `onChange` only fires on subsequent edits.
+                    if !searchText.isEmpty {
+                        semanticController?.search(query: searchText)
+                    }
+                }
+                .onChange(of: searchText) { _, newValue in
+                    semanticController?.search(query: newValue)
+                }
                 // v1.14: searchable moved out of the toolbar into a
                 // list-row filter just above the rows (see `inlineSearch`
                 // in `list`). The toolbar position read as a global app
@@ -224,7 +293,8 @@ struct RecordingsListView: View {
                 inlineSearch
             }
 
-            if filteredItems.isEmpty {
+            let items = filteredItems
+            if items.isEmpty {
                 auxiliaryRow {
                     emptyState
                 }
@@ -232,7 +302,7 @@ struct RecordingsListView: View {
                 // v1.14: flat list — no Today / Yesterday / Earlier
                 // dividers. Date is rendered per-row in
                 // `rowTrailingControls` next to the duration.
-                ForEach(filteredItems) { item in
+                ForEach(items) { item in
                     // Why an outer HStack with the Button + Copy +
                     // Menu as siblings (instead of `Button { } label: {
                     // entireRow }`): SwiftUI's `.plain` button style
@@ -277,6 +347,13 @@ struct RecordingsListView: View {
 
                         rowTrailingControls(for: item)
                             .padding(.leading, 4)
+                    }
+                    .onAppear {
+                        // Infinite scroll: when the last rendered row appears
+                        // and we filled the current window, page in more.
+                        if item.id == items.last?.id {
+                            maybeLoadMore(renderedCount: items.count)
+                        }
                     }
                 }
             }
@@ -437,6 +514,16 @@ struct RecordingsListView: View {
             .listRowInsets(EdgeInsets(top: 12, leading: 20, bottom: 12, trailing: 20))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
+    }
+
+    /// Infinite-scroll trigger. Pages in the next window only when not
+    /// searching (search bypasses the limit with an unlimited fetch) and the
+    /// current window was filled — once the rendered count plateaus below the
+    /// ever-growing limit, the disk is exhausted and this stops bumping.
+    private func maybeLoadMore(renderedCount: Int) {
+        guard searchText.isEmpty else { return }
+        guard renderedCount >= visibleLimit else { return }
+        onLoadMore()
     }
 
     private func retranscribe(_ r: Recording) {

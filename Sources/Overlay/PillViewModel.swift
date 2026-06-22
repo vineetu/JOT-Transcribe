@@ -50,7 +50,13 @@ final class PillViewModel: ObservableObject {
         /// `Equatable`. This state ALWAYS terminates via exactly one of those
         /// closures — never via `scheduleDismiss` (which would hide WITHOUT
         /// delivering and orphan the held paste; see §8 M4/M5).
-        case askCorrection(original: String, term: String)
+        /// `contextBefore` / `contextAfter` are the (trimmed, ellipsized)
+        /// snippet of staged text on each side of the in-text word, so the
+        /// expanded ask can show the word in its sentence. `applied` is `true`
+        /// when the term is currently in the text (silent-OOV APPLIED case —
+        /// the in-text word is `term`) and `false` when the original is in the
+        /// text (common-word BLOCKED near-miss — the in-text word is `original`).
+        case askCorrection(original: String, term: String, contextBefore: String, contextAfter: String, applied: Bool)
         case error(message: String)
         /// Press-and-hold progress for the Prompt Picker entry. `progress`
         /// is 0.0 → 1.0 across the (threshold − grace) window — the pill
@@ -83,6 +89,13 @@ final class PillViewModel: ObservableObject {
     /// so their recording pills stay click-through and don't surface
     /// a tap-to-expand affordance the user can't act on.
     @Published private(set) var isStreamingSessionActive: Bool = false
+
+    /// Measured ideal height of the ask-before-paste ("Did you mean X?") pill
+    /// content, published by `PillView.expandedAskBody` so the window can grow
+    /// VERTICALLY to fit a long context/mapping instead of clipping the
+    /// Use/Keep buttons under a fixed height. `nil` until first measured; the
+    /// window controller floors it at `expandedAskHeight` and caps it.
+    @Published var measuredAskHeight: CGFloat?
 
     /// Toggle the expanded view. No-op outside a recording, AND
     /// no-op for non-streaming recordings — the expanded mode only
@@ -120,7 +133,7 @@ final class PillViewModel: ObservableObject {
     /// auto-resolves to keep-original + deliver (the safe default, §7). Long
     /// enough that a user who looked away can still read + answer; short enough
     /// that an ignored ask doesn't park the paste indefinitely.
-    static let askLinger: TimeInterval = 6.0
+    static let askLinger: TimeInterval = 10.0
 
     /// Slice D: true while the pill is showing a `.askCorrection` prompt that
     /// has not yet resolved. `HotkeyRouter` observes this to enable the
@@ -137,6 +150,13 @@ final class PillViewModel: ObservableObject {
     /// guarantees single resolution).
     private var onAskConfirm: (() -> Void)?
     private var onAskDismiss: (() -> Void)?
+    /// Fired when the ask resolves by NON-interaction — the 10s timeout or an
+    /// outside-click. Distinct from dismiss: it ACCEPTS the gate's current
+    /// decision (delivers the staged text as-is) rather than reverting to the
+    /// original. So an ignored auto-correction stays applied, and an ignored
+    /// common-word near-miss stays un-replaced — i.e. the user never has to click
+    /// for the gate's default to take effect.
+    private var onAskAccept: (() -> Void)?
     /// Dedicated dismiss task for the ask timeout. Kept SEPARATE from
     /// `dismissTask` so an unrelated pill transition's `dismissTask?.cancel()`
     /// can never silently kill the ask's auto-resolve (§8 M4/M5).
@@ -679,8 +699,12 @@ final class PillViewModel: ObservableObject {
     func showAskCorrection(
         original: String,
         term: String,
+        contextBefore: String,
+        contextAfter: String,
+        applied: Bool,
         onConfirm: @escaping () -> Void,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        onAccept: @escaping () -> Void
     ) {
         // Tear down any in-flight ask WITHOUT delivering — the bridge that
         // started this new ask is the single owner of the deliver() decision and
@@ -689,44 +713,67 @@ final class PillViewModel: ObservableObject {
         askTimeoutTask = nil
         onAskConfirm = onConfirm
         onAskDismiss = onDismiss
+        onAskAccept = onAccept
         isAwaitingAskCorrection = true
         stopTick()
-        transition(to: .askCorrection(original: original, term: term))
-        // Auto-resolve to keep-original after the linger. Dedicated task so an
-        // unrelated transition can't cancel it (§8 M4/M5).
+        transition(to: .askCorrection(
+            original: original,
+            term: term,
+            contextBefore: contextBefore,
+            contextAfter: contextAfter,
+            applied: applied
+        ))
+        // After the linger, auto-ACCEPT the gate's decision (deliver staged
+        // as-is) — NOT revert. The user shouldn't have to click for the default
+        // to take effect. Dedicated task so an unrelated transition can't cancel
+        // it (§8 M4/M5).
         askTimeoutTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(Self.askLinger * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
-            self.resolveAsk(confirmed: false)
+            self.resolveAsk(outcome: .accept)
         }
     }
 
-    /// Confirm the current ask (⏎ / Apply button) — apply the offered term.
-    func confirmAsk() { resolveAsk(confirmed: true) }
+    /// How an ask resolves. `confirm` = apply the offered term (+ learn);
+    /// `keepOriginal` = explicit revert to the spoken word; `accept` = take the
+    /// gate's current decision unchanged (timeout / outside-click — no click).
+    private enum AskOutcome { case confirm, keepOriginal, accept }
 
-    /// Dismiss the current ask (esc / Keep button / outside-click / timeout) —
-    /// keep the original word.
-    func dismissAsk() { resolveAsk(confirmed: false) }
+    /// Confirm the current ask (⏎ / "Use term" button) — apply the offered term.
+    func confirmAsk() { resolveAsk(outcome: .confirm) }
+
+    /// Explicit keep-original (esc / "Keep" button) — revert to the spoken word.
+    func dismissAsk() { resolveAsk(outcome: .keepOriginal) }
+
+    /// Non-interactive resolution (10s timeout / outside-click) — accept the
+    /// gate's default (staged text as-is), so an ignored ask still delivers.
+    func acceptAsk() { resolveAsk(outcome: .accept) }
 
     /// THE single resolution path for an ask (§8 M4/M5). Idempotent: the first
     /// call consumes the closures and fires exactly one of them; subsequent calls
-    /// are no-ops. ALWAYS ends by invoking a bridge closure — both of which
-    /// terminate in exactly one `deliver()` — so the held paste can never be
+    /// are no-ops. ALWAYS ends by invoking a bridge closure — each of which
+    /// terminates in exactly one `deliver()` — so the held paste can never be
     /// silently dropped. Does NOT itself transition the pill to a terminal state;
     /// the bridge either starts the next ask (sequential) or, on the last one,
     /// the resulting `deliver()` drives the normal success pill.
-    private func resolveAsk(confirmed: Bool) {
+    private func resolveAsk(outcome: AskOutcome) {
         // Snapshot-and-clear so a re-entrant call (e.g. outside-click racing the
         // timeout) can't fire twice.
         guard isAwaitingAskCorrection else { return }
         let confirm = onAskConfirm
         let dismiss = onAskDismiss
+        let accept = onAskAccept
         onAskConfirm = nil
         onAskDismiss = nil
+        onAskAccept = nil
         isAwaitingAskCorrection = false
         askTimeoutTask?.cancel()
         askTimeoutTask = nil
-        if confirmed { confirm?() } else { dismiss?() }
+        switch outcome {
+        case .confirm: confirm?()
+        case .keepOriginal: dismiss?()
+        case .accept: (accept ?? dismiss)?()
+        }
     }
 
     /// Force-abandon a pending ask when a NEW recording begins (the recorder is
@@ -741,6 +788,7 @@ final class PillViewModel: ObservableObject {
         guard isAwaitingAskCorrection else { return }
         onAskConfirm = nil
         onAskDismiss = nil
+        onAskAccept = nil
         isAwaitingAskCorrection = false
         askTimeoutTask?.cancel()
         askTimeoutTask = nil

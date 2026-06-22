@@ -383,6 +383,41 @@ enum JotComposition {
                             spaceless: language.isSpaceless
                         )
                     )
+                case .qwen3_multilingual:
+                    // Experimental Qwen3-ASR languages (Mandarin / Cantonese /
+                    // Vietnamese). Sibling conformers wrapping FluidAudio's
+                    // `Qwen3AsrManager` — NOT the `AsrManager` batch path.
+                    // Single on-disk bundle; the active language is a per-call
+                    // ISO hint (`zh`/`yue`/`vi`). No custom vocabulary (the
+                    // CTC-110M spotter is Latin/English-oriented).
+                    //
+                    // Live preview is now ON: a `DualPipelineTranscriber` pairs
+                    // the batch `Qwen3Transcriber` (authoritative final
+                    // transcript over the FULL audio) with a
+                    // `Qwen3StreamingTranscriber` preview backed by FluidAudio's
+                    // re-transcribe sliding-window `Qwen3StreamingManager`. The
+                    // preview BORROWS the batch transcriber's loaded model
+                    // (single model load) and is DISCARDED at stop — exactly the
+                    // JA / v3 contract (preview rides on top; batch is the
+                    // truth). This avoids the streaming manager's 30 s window +
+                    // 512-token cap degrading long dictations.
+                    //
+                    // Gated `@available(macOS 15, *)`; the deployment target is
+                    // already macOS 15, so this is the compiler-required
+                    // annotation only.
+                    let qwen3Batch = Qwen3Transcriber(
+                        bundleDirectory: ModelCache.shared.cacheURL(for: modelID),
+                        languageHint: language.qwen3Language,
+                        spaceless: language.isSpaceless
+                    )
+                    return DualPipelineTranscriber(
+                        qwen3Batch: qwen3Batch,
+                        qwen3Preview: Qwen3StreamingTranscriber(
+                            batch: qwen3Batch,
+                            languageHint: language.qwen3Language,
+                            spaceless: language.isSpaceless
+                        )
+                    )
                 case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
                     return Transcriber(modelID: modelID, language: language)
                 }
@@ -483,7 +518,7 @@ enum JotComposition {
             do {
                 let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self, RecordingChunk.self,
                     configurations: memoryConfig
                 )
             } catch {
@@ -493,14 +528,29 @@ enum JotComposition {
             do {
                 let config = ModelConfiguration(url: newURL)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self, RecordingChunk.self,
                     configurations: config
                 )
             } catch {
+                // CRITICAL (AI-search M2): the on-disk container failed to open.
+                // The historical behavior here was to silently fall back to an
+                // in-memory store — which presents a real migration / corruption
+                // failure as a SILENT EMPTY LIBRARY (the user's recordings vanish
+                // from the UI even though `default.store` is intact on disk).
+                // Log the underlying error to `ErrorLog` BEFORE the fallback so a
+                // genuine failure is visible (diagnostics, not telemetry) rather
+                // than disguised as "new user". The in-memory fallback is kept so
+                // the app still launches usably, but it is now a flagged event.
+                let redacted = ErrorLog.redactedAppleError(error)
+                Task { await ErrorLog.shared.error(
+                    component: "JotComposition",
+                    message: "On-disk ModelContainer failed to open; falling back to IN-MEMORY store. Existing recordings will NOT appear this session, but default.store on disk is untouched.",
+                    context: ["error": redacted]
+                ) }
                 do {
                     let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                     modelContainer = try ModelContainer(
-                        for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self,
+                        for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self, RecordingChunk.self,
                         configurations: memoryConfig
                     )
                 } catch {
@@ -677,6 +727,17 @@ enum JotComposition {
         let enrolledIdentitiesStore = EnrolledIdentitiesStore(
             context: modelContainer.mainContext
         )
+
+        // AI-search Stage B: the chunk-embedding indexer. Built here so it
+        // captures the one true `ModelContainer` and a live read of the
+        // recorder's state (the backfill yields the ANE to Parakeet while
+        // dictation is in progress). `RecordingPersister.persist` reads the
+        // shared instance from its post-save hook.
+        let recordingIndexer = RecordingIndexer(
+            container: modelContainer,
+            recorderIsIdle: { [weak recorder] in recorder?.state == .idle }
+        )
+        RecordingIndexer.shared = recordingIndexer
 
         let recordingPersister = RecordingPersister(
             recorder: recorder,

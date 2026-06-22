@@ -38,6 +38,32 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     // Japanese — separate model, no live preview.
     case japanese
 
+    // Experimental Qwen3-ASR languages (zh / yue / vi). These are NOT
+    // Parakeet v3 languages — v3's script filter is Latin/Cyrillic only — so
+    // they route to the separate `.qwen3_multilingual` engine. macOS 15+
+    // only (the Qwen3 manager is `@available(macOS 15, *)`; the deployment
+    // target is already 15). Mandarin + Cantonese are spaceless CJK;
+    // Vietnamese is space-separated Latin-with-diacritics.
+    case mandarin
+    case cantonese
+    case vietnamese
+    // Additional Qwen3-ASR languages not covered by Parakeet v3 / the JA
+    // model. Arabic + Persian are RTL (Arabic script); Korean is Hangul
+    // (space-separated, NOT spaceless); Thai is spaceless (no inter-word
+    // spaces); Turkish / Indonesian / Malay / Filipino are Latin;
+    // Hindi is Devanagari; Macedonian is Cyrillic. All space-separated
+    // except Thai. Filipino uses Qwen3 code "fil" (locale may report "tl").
+    case arabic
+    case persian
+    case korean
+    case thai
+    case turkish
+    case hindi
+    case indonesian
+    case malay
+    case filipino
+    case macedonian
+
     // European languages WITH a FluidAudio `Language` (script-filter) hint.
     // Latin script:
     case spanish
@@ -78,6 +104,19 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .english:    return "English"
         case .japanese:   return "日本語 (Japanese)"
+        case .mandarin:   return "中文 (Mandarin) — Experimental"
+        case .cantonese:  return "粵語 (Cantonese) — Experimental"
+        case .vietnamese: return "Tiếng Việt (Vietnamese) — Experimental"
+        case .arabic:      return "العربية (Arabic) — Experimental"
+        case .persian:     return "فارسی (Persian) — Experimental"
+        case .korean:      return "한국어 (Korean) — Experimental"
+        case .thai:        return "ไทย (Thai) — Experimental"
+        case .turkish:     return "Türkçe (Turkish) — Experimental"
+        case .hindi:       return "हिन्दी (Hindi) — Experimental"
+        case .indonesian:  return "Bahasa Indonesia (Indonesian) — Experimental"
+        case .malay:       return "Bahasa Melayu (Malay) — Experimental"
+        case .filipino:    return "Filipino — Experimental"
+        case .macedonian:  return "Македонски (Macedonian) — Experimental"
         case .spanish:    return "Español (Spanish)"
         case .french:     return "Français (French)"
         case .german:     return "Deutsch (German)"
@@ -117,6 +156,14 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
             return tier.nemotronEligible ? .nemotron_en : .tdt_0_6b_v2_en_streaming
         case .japanese:
             return .tdt_0_6b_ja
+        case .mandarin, .cantonese, .vietnamese,
+             .arabic, .persian, .korean, .thai, .turkish, .hindi,
+             .indonesian, .malay, .filipino, .macedonian:
+            // The experimental Qwen3-ASR languages share one on-disk
+            // bundle; the language is a per-call prompt hint, not a separate
+            // model. Tier-independent (runs on every Apple Silicon Mac with
+            // macOS 15+).
+            return .qwen3_multilingual
         case .spanish, .french, .german, .italian, .portuguese, .romanian,
              .polish, .czech, .slovak, .slovenian, .croatian, .bosnian,
              .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
@@ -135,6 +182,12 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .english:    return nil  // v2 is English-only; no hint needed
         case .japanese:   return nil  // ignored by tdtJa anyway
+        // Qwen3 languages don't use v3's `Language` script filter — they pass
+        // their own ISO string via `qwen3Language`. Return `nil` here so the
+        // v3 `AsrManager` hint path is never engaged for them.
+        case .mandarin, .cantonese, .vietnamese,
+             .arabic, .persian, .korean, .thai, .turkish, .hindi,
+             .indonesian, .malay, .filipino, .macedonian: return nil
         case .spanish:    return .spanish
         case .french:     return .french
         case .german:     return .german
@@ -158,6 +211,37 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
+    /// The Qwen3-ASR language hint (ISO code: `"zh"` / `"yue"` / `"vi"`) for
+    /// the three experimental languages, threaded through to `Qwen3Transcriber`
+    /// at `transcribe(...)` time. `nil` for every non-Qwen3 language — those
+    /// run on Parakeet (v2/v3/JA) and never touch the Qwen3 manager. This is a
+    /// separate property from `fluidAudioLanguage` because the two engines take
+    /// different language types (v3 uses the `Language` script-filter enum;
+    /// Qwen3 takes a plain ISO string mapped to a chat-template task prompt).
+    public var qwen3Language: String? {
+        switch self {
+        case .mandarin:   return "zh"
+        case .cantonese:  return "yue"
+        case .vietnamese: return "vi"
+        case .arabic:     return "ar"
+        case .persian:    return "fa"
+        case .korean:     return "ko"
+        case .thai:       return "th"
+        case .turkish:    return "tr"
+        case .hindi:      return "hi"
+        case .indonesian: return "id"
+        case .malay:      return "ms"
+        case .filipino:   return "fil"
+        case .macedonian: return "mk"
+        case .english, .japanese, .spanish, .french, .german, .italian,
+             .portuguese, .romanian, .polish, .czech, .slovak, .slovenian,
+             .croatian, .bosnian, .russian, .ukrainian, .belarusian,
+             .bulgarian, .serbian, .danish, .dutch, .finnish, .greek,
+             .hungarian, .swedish:
+            return nil
+        }
+    }
+
     /// Whether this language's script is written **without inter-word spaces**
     /// (CJK / space-free scripts). Drives preview-only string assembly in
     /// `PreviewScheduler.join` — a spaceless language must glue the committed
@@ -171,8 +255,20 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     /// model itself and is unaffected by this flag.
     public var isSpaceless: Bool {
         switch self {
-        case .japanese:
+        case .japanese, .mandarin, .cantonese, .thai:
+            // Spaceless scripts: CJK + Thai are written without inter-word
+            // spaces.
             return true
+        case .vietnamese:
+            // Vietnamese is space-separated Latin-with-diacritics.
+            return false
+        case .arabic, .persian, .korean, .turkish, .hindi, .indonesian,
+             .malay, .filipino, .macedonian:
+            // Space-separated scripts: Arabic/Persian (RTL, but spaced),
+            // Korean Hangul (modern Korean uses inter-word spaces),
+            // Turkish/Indonesian/Malay/Filipino (Latin), Hindi (Devanagari),
+            // Macedonian (Cyrillic).
+            return false
         case .english, .spanish, .french, .german, .italian, .portuguese,
              .romanian, .polish, .czech, .slovak, .slovenian, .croatian,
              .bosnian, .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
@@ -184,7 +280,14 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     /// Picker presentation order: English and Japanese first (the two model
     /// forks), then the European languages alphabetically by display name.
     public static var presentationOrder: [LanguageChoice] {
-        let leading: [LanguageChoice] = [.english, .japanese]
+        // English and Japanese first (the two original model forks), then the
+        // experimental Qwen3 languages grouped together, then the European
+        // languages alphabetically by display name.
+        let leading: [LanguageChoice] = [
+            .english, .japanese, .mandarin, .cantonese, .vietnamese,
+            .arabic, .persian, .korean, .thai, .turkish, .hindi,
+            .indonesian, .malay, .filipino, .macedonian,
+        ]
         let european = LanguageChoice.allCases
             .filter { !leading.contains($0) }
             .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
@@ -210,6 +313,19 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         switch code.lowercased() {
         case "en": return .english
         case "ja": return .japanese
+        case "zh": return .mandarin
+        case "yue": return .cantonese
+        case "vi": return .vietnamese
+        case "ar": return .arabic
+        case "fa": return .persian
+        case "ko": return .korean
+        case "th": return .thai
+        case "tr": return .turkish
+        case "hi": return .hindi
+        case "id": return .indonesian
+        case "ms": return .malay
+        case "fil", "tl": return .filipino
+        case "mk": return .macedonian
         case "es": return .spanish
         case "fr": return .french
         case "de": return .german
@@ -246,6 +362,12 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         switch modelID {
         case .tdt_0_6b_ja:
             return .japanese
+        case .qwen3_multilingual:
+            // The Qwen3 bundle backs three languages; the stored model alone
+            // can't disambiguate which one, so seed the most common (Mandarin).
+            // The stored language key is authoritative when present; this is
+            // only a fallback for a model-id-only migration.
+            return .mandarin
         case .nemotron_en,
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3,

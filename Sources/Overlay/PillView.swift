@@ -1,6 +1,15 @@
 import AppKit
 import SwiftUI
 
+/// Carries the ask-before-paste pill's measured ideal height up to the window
+/// controller so the panel can grow vertically to fit (never clip the buttons).
+struct AskHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 /// Dynamic Island-style pill. Four visual states (recording, transcribing,
 /// success, error) plus a hidden state that collapses the surface entirely.
 ///
@@ -20,6 +29,19 @@ import SwiftUI
 struct PillView: View {
     @ObservedObject var model: PillViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Movable pill (v2, design §B/§D.3): the controller installs this so the
+    /// escalation gesture can hand off to AppKit's window-server drag
+    /// (`OverlayPanel.beginUserDrag()`). Default is a no-op so the view stays
+    /// usable in previews / DEBUG harnesses that build `PillView` without a
+    /// panel.
+    var onDragEscalate: () -> Void = {}
+
+    /// Movable pill (v2): true only between the slop threshold being crossed and
+    /// `.onEnded`, so the single `onDragEscalate()` hand-off fires exactly once
+    /// per drag. `performDrag` owns the rest of the motion. `@State` because it
+    /// is gesture-local (design §D.3). Replaces the v1 `dragStart`/`isDragging`.
+    @State private var didEscalate: Bool = false
 
     /// v1.14: the pill's subtitle (rendered below the capsule during
     /// recording) reads the currently-bound dictation hotkey and frames
@@ -41,8 +63,18 @@ struct PillView: View {
     /// the multi-line streaming transcript view (tap to expand).
     static let expandedRecordingWidth: CGFloat = 640
     static let expandedRecordingHeight: CGFloat = 240
+    /// Width and height of the expanded ask-before-paste pill. Roomy
+    /// rounded-rect (not the 36pt capsule) so the in-text context line and the
+    /// full, untruncated mapping + button labels all fit on multiple lines.
+    static let expandedAskWidth: CGFloat = 520
+    static let expandedAskHeight: CGFloat = 150
     static let horizontalContentPadding: CGFloat = 14
     static let contentSpacing: CGFloat = 10
+    /// Movable pill (v2): tap-vs-drag slop. A press that releases within this
+    /// distance never starts the escalation gesture and falls through to the
+    /// inner `.onTapGesture`/`Button`; past it, the drag escalates to
+    /// `performDrag`. Matches the v1 4pt threshold (design §B/§D.3).
+    static let dragSlop: CGFloat = 4
     static let errorTextMaxWidth: CGFloat =
         expandedPillWidth - (horizontalContentPadding * 2) - (contentSpacing * 2) - 24
     private static var cornerRadius: CGFloat { pillHeight / 2 }
@@ -82,7 +114,10 @@ struct PillView: View {
                     }
                     .onTapGesture { model.togglePillExpanded() }
                 } else {
-                    pillBody {
+                    // Stable-canvas (v3): bound the compact recording capsule to
+                    // its per-state width (360 idle / 480 once a partial lands) —
+                    // it grows inside the stationary canvas, matching `capsuleRect`.
+                    pillBody(maxWidth: Self.recordingCapsuleMaxWidth(streamingPartial)) {
                         RecordingContent(
                             elapsed: elapsed,
                             streamingPartial: streamingPartial,
@@ -113,18 +148,18 @@ struct PillView: View {
                     SuccessContent(preview: preview)
                 }
             case .notice(let message):
-                pillBody {
+                pillBody(maxWidth: PillView.expandedPillWidth) {
                     NoticeContent(message: message)
                 }
             case .savedToRecents(let preview):
-                pillBody {
+                pillBody(maxWidth: PillView.expandedPillWidth) {
                     SavedToRecentsContent(
                         preview: preview,
                         onTap: { model.invokeSavedToRecentsTap() }
                     )
                 }
             case .error(let message):
-                pillBody {
+                pillBody(maxWidth: PillView.expandedPillWidth) {
                     ErrorContent(message: message)
                 }
             case .holdProgress(let progress):
@@ -132,15 +167,22 @@ struct PillView: View {
                     HoldProgressContent(progress: progress, reduceMotion: reduceMotion)
                 }
             case .repairingModel(let modelName, let progress, let isError):
-                pillBody {
+                pillBody(maxWidth: PillView.expandedPillWidth) {
                     RepairingContent(modelName: modelName, progress: progress, isError: isError)
                 }
                 .onTapGesture { model.invokeRepairPillTap() }
-            case .askCorrection(let original, let term):
-                pillBody {
+            case .askCorrection(let original, let term, let contextBefore, let contextAfter, let applied):
+                // Expanded multi-line ask — modeled on the expanded recording
+                // body (rounded-rect, roomy), NOT the 36pt capsule. This is the
+                // one moment we need the user's input, so we give the context
+                // room to breathe.
+                expandedAskBody {
                     AskCorrectionContent(
                         original: original,
                         term: term,
+                        contextBefore: contextBefore,
+                        contextAfter: contextAfter,
+                        applied: applied,
                         onConfirm: { model.confirmAsk() },
                         onDismiss: { model.dismissAsk() }
                     )
@@ -151,6 +193,49 @@ struct PillView: View {
         // up with the window/screen top. Extra vertical space in the window
         // (for shadow rendering) lives below the pill.
         .frame(maxWidth: .infinity, alignment: .top)
+        // Movable pill (v2, design §B/§D.3): one ESCALATION-ONLY drag gesture at
+        // the root pill content level — the same layer that carries each state's
+        // `contentShape(...)` + `.onTapGesture`. `minimumDistance: dragSlop` IS
+        // the tap-vs-drag slop: a sub-slop press never starts this gesture and
+        // falls through to the inner `.onTapGesture` (expand/collapse/repair) /
+        // `Button` exactly as before; past the slop it crosses the threshold and
+        // hands off to AppKit's window-server drag (`onDragEscalate()` →
+        // `OverlayPanel.beginUserDrag()` → `performDrag`). It computes NO offset
+        // and never reads `translation` for placement, so there is no
+        // coordinate-feedback loop (the v1 ~1/3-distance bug). The window is
+        // moved by the window server, 1:1 with the cursor, in EVERY state — the
+        // drag layer below the hosting view makes the panel hittable in passive
+        // states too. On macOS, the transcript scrolls via the wheel (not
+        // click-drag), so dragging the whole expanded surface doesn't fight the
+        // ScrollView.
+        .gesture(pillDragGesture)
+    }
+
+    /// The whole-pill escalation gesture (design §D.3). Its only job is to cross
+    /// the slop threshold once and hand off to the window-server drag — it does
+    /// NOT compute any offset (that was the v1 feedback-loop bug). `.local`
+    /// coordinate space + never reading `translation` for placement → no
+    /// coordinate feedback. A quick tap never starts it, so SwiftUI gesture
+    /// arbitration delivers the press to the inner `.onTapGesture`/`Button`.
+    private var pillDragGesture: some Gesture {
+        DragGesture(minimumDistance: Self.dragSlop, coordinateSpace: .local)
+            .onChanged { _ in
+                guard !didEscalate else { return }
+                didEscalate = true   // once per drag; performDrag owns the rest
+                onDragEscalate()     // → panel.beginUserDrag() → performDrag(with: currentEvent)
+            }
+            .onEnded { _ in didEscalate = false }
+    }
+
+    /// Stable-canvas (v3): the compact recording capsule's max width — wide
+    /// (`streamingPillWidth`) once a non-blank live-preview partial has arrived,
+    /// compact (`compactPillWidth`) otherwise. Replaces the old behaviour where
+    /// the WINDOW width bounded the capsule's flexible content.
+    static func recordingCapsuleMaxWidth(_ streamingPartial: String?) -> CGFloat {
+        let hasText = streamingPartial?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
+        return hasText ? streamingPillWidth : compactPillWidth
     }
 
     private var isRecordingState: Bool {
@@ -190,12 +275,23 @@ struct PillView: View {
     }
 
     @ViewBuilder
-    private func pillBody<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    private func pillBody<Content: View>(
+        maxWidth: CGFloat = PillView.compactPillWidth,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         HStack(spacing: Self.contentSpacing) {
             content()
         }
         .padding(.horizontal, Self.horizontalContentPadding)
         .frame(height: Self.pillHeight)
+        // Stable-canvas (v3): the capsule no longer derives its width from the
+        // window (now a fixed canvas), so bound it HERE per state — at the SAME
+        // width the controller's `pillWidth(for:)` / `capsuleRect` report.
+        // Otherwise greedy content (Spacer / maxWidth:.infinity) fills the whole
+        // canvas and the rendered pill diverges from its drag/hit region (a
+        // visually-solid but click-through dead zone). Defaults to the compact
+        // width (status pills); wider states (error/notice/recording) pass theirs.
+        .frame(maxWidth: maxWidth)
         .background(
             Capsule(style: .continuous)
                 .fill(Color.black)
@@ -220,6 +316,42 @@ struct PillView: View {
                 .fill(Color.black)
                 .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .transition(pillTransition)
+    }
+
+    /// Body for the expanded ask-before-paste view. Same dark rounded-rect
+    /// chrome as the expanded recording pill, sized to the ask's multi-line
+    /// content (context line + mapping line + two full-label buttons). Height
+    /// flexes to fit (`minHeight`) so a long context snippet never clips.
+    @ViewBuilder
+    private func expandedAskBody<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            content()
+        }
+        .frame(width: Self.expandedAskWidth, alignment: .leading)
+        .frame(minHeight: Self.expandedAskHeight, alignment: .top)
+        // Take the content's IDEAL height (floored at expandedAskHeight) rather
+        // than letting the fixed window clip it — a long mapping/context line
+        // must push the pill TALLER so the Use/Keep buttons stay on-screen.
+        .fixedSize(horizontal: false, vertical: true)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black)
+                .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
+        )
+        // Measure that ideal height and hand it to the window controller so the
+        // panel grows to fit (see OverlayWindowController.pillSize / the
+        // $measuredAskHeight sink). The measured value is content-driven (width
+        // is fixed), so it can't feed back into the window height → no loop.
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: AskHeightKey.self, value: geo.size.height)
+            }
+        )
+        .onPreferenceChange(AskHeightKey.self) { height in
+            model.measuredAskHeight = height
+        }
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .transition(pillTransition)
     }
@@ -724,59 +856,160 @@ private struct SavedToRecentsContent: View {
 private struct AskCorrectionContent: View {
     let original: String
     let term: String
+    /// Snippet of the staged text on either side of the in-text word. May be
+    /// empty (word at start / end of text); the context line renders only the
+    /// pieces that exist.
+    let contextBefore: String
+    let contextAfter: String
+    /// `true` → silent-OOV APPLIED case (term is in the text, original is what
+    /// "Keep" reverts to). `false` → common-word BLOCKED near-miss (original is
+    /// in the text, term is what "Apply" writes).
+    let applied: Bool
     let onConfirm: () -> Void
     let onDismiss: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The word currently sitting in the text — emphasized in the context line.
+    private var inTextWord: String { applied ? term : original }
+
     var body: some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(Color(nsColor: .systemOrange))
-                .frame(width: 7, height: 7)
-            Text("Did you mean")
+        VStack(alignment: .leading, spacing: 10) {
+            // Header: amber "needs your call" dot + label + Jot tag.
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color(nsColor: .systemOrange))
+                    .frame(width: 7, height: 7)
+                Text("Check this word")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                Spacer(minLength: 0)
+                // 10s countdown to auto-accept (matches jot-mobile's keyboard
+                // hold-mode card). On depletion the ask pastes the gate's default
+                // without the user having to click.
+                CountdownRing(seconds: PillViewModel.askLinger, reduceMotion: reduceMotion)
+                AppLabel()
+            }
+
+            // Context line — the in-text word shown in its actual sentence so
+            // the user sees exactly what's being changed.
+            contextLine
+                .font(.system(size: 14))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Mapping / question line — both words in full, no truncation.
+            Text(mappingText)
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.85))
-            Text("“\(term)”?")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .truncationMode(.tail)
+                .foregroundStyle(.white.opacity(0.7))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 6)
-
-            Button(action: onConfirm) {
-                HStack(spacing: 4) {
-                    Text("⏎").font(.system(size: 11, weight: .semibold))
-                    Text("Apply").font(.system(size: 11, weight: .medium))
+            // Two full-label buttons. Confirm applies the term; Keep keeps what
+            // was originally said. ⏎ / esc glyphs mirror the ask-scoped shortcuts.
+            HStack(spacing: 8) {
+                Button(action: onConfirm) {
+                    HStack(spacing: 5) {
+                        Text("⏎").font(.system(size: 12, weight: .semibold))
+                        Text("Use “\(term)”").font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .continuous).fill(Color.white.opacity(0.18))
+                    )
+                    .fixedSize()
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule(style: .continuous).fill(Color.white.opacity(0.16))
-                )
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Apply \(term)")
+                .buttonStyle(.plain)
+                .accessibilityLabel("Use \(term)")
 
-            Button(action: onDismiss) {
-                HStack(spacing: 4) {
-                    Text("esc").font(.system(size: 10, weight: .semibold))
-                    Text("Keep “\(original)”").font(.system(size: 11, weight: .medium))
+                Button(action: onDismiss) {
+                    HStack(spacing: 5) {
+                        Text("esc").font(.system(size: 11, weight: .semibold))
+                        Text("Keep “\(original)”").font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.82))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .continuous).fill(Color.white.opacity(0.09))
+                    )
+                    .fixedSize()
                 }
-                .foregroundStyle(.white.opacity(0.8))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule(style: .continuous).fill(Color.white.opacity(0.08))
-                )
-                .lineLimit(1)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Keep \(original)")
+
+                Spacer(minLength: 0)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Keep \(original)")
         }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
     }
+
+    /// Builds `…<before> <inTextWord> <after>…` with the in-text word bolded +
+    /// amber so the user can spot it instantly inside the sentence.
+    private var contextLine: Text {
+        var line = Text("")
+        let before = contextBefore.trimmingCharacters(in: .whitespacesAndNewlines)
+        let after = contextAfter.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !before.isEmpty {
+            line = line + Text(before + " ").foregroundColor(.white.opacity(0.85))
+        }
+        line = line + Text(inTextWord)
+            .fontWeight(.bold)
+            .foregroundColor(Color(nsColor: .systemOrange))
+        if !after.isEmpty {
+            line = line + Text(" " + after).foregroundColor(.white.opacity(0.85))
+        }
+        return line
+    }
+
+    /// Mapping line — full words, no truncation, branch-specific phrasing.
+    private var mappingText: String {
+        if applied {
+            // Silent-OOV: the gate already swapped heard→term; ask to keep it.
+            return "Replaced “\(original)” → “\(term)”. Keep it?"
+        } else {
+            // Common-word near-miss: the gate left the original; offer the term.
+            return "You said “\(original)”. Did you mean vocabulary term “\(term)”?"
+        }
+    }
 }
+
+/// A depleting ring that visualizes the ask's auto-accept countdown — a thin arc
+/// that sweeps from full to empty over `seconds` (mirrors jot-mobile's keyboard
+/// hold-mode `CountdownRing`). Under Reduce Motion it shows a static full ring
+/// (no sweep), matching mobile.
+private struct CountdownRing: View {
+    let seconds: TimeInterval
+    let reduceMotion: Bool
+
+    @State private var trim: CGFloat = 1.0
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.18), lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: trim)
+                .stroke(
+                    Color(nsColor: .systemOrange).opacity(0.9),
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 14, height: 14)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: seconds)) { trim = 0 }
+        }
+    }
+}
+
 
 // MARK: - Repairing model (startup self-heal)
 
