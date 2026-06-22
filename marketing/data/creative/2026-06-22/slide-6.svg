@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="1230" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Slide number -->
+  <text x="540" y="174" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="4">6 / 6</text>
+
+  <!-- CTA headline -->
+  <text x="540" y="540" font-family="Helvetica, Arial, sans-serif" font-size="110" font-weight="800" fill="#f0f0f0" text-anchor="middle">Try Jot.</text>
+  <text x="540" y="664" font-family="Helvetica, Arial, sans-serif" font-size="110" font-weight="800" fill="#CE231D" text-anchor="middle">It's free.</text>
+
+  <!-- Divider -->
+  <line x1="240" y1="732" x2="840" y2="732" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Details -->
+  <text x="540" y="806" font-family="Helvetica, Arial, sans-serif" font-size="36" fill="#9a9a9f" text-anchor="middle">Free · On-device · Open source</text>
+  <text x="540" y="854" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">Apple Silicon · macOS 14+</text>
+  <text x="540" y="900" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">No account · No subscription · No telemetry</text>
+
+  <!-- Big URL -->
+  <text x="540" y="1010" font-family="Helvetica, Arial, sans-serif" font-size="42" font-weight="700" fill="#f0f0f0" text-anchor="middle">jot-transcribe.com</text>
+
+  <!-- Footer dot -->
+  <circle cx="422" cy="1248" r="7" fill="#CE231D"/>
+  <text x="440" y="1253" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

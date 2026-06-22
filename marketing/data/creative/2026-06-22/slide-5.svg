@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="1230" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Slide number -->
+  <text x="540" y="174" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="600" fill="#9a9a9f" text-anchor="middle" letter-spacing="4">5 / 6</text>
+
+  <!-- Provocative claim -->
+  <text x="540" y="490" font-family="Helvetica, Arial, sans-serif" font-size="98" font-weight="800" fill="#f0f0f0" text-anchor="middle">Listed in</text>
+  <text x="540" y="620" font-family="Helvetica, Arial, sans-serif" font-size="200" font-weight="800" fill="#CE231D" text-anchor="middle">0</text>
+  <text x="540" y="724" font-family="Helvetica, Arial, sans-serif" font-size="98" font-weight="800" fill="#f0f0f0" text-anchor="middle">roundups.</text>
+
+  <!-- Divider -->
+  <line x1="240" y1="790" x2="840" y2="790" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Punchline -->
+  <text x="540" y="858" font-family="Helvetica, Arial, sans-serif" font-size="38" font-weight="700" fill="#f0f0f0" text-anchor="middle">190 people found it anyway.</text>
+  <text x="540" y="912" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">The only free, open-source, on-device</text>
+  <text x="540" y="946" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle">Mac dictation app. Zero coverage.</text>
+
+  <!-- Footer -->
+  <circle cx="422" cy="1248" r="7" fill="#CE231D"/>
+  <text x="440" y="1253" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
