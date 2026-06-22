@@ -46,6 +46,18 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// English-only Nemotron option. One streaming model powers both live
     /// preview and the final transcript.
     case nemotron_en
+    /// Qwen3-ASR 0.6B int8, the multilingual engine that backs the three
+    /// experimental CJK/SE-Asian languages Parakeet v3 can't do: Mandarin
+    /// (zh), Cantonese (yue), and Vietnamese (vi). Like `.nemotron_en` it is
+    /// **not** an `AsrManager` model — it loads through FluidAudio's
+    /// `Qwen3AsrManager` (an autoregressive 2-model CoreML pipeline), so any
+    /// caller that needs the batch `AsrModelVersion` / `encoderPrecision` must
+    /// switch explicitly instead of assuming a batch backend. `@available`
+    /// macOS 15 only (the manager is gated); Jot's deployment target is
+    /// already 15, so no runtime hiding is required. Single shared on-disk
+    /// bundle for all three languages — the language is a per-call prompt
+    /// hint, not a separate model.
+    case qwen3_multilingual
 
     /// Human-readable name for Setup Wizard / Settings UI.
     public var displayName: String {
@@ -64,6 +76,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return "Parakeet v3 (multilingual) + live preview"
         case .nemotron_en:
             return "Nemotron English"
+        case .qwen3_multilingual:
+            return "Qwen3-ASR (Mandarin / Cantonese / Vietnamese)"
         }
     }
 
@@ -93,6 +107,10 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return 461_000_000
         case .nemotron_en:
             return 600_000_000
+        case .qwen3_multilingual:
+            // Qwen3-ASR int8 bundle (audio encoder + stateful decoder +
+            // float16 embedding matrix + vocab). ~900 MB–1 GB effective.
+            return 950_000_000
         }
     }
 
@@ -112,6 +130,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return .v2
         case .nemotron_en:
             preconditionFailure("Nemotron is not an AsrManager model")
+        case .qwen3_multilingual:
+            preconditionFailure("Qwen3-ASR is not an AsrManager model")
         }
     }
 
@@ -130,6 +150,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return .int8
         case .nemotron_en:
             preconditionFailure("Nemotron is not an AsrManager model")
+        case .qwen3_multilingual:
+            preconditionFailure("Qwen3-ASR is not an AsrManager model")
         }
     }
 
@@ -161,6 +183,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return "parakeet-tdt-0.6b-v2-coreml"
         case .nemotron_en:
             return "nemotron-streaming-en-1120ms"
+        case .qwen3_multilingual:
+            return "qwen3-asr-0.6b-int8"
         }
     }
 
@@ -175,7 +199,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_nemotron_streaming,
              .tdt_0_6b_v3_eou_streaming:
             return true
-        case .nemotron_en:
+        case .nemotron_en, .qwen3_multilingual:
             return false
         }
     }
@@ -202,7 +226,17 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_eou_streaming:
             return false
         case .tdt_0_6b_v3_nemotron_streaming,
-             .nemotron_en:
+             .nemotron_en,
+             // Qwen3 now has a live preview driven by FluidAudio's
+             // `Qwen3StreamingManager`, so it advertises streaming support. The
+             // preview REUSES the single Qwen3 batch bundle — there is NO
+             // separate streaming bundle on disk. `streamingPartialCacheURL`
+             // still returns `nil` for Qwen3, and `ModelCache.isCached` /
+             // `ModelDownloader.performDownload` special-case Qwen3 BEFORE the
+             // generic `supportsStreaming` branch (single-bundle download +
+             // batch-only presence), so this flag does not trigger a phantom
+             // second-bundle fetch.
+             .qwen3_multilingual:
             return true
         }
     }
@@ -215,7 +249,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         case .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .nemotron_en:
+             .nemotron_en,
+             .qwen3_multilingual:
             return true
         case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_v3_nemotron_streaming:
             return false
@@ -232,14 +267,26 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_ja,
              .tdt_0_6b_v3_nemotron_streaming,
              .tdt_0_6b_v3_eou_streaming,
-             .nemotron_en:
+             .nemotron_en,
+             .qwen3_multilingual:
             return false
         }
     }
 
     /// `true` when the option should be labelled as experimental.
     public var isExperimental: Bool {
-        false
+        switch self {
+        case .qwen3_multilingual:
+            return true
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming,
+             .nemotron_en:
+            return false
+        }
     }
 
     /// `true` when the option should be labelled as a smaller-footprint
@@ -260,6 +307,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return "Legacy option. Available for existing users; will be removed in a future release."
         case .nemotron_en:
             return "English-only. Single model handles both the final transcript and the live preview in the pill. Smaller and faster than option 1; best on read-style English; v2/v3 batch is more accurate on noisy/conversational audio. Doesn't support custom vocabulary — switch to Parakeet v3 if you rely on boosted terms."
+        case .qwen3_multilingual:
+            return "Experimental. One on-device model for Mandarin, Cantonese, and Vietnamese. Emits native punctuation and CJK characters. Shows a live preview in the pill while you speak; the final transcript is a full batch pass. Doesn't support custom vocabulary."
         case .tdt_0_6b_v3, .tdt_0_6b_v3_nemotron_streaming, .tdt_0_6b_ja:
             return nil
         }
@@ -286,7 +335,8 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3_nemotron_streaming,
-             .tdt_0_6b_v3_eou_streaming:
+             .tdt_0_6b_v3_eou_streaming,
+             .qwen3_multilingual:
             return false
         }
     }

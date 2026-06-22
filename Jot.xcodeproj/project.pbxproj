@@ -239,6 +239,7 @@
 				A000000000000000000000A1 /* FluidAudio */,
 				A000000000000000000000A2 /* KeyboardShortcuts */,
 				A000000000000000000000A3 /* Sparkle */,
+				A000000000000000000000A4 /* CoreMLLLM */,
 			);
 			productName = Jot;
 			productReference = A00000000000000000000001 /* Jot.app */;
@@ -277,6 +278,7 @@
 				A000000000000000000000C1 /* XCRemoteSwiftPackageReference "FluidAudio" */,
 				A000000000000000000000C2 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 				A000000000000000000000C3 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				A000000000000000000000C4 /* XCRemoteSwiftPackageReference "CoreML-LLM" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A00000000000000000000041 /* Products */;
@@ -455,6 +457,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -505,7 +508,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -519,6 +522,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -563,7 +567,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
@@ -593,7 +597,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jot.Jot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -626,7 +630,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jot.Jot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -647,7 +651,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8VB2ULDN22;
 				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jot.Jot.JotTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -667,7 +671,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8VB2ULDN22;
 				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jot.Jot.JotTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -734,6 +738,14 @@
 				minimumVersion = 2.0.0;
 			};
 		};
+		A000000000000000000000C4 /* XCRemoteSwiftPackageReference "CoreML-LLM" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/john-rocky/CoreML-LLM";
+			requirement = {
+				kind = revision;
+				revision = c69a4e9bb8f9574f7b332babd93bb745c1022c11;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -751,6 +763,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A000000000000000000000C3 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		A000000000000000000000A4 /* CoreMLLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A000000000000000000000C4 /* XCRemoteSwiftPackageReference "CoreML-LLM" */;
+			productName = CoreMLLLM;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

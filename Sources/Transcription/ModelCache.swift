@@ -58,7 +58,8 @@ public struct ModelCache: Sendable {
              .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .nemotron_en:
+             .nemotron_en,
+             .qwen3_multilingual:
             return base
         }
     }
@@ -78,7 +79,8 @@ public struct ModelCache: Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_eou_streaming:
+             .tdt_0_6b_v3_eou_streaming,
+             .qwen3_multilingual:
             return nil
         }
     }
@@ -95,7 +97,8 @@ public struct ModelCache: Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_ja,
-             .tdt_0_6b_v2_en_streaming:
+             .tdt_0_6b_v2_en_streaming,
+             .qwen3_multilingual:
             return nil
         }
     }
@@ -150,6 +153,16 @@ public struct ModelCache: Sendable {
             return streamingPartialBundleExists(for: id)
         }
 
+        // Qwen3 reports `supportsStreaming == true` (its live preview rides on a
+        // `Qwen3StreamingManager`), but that preview REUSES the single batch
+        // bundle — there is NO separate streaming bundle on disk
+        // (`streamingPartialCacheURL` returns `nil`). So presence is exactly the
+        // batch bundle; short-circuit before the streaming-bundle probe below,
+        // exactly like `.nemotron_en` short-circuits to its single bundle.
+        if id == .qwen3_multilingual {
+            return batchBundleExists(for: id)
+        }
+
         let batchPresent = batchBundleExists(for: id)
         guard id.supportsStreaming else { return batchPresent }
         guard batchPresent else { return false }
@@ -160,6 +173,12 @@ public struct ModelCache: Sendable {
         switch id {
         case .nemotron_en:
             return false
+        case .qwen3_multilingual:
+            // Qwen3 is not an `AsrModels` bundle — check its own 2-model
+            // pipeline file set directly (audio encoder + stateful decoder +
+            // float16 embedding matrix + vocab). Mirrors
+            // `Qwen3AsrModels.modelsExist`.
+            return Self.qwen3BundleExists(at: cacheURL(for: id))
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
@@ -189,10 +208,27 @@ public struct ModelCache: Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_eou_streaming:
+             .tdt_0_6b_v3_eou_streaming,
+             .qwen3_multilingual:
             return false
         }
         return requiredModels.allSatisfy { name in
+            fm.fileExists(atPath: directory.appendingPathComponent(name).path)
+        }
+    }
+
+    /// Presence check for the Qwen3-ASR int8 2-model pipeline bundle. Mirrors
+    /// FluidAudio's `Qwen3AsrModels.modelsExist` file set: audio encoder,
+    /// stateful decoder, the float16 embedding matrix, and `vocab.json`.
+    private static func qwen3BundleExists(at directory: URL) -> Bool {
+        let fm = FileManager.default
+        let required = [
+            "qwen3_asr_audio_encoder_v2.mlmodelc",
+            "qwen3_asr_decoder_stateful.mlmodelc",
+            "qwen3_asr_embeddings.bin",
+            "vocab.json",
+        ]
+        return required.allSatisfy { name in
             fm.fileExists(atPath: directory.appendingPathComponent(name).path)
         }
     }
@@ -277,7 +313,7 @@ private extension ParakeetModelID {
              .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_v2_en_streaming:
             return repoFolderName.replacingOccurrences(of: "-coreml", with: "")
-        case .tdt_0_6b_ja, .nemotron_en:
+        case .tdt_0_6b_ja, .nemotron_en, .qwen3_multilingual:
             return repoFolderName
         }
     }

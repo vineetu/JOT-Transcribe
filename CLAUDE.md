@@ -4,7 +4,7 @@ Native macOS dictation utility. Press a hotkey, speak, and the transcript is pas
 
 **Stack:** Swift / SwiftUI with AppKit interop (`NSStatusItem`, `NSPanel`). Transcription via [FluidAudio](https://github.com/FluidInference/FluidAudio) running Parakeet TDT 0.6B v3 on the Apple Neural Engine. Audio capture through `AVAudioEngine` + `AVAudioConverter` (16 kHz mono Float32). Global hotkeys via `sindresorhus/KeyboardShortcuts`. Persistence via SwiftData; prefs via `@AppStorage` / `UserDefaults`.
 
-**Platform:** Apple Silicon only, macOS Sonoma 14.0+. Intel Macs are out of scope — Parakeet on the ANE is an Apple Silicon feature.
+**Platform:** Apple Silicon only, macOS Sequoia 15.0+. Intel Macs are out of scope — Parakeet on the ANE is an Apple Silicon feature. (Deployment floor raised 14→15 to adopt CoreMLLLM for on-device AI search.)
 
 Full product requirements live in `docs/design-requirements.md` and the shipping feature inventory in `docs/features.md`. **Read those before making non-trivial decisions.** This file is a map, not the spec.
 
@@ -91,7 +91,7 @@ Keep each folder to its single layer. Cross-layer shared types (e.g. `Recording`
 - **Ask Jot post-processing is provider-agnostic.** Slug correction / injection / sharp-fix forcing / command scrubbing run on both Apple and cloud Ask Jot responses. Inline tool-calling is cloud-only. The current shipped pass lifted citation coverage from roughly 28% to roughly 61%, with sharp-fix leak coverage at 100%.
 - **No telemetry.** No analytics, crash reporting, or error pings. A privacy-conscious user with Little Snitch must see only: model download (first-run), appcast fetch (daily), and whatever LLM endpoint they explicitly configured.
 - **No accounts.** The app must be fully usable without signing in anywhere.
-- **Apple Silicon, macOS 14+.** Don't add compatibility shims for Intel or older macOS.
+- **Apple Silicon, macOS 15+.** Don't add compatibility shims for Intel or older macOS.
 - **Global shortcuts must not steal keys they don't own.** The cancel key (`Esc`) is only active while recording, transforming, capturing a voice instruction for Rewrite with Voice, or rewriting.
 - **Native Mac feel.** SwiftUI + AppKit where appropriate, SF Symbols, system semantic colors, `NSVisualEffectView` vibrancy, HIG-aligned motion. No web-in-a-wrapper patterns.
 - **Out of scope:** cloud transcription, VAD / continuous listening, file upload, non-macOS ports, multi-user sync.

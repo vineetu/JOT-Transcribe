@@ -16,14 +16,15 @@ struct RewriteSessionDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: DetailMetrics.blockSpacing) {
                 header
-                selectionBlock
                 instructionBlock
+                selectionBlock
                 outputBlock
             }
-            .padding(20)
-            .frame(maxWidth: 760, alignment: .leading)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .frame(maxWidth: DetailMetrics.pageMeasure, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .toolbar { toolbarContent }
@@ -52,82 +53,38 @@ struct RewriteSessionDetailView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            TextField("Title", text: $session.title)
-                .textFieldStyle(.plain)
-                .font(.system(size: 20, weight: .semibold))
-            Text(session.createdAt.formatted(date: .abbreviated, time: .shortened))
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-            // Per persistence plan §5: render `flavor · modelUsed` as
-            // a single grouped line — together they answer "what kind
-            // + what model produced this output." Omit the line
-            // entirely when `modelUsed == nil` (legacy / Apple-Intel-
-            // only rows where the row's leading icon already conveys
-            // kind).
-            if let model = session.modelUsed, !model.isEmpty {
-                Text("\(flavorLabel) · \(model)")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+        DetailHeader(title: $session.title) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.createdAt.formatted(date: .abbreviated, time: .shortened))
+                // Per persistence plan §5: `flavor · modelUsed` answers
+                // "what kind + what model produced this output." Omit the
+                // model when `modelUsed == nil` (legacy / Apple-Intel-only).
+                if let model = session.modelUsed, !model.isEmpty {
+                    Text("\(flavorLabel) · \(model)")
+                } else {
+                    Text(flavorLabel)
+                }
             }
         }
     }
 
-    // MARK: - Panes
-
-    private var selectionBlock: some View {
-        GroupBox {
-            ScrollView {
-                Text(session.selectionText.isEmpty ? "(no selection)" : session.selectionText)
-                    .font(.system(size: 12, design: .monospaced))
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(4)
-            }
-            .frame(minHeight: 80, maxHeight: 200)
-        } label: {
-            Text("Selected text")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-    }
+    // MARK: - Panes (stacked reading sections: Instruction → Original → Rewritten)
 
     private var instructionBlock: some View {
-        GroupBox {
-            ScrollView {
-                Text(session.instructionText.isEmpty ? "(no instruction)" : session.instructionText)
-                    .font(.system(size: 12, design: .monospaced))
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(4)
-            }
-            .frame(minHeight: 60, maxHeight: 160)
-        } label: {
-            Text("Instruction")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+        ReadingSection(label: "Instruction") {
+            ReadingProse(text: session.instructionText, placeholder: "(no instruction)")
+        }
+    }
+
+    private var selectionBlock: some View {
+        ReadingSection(label: "Original") {
+            ReadingProse(text: session.selectionText, placeholder: "(no selection)")
         }
     }
 
     private var outputBlock: some View {
-        GroupBox {
-            ScrollView {
-                Text(session.output.isEmpty ? "(empty output)" : session.output)
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(4)
-            }
-            .frame(minHeight: 180, maxHeight: 320)
-        } label: {
-            Text("Rewritten output")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
+        ReadingSection(label: "Rewritten") {
+            ReadingProse(text: session.output, emphasized: true, placeholder: "(empty output)")
         }
     }
 

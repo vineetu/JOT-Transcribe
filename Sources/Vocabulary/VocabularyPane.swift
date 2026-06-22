@@ -42,20 +42,13 @@ struct VocabularyPane: View {
         transcriberHolder.primaryModelID == .tdt_0_6b_ja
     }
 
-    /// True when Nemotron-only is the active primary model. The
-    /// streaming Nemotron pipeline doesn't expose per-token timings
-    /// from `finish()`, so the CTC rescorer (which strictly requires
-    /// `[TokenTiming]`) can't align keyword spotter hits back to word
-    /// boundaries. The pane stays visible and editable — terms persist
-    /// — but the master toggle is disabled and the headline disclosure
-    /// tells the user why. Restoring boost happens automatically when
-    /// they swap primary to Parakeet v3 or v2.
-    private var lockedForNemotronPrimary: Bool {
-        transcriberHolder.primaryModelID == .nemotron_en
-    }
-
-    private var isLocked: Bool {
-        lockedForNemotronPrimary
+    /// True when one of the experimental Qwen3 languages (Mandarin / Cantonese
+    /// / Vietnamese) is active. Custom vocabulary is OFF for this engine — the
+    /// CTC-110M acoustic spotter is Latin/English-oriented, so the gate does
+    /// not run and `Qwen3Transcriber` returns no corrections. The pane surfaces
+    /// a note so the user isn't surprised that their list is inert.
+    private var isQwen3Primary: Bool {
+        transcriberHolder.primaryModelID == .qwen3_multilingual
     }
 
     var body: some View {
@@ -227,16 +220,9 @@ struct VocabularyPane: View {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 8) {
-                            // When JA or Nemotron-only is primary the toggle is
-                            // visually disabled but the stored preference is
-                            // preserved — flipping primary to a vocab-capable
-                            // model (Parakeet v3, v2) restores the user's prior
-                            // on/off state without their having to retoggle.
                             Toggle("Enable vocabulary boosting", isOn: $store.isEnabled)
                                 .toggleStyle(.switch)
                                 .font(.system(size: 13))
-                                .disabled(isLocked)
-                                .help(toggleHelpText)
                             ExperimentalBadge()
                         }
                         Text(headerSubtext)
@@ -247,12 +233,9 @@ struct VocabularyPane: View {
                     Spacer()
                     InfoPopoverButton(
                         title: "Custom vocabulary",
-                        body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.\n\nExperimental — two paths depending on your primary model:\n\n• Parakeet v3 and v2: acoustic CTC rescoring. Catches phonetic neighbors automatically.\n\n• Japanese: alias-based text substitution. Write your canonical spelling as a term, then add the writing systems the model might output as aliases (hiragana / katakana / romaji). Aliases drive the substitution. The inline alias UI was removed for MVP; for now, add aliases by editing the vocabulary file directly (one line per term: `Term: alias1, alias2`).\n\n• Nemotron-only English: not supported. Nemotron's streaming pipeline doesn't expose the token timings the rescorer needs.",
+                        body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.\n\nExperimental — two paths depending on your primary model:\n\n• Parakeet v3, v2, and Nemotron (English): acoustic CTC matching. Catches phonetic neighbors automatically.\n\n• Japanese: alias-based text substitution. Write your canonical spelling as a term, then add the writing systems the model might output as aliases (hiragana / katakana / romaji). Aliases drive the substitution. The inline alias UI was removed for MVP; for now, add aliases by editing the vocabulary file directly (one line per term: `Term: alias1, alias2`).",
                         helpAnchor: "custom-vocabulary"
                     )
-                }
-                if isLocked {
-                    switchPrimaryButton
                 }
                 if isJAPrimary {
                     revealVocabularyFileButton
@@ -260,22 +243,6 @@ struct VocabularyPane: View {
             }
             .padding(.vertical, 2)
         }
-    }
-
-    /// One-click affordance when the active primary doesn't support vocab.
-    /// Swaps the holder to `tdt_0_6b_v3_eou_streaming` (the vocab-capable
-    /// multilingual Parakeet v3 primary). User's saved terms come right
-    /// back the moment the swap completes.
-    private var switchPrimaryButton: some View {
-        Button {
-            Task {
-                await transcriberHolder.setPrimary(.tdt_0_6b_v3_eou_streaming)
-            }
-        } label: {
-            Label("Switch to Parakeet v3", systemImage: "arrow.triangle.2.circlepath")
-                .font(.system(size: 12))
-        }
-        .controlSize(.small)
     }
 
     /// JA-only affordance: open the vocabulary file in Finder. Aliases
@@ -293,16 +260,9 @@ struct VocabularyPane: View {
         .controlSize(.small)
     }
 
-    private var toggleHelpText: String {
-        if lockedForNemotronPrimary {
-            return "Custom vocabulary isn't supported with the Nemotron (English) model. Switch your primary model to Parakeet v3 + EOU to use vocabulary."
-        }
-        return ""
-    }
-
     private var headerSubtext: String {
-        if lockedForNemotronPrimary {
-            return "Custom vocabulary isn't supported with the Nemotron (English) model — its streaming pipeline doesn't expose the token timings the rescorer needs. Your saved terms are preserved; switch your primary model to Parakeet v3 + EOU to use them."
+        if isQwen3Primary {
+            return "Custom vocabulary isn’t available for Mandarin, Cantonese, or Vietnamese yet — the boosting engine is English/Latin-oriented. Your terms are kept but won’t affect these transcripts. Switch to an English or European language to use boosting."
         }
         if isJAPrimary {
             return store.isEnabled

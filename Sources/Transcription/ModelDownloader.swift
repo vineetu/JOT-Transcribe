@@ -232,6 +232,8 @@ public actor ModelDownloader: ModelDownloading {
         let downloader = ModelDownloader(cache: cache)
         if id == .nemotron_en {
             try await downloader.downloadStreamingOnly(id, progress: progress)
+        } else if id == .qwen3_multilingual {
+            try await downloader.downloadQwen3(id, progress: progress)
         } else if id.supportsStreaming {
             try await downloader.downloadMultiBundle(id, progress: progress)
         } else {
@@ -298,6 +300,80 @@ public actor ModelDownloader: ModelDownloading {
 
         progress(1.0)
     }
+
+    // MARK: - Qwen3 (single autoregressive bundle)
+
+    /// Download the Qwen3-ASR int8 bundle into Jot's own cache directory.
+    ///
+    /// Like the Nemotron flow, this fetches into a temporary FluidAudio-shaped
+    /// staging root (`DownloadUtils.downloadRepo` insists on writing under
+    /// `<root>/<repo.folderName>` and strips the subPath when saving), then
+    /// moves the produced files into `cache.cacheURL(for:)`. We avoid
+    /// `Qwen3AsrModels.download(...)` because that helper writes to
+    /// FluidAudio's shared `~/Library/Application Support/FluidAudio/Models`
+    /// directory regardless of its `to:` argument — Jot keeps all model files
+    /// under its own namespace.
+    ///
+    /// `downloadRepo` reports `fractionCompleted` in `[0, 0.5]` for the
+    /// download phase (the `[0.5, 1.0]` band is reserved for a compile step
+    /// `downloadRepo` never runs), so we rescale via `repoDownloadFraction`
+    /// to a smooth 0→100%.
+    private func downloadQwen3(
+        _ id: ParakeetModelID,
+        progress: @Sendable @escaping (Double) -> Void
+    ) async throws {
+        let targetDir = cache.cacheURL(for: id)
+        let stagingRoot = cache.root.appendingPathComponent(
+            "qwen3-asr-0.6b-int8-staging", isDirectory: true
+        )
+        // `downloadRepo(.qwen3AsrInt8, to:)` writes to
+        // `<stagingRoot>/<repo.folderName>` (folderName == "qwen3-asr-0.6b/int8"
+        // — the SDK strips the "-coreml" suffix in `Repo.folderName`'s default
+        // case) and saves each file with the `int8` subPath stripped, so the
+        // model files (audio encoder, stateful decoder, embeddings.bin,
+        // vocab.json) land directly in that directory.
+        let produced = stagingRoot.appendingPathComponent(
+            Repo.qwen3AsrInt8.folderName, isDirectory: true
+        )
+
+        let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
+            progress(Self.repoDownloadFraction(snapshot.fractionCompleted))
+        }
+
+        do {
+            try? FileManager.default.removeItem(at: stagingRoot)
+            try await DownloadUtils.downloadRepo(
+                .qwen3AsrInt8,
+                to: stagingRoot,
+                variant: nil,
+                progressHandler: progressHandler
+            )
+
+            let fm = FileManager.default
+            try fm.createDirectory(
+                at: targetDir.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if fm.fileExists(atPath: targetDir.path) {
+                try fm.removeItem(at: targetDir)
+            }
+            try fm.moveItem(at: produced, to: targetDir)
+            try? fm.removeItem(at: stagingRoot)
+        } catch {
+            try? FileManager.default.removeItem(at: stagingRoot)
+            cache.removeCache(for: id)
+            throw ModelDownloadError.classify(error)
+        }
+
+        guard cache.isCached(id) else {
+            cache.removeCache(for: id)
+            throw ModelDownloadError.corrupted
+        }
+
+        progress(1.0)
+    }
+
+    // MARK: - Streaming options
 
     /// Sequence the two underlying downloads under a single combined
     /// progress bar. Apportionment is fixed by approximate bundle size so the
@@ -378,7 +454,8 @@ public actor ModelDownloader: ModelDownloading {
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3_eou_streaming,
-             .nemotron_en:
+             .nemotron_en,
+             .qwen3_multilingual:
             return 1.0
         }
     }
@@ -418,10 +495,11 @@ public actor ModelDownloader: ModelDownloading {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_eou_streaming:
-            // No separate streaming bundle — these fetch only their batch
-            // bundle via `downloadSingleBundle` (live preview re-uses the
-            // batch weights). Reaching here would be a routing bug.
+             .tdt_0_6b_v3_eou_streaming,
+             .qwen3_multilingual:
+            // No separate streaming bundle — these fetch only their batch /
+            // single bundle (Qwen3 via `downloadQwen3`). Reaching here would
+            // be a routing bug.
             throw ModelDownloadError.corrupted
         }
     }

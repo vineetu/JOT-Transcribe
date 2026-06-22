@@ -272,6 +272,133 @@ public actor VocabularyRescorerHolder {
             minScore: nil
         )
 
+        return try await finishRescore(
+            transcript: transcript,
+            tokenTimings: tokenTimings,
+            spotResult: spotResult,
+            rescorer: rescorer,
+            vocabulary: vocabulary,
+            language: language,
+            recordsProvenance: recordsProvenance
+        )
+    }
+
+    /// **No-fork Nemotron entry point.** Nemotron's stream returns a plain
+    /// `String` with NO per-word timings and NO confidence, so the timing-
+    /// dependent `VocabularyRescorer.ctcTokenRescore` is inert there (it
+    /// hard-returns on empty timings). Instead we run the CTC keyword SPOTTER on
+    /// the audio — which acoustically detects each vocab term and its audio TIME
+    /// RANGE without needing transcript timings — and place each detected term
+    /// onto the Nemotron transcript ourselves, then apply the SAME
+    /// `VocabularyGate`.
+    ///
+    /// Returns the GATED text plus the de-duped applied-correction set (mirroring
+    /// `rescore(...)`), or `nil` if the spotter/vocabulary aren't ready (master
+    /// toggle off / empty vocab / models not downloaded) — caller treats `nil`
+    /// exactly like the TDT path and keeps the raw transcript. NOTE: the spotter
+    /// is NOT run when not ready (no wasted ANE).
+    ///
+    /// Stock FluidAudio only: `spotKeywordsWithLogProbs` is the same stock API
+    /// the TDT path uses. No FluidAudio fork. The transcript is already produced
+    /// by the caller (concurrently with the spotter via `async let` in
+    /// `Transcriber.transcribeWithNemotron`); we only do placement + gate here.
+    ///
+    /// - Parameter language: threaded from `Transcriber`. Nemotron is
+    ///   English-only, so this resolves to the English common-word brake.
+    /// - Parameter recordsProvenance: same contract as `rescore(...)` — only
+    ///   saving callers (recorder dictation, Library re-transcribe) pass `true`.
+    /// Spotted vocabulary terms ready for placement onto a transcript. Carries
+    /// the gate `Detection`s plus the total audio duration the proportional-
+    /// position placement needs. `nil` (from `spotDetections`) means the rescorer
+    /// wasn't ready — the spotter was NOT run.
+    public struct SpotPayload: Sendable {
+        let detections: [VocabularyGate.Detection]
+        let totalAudioDuration: TimeInterval
+    }
+
+    /// **Phase 1 (transcript-INDEPENDENT, ANE-heavy).** Run the CTC keyword
+    /// spotter on the audio alone. Returns `nil` WITHOUT running the spotter when
+    /// the rescorer isn't ready (toggle off / empty vocab / models not
+    /// downloaded) — so a vocab-off dictation burns no extra ANE. Because this
+    /// depends only on `audioSamples`, the caller runs it CONCURRENTLY with the
+    /// Nemotron decode via `async let`; placement (`gateDetections`) happens after
+    /// the decode lands.
+    public func spotDetections(audioSamples: [Float]) async throws -> SpotPayload? {
+        guard let spotter, let vocabulary, !vocabulary.terms.isEmpty else {
+            return nil
+        }
+        let spotResult = try await spotter.spotKeywordsWithLogProbs(
+            audioSamples: audioSamples,
+            customVocabulary: vocabulary,
+            minScore: nil
+        )
+        // Map FluidAudio detections → gate detections, attaching the SAME
+        // enriched aliases the spotter/rescorer used so the plausibility metric
+        // measures against the merged-form alias too.
+        var termAliasMap: [String: [String]] = [:]
+        for t in vocabulary.terms {
+            termAliasMap[t.text.lowercased(), default: []] += (t.aliases ?? [])
+        }
+        let detections: [VocabularyGate.Detection] = spotResult.detections.map { d in
+            VocabularyGate.Detection(
+                term: d.term.text,
+                aliases: termAliasMap[d.term.text.lowercased()] ?? (d.term.aliases ?? []),
+                score: d.score,
+                startTime: d.startTime,
+                endTime: d.endTime
+            )
+        }
+        let totalAudioDuration = TimeInterval(audioSamples.count) / AudioFormat.sampleRate
+        return SpotPayload(detections: detections, totalAudioDuration: totalAudioDuration)
+    }
+
+    /// **Phase 2 (placement + gate).** Place the phase-1 detections onto the
+    /// (now-known) Nemotron transcript via the gate's plausibility metric +
+    /// proportional position, run the SAME `VocabularyGate`, and emit the verdict
+    /// tail (provenance + UX payload) shared with the TDT path. Returns the gated
+    /// text + de-duped corrections, or a byte-identical pass-through when there's
+    /// nothing to place.
+    ///
+    /// - Parameter language: threaded from `Transcriber`. Nemotron is
+    ///   English-only, so this resolves to the English common-word brake.
+    /// - Parameter recordsProvenance: same contract as `rescore(...)`.
+    public func gateDetections(
+        transcript: String,
+        payload: SpotPayload,
+        language: LanguageChoice?,
+        recordsProvenance: Bool
+    ) async -> RescoreResult {
+        guard !payload.detections.isEmpty else {
+            return RescoreResult(text: transcript, corrections: [])
+        }
+        let overrides = await CorrectionStore.shared.snapshot()
+        let commonWords = CommonWords.forLanguage(language)
+
+        let gated = VocabularyGate.applyFromDetections(
+            originalTranscript: transcript,
+            detections: payload.detections,
+            totalAudioDuration: payload.totalAudioDuration,
+            commonWords: commonWords,
+            overrides: overrides
+        )
+        log.info("spot-gated \(payload.detections.count) detection(s) → applied \(gated.applied), blocked \(gated.blocked.count)")
+
+        return await emitVerdicts(gated: gated, recordsProvenance: recordsProvenance)
+    }
+
+    /// Shared tail of the TDT `rescore` path: takes the already-
+    /// computed CTC spot result + transcript, runs `ctcTokenRescore`, the gate,
+    /// provenance, and builds the UX payload. Extracted verbatim from the
+    /// original `rescore(...)` body so the TDT path's behavior is byte-identical.
+    private func finishRescore(
+        transcript: String,
+        tokenTimings: [TokenTiming],
+        spotResult: CtcKeywordSpotter.SpotKeywordsResult,
+        rescorer: VocabularyRescorer,
+        vocabulary: CustomVocabularyContext,
+        language: LanguageChoice?,
+        recordsProvenance: Bool
+    ) async throws -> RescoreResult? {
         let output = rescorer.ctcTokenRescore(
             transcript: transcript,
             tokenTimings: tokenTimings,
@@ -314,6 +441,18 @@ public actor VocabularyRescorerHolder {
         )
         log.info("rescored \(output.replacements.count) proposal(s) → applied \(gated.applied), blocked \(gated.blocked.count)")
 
+        return await emitVerdicts(gated: gated, recordsProvenance: recordsProvenance)
+    }
+
+    /// Shared verdict tail for BOTH gate paths (TDT `finishRescore` and the
+    /// Nemotron `gateDetections`): logs each verdict, records provenance when owned,
+    /// and maps the gate's per-occurrence proposals into the de-duped
+    /// `UXCorrection` payload. Extracted verbatim from the original
+    /// `finishRescore` body so the TDT path stays byte-identical.
+    private func emitVerdicts(
+        gated: VocabularyGate.Result,
+        recordsProvenance: Bool
+    ) async -> RescoreResult {
         // v1: log-only — record each verdict to the cross-cutting ErrorLog
         // (DiagnosticsLog severed, design §6/V4). Off the gate's hot loop.
         for p in gated.proposals {

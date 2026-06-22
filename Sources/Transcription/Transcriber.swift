@@ -75,6 +75,13 @@ public actor Transcriber: Transcribing {
             }
             return
 
+        case .qwen3_multilingual:
+            // Qwen3 is not an `AsrManager` model and is never loaded through
+            // this wrapper — `JotComposition.transcriberFactory` builds a
+            // dedicated `Qwen3Transcriber` for it. Reaching here is a routing
+            // bug.
+            throw TranscriberError.modelMissing
+
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
@@ -178,7 +185,16 @@ public actor Transcriber: Transcribing {
 
         case .nemotron_en:
             guard let nemotronBatch else { throw TranscriberError.modelNotLoaded }
-            return try await transcribeWithNemotron(samples, nemotronBatch: nemotronBatch)
+            return try await transcribeWithNemotron(
+                samples,
+                nemotronBatch: nemotronBatch,
+                recordsProvenance: recordsProvenance
+            )
+
+        case .qwen3_multilingual:
+            // Never reached: Qwen3 routes through `Qwen3Transcriber`, not this
+            // `AsrManager` wrapper.
+            throw TranscriberError.modelNotLoaded
         }
     }
 
@@ -358,6 +374,10 @@ public actor Transcriber: Transcribing {
             // Nemotron has its own streaming preview; it is not driven by the
             // batch PreviewScheduler.
             return nil
+
+        case .qwen3_multilingual:
+            // Qwen3 has no live preview and never routes through this wrapper.
+            return nil
         }
     }
 
@@ -409,25 +429,78 @@ public actor Transcriber: Transcribing {
 
     private func transcribeWithNemotron(
         _ samples: [Float],
-        nemotronBatch: NemotronStreamingTranscriber
+        nemotronBatch: NemotronStreamingTranscriber,
+        recordsProvenance: Bool
     ) async throws -> TranscriptionResult {
         let started = Date()
+
+        // No-fork custom-vocabulary for Nemotron. Nemotron's stream returns a
+        // plain String — NO per-word timings, NO confidence — so the timing-
+        // dependent CTC rescorer (`ctcTokenRescore`) is INERT here. Instead we
+        // run the CTC keyword SPOTTER on the AUDIO: it acoustically detects each
+        // vocab term + its audio time range WITHOUT needing transcript timings.
+        // We then place the detections onto the decoded transcript via the gate's
+        // own plausibility metric + proportional position, and apply the SAME
+        // `VocabularyGate`. See `VocabularyRescorerHolder.spotDetections` /
+        // `gateDetections`.
+        //
+        // CONCURRENCY: the spotter (Mel + Encoder + CtcHead on the ANE) depends
+        // ONLY on `audioSamples`, so phase 1 runs CONCURRENTLY with the Nemotron
+        // decode via `async let` — wall-clock ≈ max(decode, spot), not their sum.
+        // The audio buffer is an immutable Sendable `[Float]` shared read-only
+        // across both tasks → no data race. Placement (phase 2) needs the decoded
+        // transcript, so it runs after the decode lands.
+        //
+        // VOCAB-OFF: `spotDetections` returns `nil` WITHOUT running the spotter
+        // when the rescorer isn't ready (toggle off / empty vocab / models not
+        // downloaded), so the common path burns no extra ANE and stays a pure,
+        // byte-identical pass-through. Best-effort: ANY vocab error falls back to
+        // the raw transcript and never blocks dictation. The decode runs EXACTLY
+        // ONCE on every path.
+        let holder = VocabularyRescorerHolder.shared
+        let samplesRef = samples
+
+        // Phase 1: spotter (transcript-independent). Best-effort — a spotter
+        // failure must never block dictation, so it resolves to `nil`.
+        async let spotPayloadTask: VocabularyRescorerHolder.SpotPayload? = {
+            do { return try await holder.spotDetections(audioSamples: samplesRef) }
+            catch { return nil }
+        }()
+
+        // Decode (source of truth for fallback). Runs side-by-side with phase 1.
         let raw: String
         do {
             raw = try await nemotronBatch.transcribeOneShot(samples)
         } catch {
+            // Surface the placeholder task so its result is awaited (the spotter
+            // is cancellation-tolerant; we ignore its result on the error path).
+            _ = await spotPayloadTask
             await ErrorLog.shared.error(component: "Transcriber", message: "Nemotron transcribe failed", context: ["sampleCount": String(samples.count), "error": ErrorLog.redactedAppleError(error)])
             throw TranscriberError.fluidAudio(error)
         }
 
+        // Phase 2: placement + gate (only when phase 1 actually spotted).
+        var text = raw
+        var corrections: [VocabularyRescorerHolder.UXCorrection] = []
+        if let payload = await spotPayloadTask {
+            let gated = await holder.gateDetections(
+                transcript: raw,
+                payload: payload,
+                language: language,
+                recordsProvenance: recordsProvenance
+            )
+            text = gated.text
+            corrections = gated.corrections
+        }
+
         // v1.13.1: Nemotron emits clean native punctuation + casing.
-        // Pure pass-through — no deterministic post-processing.
         return TranscriptionResult(
-            text: raw,
+            text: text,
             rawText: raw,
             duration: TimeInterval(samples.count) / AudioFormat.sampleRate,
             processingTime: Date().timeIntervalSince(started),
-            confidence: 1.0
+            confidence: 1.0,
+            corrections: corrections
         )
     }
 
@@ -447,6 +520,9 @@ public actor Transcriber: Transcribing {
         switch modelID {
         case .nemotron_en:
             return nemotronBatch != nil
+        case .qwen3_multilingual:
+            // Qwen3 never loads through this wrapper.
+            return false
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,

@@ -151,7 +151,12 @@ enum VocabularyGate {
             }
             occurrence[key] = n + 1
             let d = decide(
-                r, wordConfidence: wordConfidence, commonWords: commonWords, overrides: overrides,
+                originalWord: r.originalWord,
+                term: r.replacementWord ?? "",
+                margin: (r.replacementScore ?? r.originalScore) - r.originalScore,
+                wordConfidence: wordConfidence,
+                commonWords: commonWords,
+                overrides: overrides,
                 aliases: termAliases[(r.replacementWord ?? "").lowercased()] ?? [])
             log.info(
                 "gate \(r.originalWord, privacy: .public)→\(r.replacementWord ?? "—", privacy: .public): conf=\(d.confidence, format: .fixed(precision: 3)) margin=\(d.margin, format: .fixed(precision: 2)) \(d.label, privacy: .public)"
@@ -205,6 +210,219 @@ enum VocabularyGate {
         return Result(text: result, applied: applied, blocked: blocked, proposals: proposals)
     }
 
+    // MARK: - Detection-driven gate (no-fork Nemotron path)
+
+    /// One acoustically-spotted vocabulary term and where it lives in the audio.
+    /// The Nemotron-path adapter (`VocabularyRescorerHolder.gateDetections`) builds
+    /// these straight from FluidAudio's `CtcKeywordSpotter.KeywordDetection` —
+    /// no `VocabularyRescorer.RescoreOutput` (which needs decoder timings the
+    /// Nemotron stream never produces) is involved.
+    struct Detection: Sendable {
+        let term: String           // the vocab term spotted in the audio
+        let aliases: [String]      // enriched aliases for the term (plausibility)
+        let score: Float           // acoustic CTC score (diagnostics only)
+        let startTime: TimeInterval
+        let endTime: TimeInterval
+    }
+
+    /// **Detection-driven gate.** The no-fork Nemotron entry point. Nemotron's
+    /// stream returns a plain `String` with NO per-word timings and NO
+    /// confidence, so the timing-dependent `VocabularyRescorer.ctcTokenRescore`
+    /// is inert there (it hard-returns when `tokenTimings` is empty). Instead we
+    /// run the CTC keyword spotter on the AUDIO — which yields each term that was
+    /// actually spoken plus its audio TIME RANGE — and place each spotted term
+    /// onto the transcript ourselves.
+    ///
+    /// Placement: for each detection we look for a transcript word that is an
+    /// acoustic near-miss of the term (REUSING `plausible(...)`, the exact same
+    /// metric `apply(...)` uses, so behavior is consistent). When several
+    /// occurrences qualify we disambiguate by PROPORTIONAL position — mapping the
+    /// detection's mid-audio time over `totalAudioDuration` to a fractional index
+    /// across the transcript's words and picking the closest. A term already
+    /// present correctly (exact match wins plausibility with distance 0) is a
+    /// no-op: it's its own best candidate and `decide(...)` returns APPLY with the
+    /// same text, producing no visible change.
+    ///
+    /// Decision: the SAME `decide(...)` the TDT path uses. With no decoder
+    /// confidence, `wordConfidence` is empty → `measured == nil` →
+    /// `confidence == lowConfidence`, so the 0.998-protector ceiling (guard 3)
+    /// can't fire (correct: we have no confidence to protect), while
+    /// plausibility, the common-word brake, learned overrides, and the
+    /// ask-before-paste flags all still run. `margin` is passed as `0` (we have
+    /// no comparable acoustic margin — only the spotter score, which is on a
+    /// different scale than the rescorer's cbw-inclusive margin); 0 keeps the
+    /// earned-margin branch from mis-firing and leaves `notable` driven by the
+    /// `confidence <= lowConfidence` path, matching the TDT reality that nearly
+    /// every applied vocab correction is notable.
+    ///
+    /// Returns the same `Result` shape as `apply(...)`, so the holder's
+    /// provenance + `UXCorrection` mapping is reused verbatim.
+    static func applyFromDetections(
+        originalTranscript: String,
+        detections: [Detection],
+        totalAudioDuration: TimeInterval,
+        commonWords: CommonWords,
+        overrides: [CorrectionStore.OverrideEntry] = []
+    ) -> Result {
+        guard !detections.isEmpty, !originalTranscript.isEmpty else {
+            return Result(text: originalTranscript, applied: 0, blocked: [], proposals: [])
+        }
+
+        // Tokenize the transcript into whole words with their char ranges, in
+        // document order. Used both to score proportional position and to resolve
+        // the chosen candidate's range for splicing.
+        struct Word {
+            let text: String
+            let range: Range<String.Index>
+            let fractionalIndex: Double   // position of this word's center in [0, 1)
+        }
+        var words: [Word] = []
+        var idx = originalTranscript.startIndex
+        var wordStarts: [Int] = []   // char offsets, to compute fractional center
+        // Build word ranges by scanning runs of non-space.
+        while idx < originalTranscript.endIndex {
+            // skip whitespace
+            while idx < originalTranscript.endIndex, originalTranscript[idx].isWhitespace {
+                idx = originalTranscript.index(after: idx)
+            }
+            guard idx < originalTranscript.endIndex else { break }
+            let start = idx
+            while idx < originalTranscript.endIndex, !originalTranscript[idx].isWhitespace {
+                idx = originalTranscript.index(after: idx)
+            }
+            wordStarts.append(originalTranscript.distance(from: originalTranscript.startIndex, to: start))
+            words.append(Word(text: String(originalTranscript[start..<idx]), range: start..<idx, fractionalIndex: 0))
+        }
+        guard !words.isEmpty else {
+            return Result(text: originalTranscript, applied: 0, blocked: [], proposals: [])
+        }
+        // Fractional center of each word over the word SEQUENCE (index/count), the
+        // same axis the detection's time fraction is mapped onto.
+        let n = words.count
+        words = words.enumerated().map { i, w in
+            Word(text: w.text, range: w.range, fractionalIndex: (Double(i) + 0.5) / Double(n))
+        }
+
+        // For each detection, choose the best transcript word to (maybe) replace.
+        // A word can be claimed by at most one detection (first-come by detection
+        // order); a chosen word index → the detection that won it.
+        struct Pick {
+            let wordIndex: Int
+            let detection: Detection
+        }
+        var claimed = Set<Int>()
+        var picks: [Pick] = []
+
+        for det in detections {
+            // Detection's proportional position in the audio → fractional index.
+            let mid: TimeInterval = (det.startTime + det.endTime) / 2
+            let frac: Double = totalAudioDuration > 0
+                ? min(max(mid / totalAudioDuration, 0), 1)
+                : 0.5
+
+            // Candidate words: plausible near-misses of the term not already claimed.
+            var best: (index: Int, distance: Double)?
+            for (i, w) in words.enumerated() where !claimed.contains(i) {
+                guard plausible(original: normalize(w.text), term: det.term, aliases: det.aliases) else {
+                    continue
+                }
+                let positional = abs(w.fractionalIndex - frac)
+                if best == nil || positional < best!.distance {
+                    best = (i, positional)
+                }
+            }
+            if let pick = best {
+                claimed.insert(pick.index)
+                picks.append(Pick(wordIndex: pick.index, detection: det))
+            }
+        }
+
+        guard !picks.isEmpty else {
+            return Result(text: originalTranscript, applied: 0, blocked: [], proposals: [])
+        }
+
+        // Resolve decisions in positional (document) order so splicing is forward.
+        picks.sort { $0.wordIndex < $1.wordIndex }
+
+        var result = ""
+        var cursor = originalTranscript.startIndex
+        var applied = 0
+        var blocked: [String] = []
+        var proposals: [Proposal] = []
+
+        for pick in picks {
+            let w = words[pick.wordIndex]
+            guard w.range.lowerBound >= cursor else { continue }   // overlap guard
+            let originalWord = String(originalTranscript[w.range])
+            // Identity no-op: the spotter fires on the audio whether or not the
+            // decoder ALREADY wrote the term correctly. If the matched word is
+            // already the term, there is nothing to correct — skip it so we don't
+            // emit a spurious applied "Vikram → Vikram" verdict (which would pop a
+            // confusing "Did you mean Vikram?" ask). The word stays in place via
+            // the cursor copy. (The timing-aligned TDT rescorer never proposes
+            // identity replacements, so this only matters on the spot path.)
+            if Self.normalize(originalWord) == Self.normalize(pick.detection.term) { continue }
+            let d = decide(
+                originalWord: originalWord,
+                term: pick.detection.term,
+                margin: 0,
+                wordConfidence: [:],
+                commonWords: commonWords,
+                overrides: overrides,
+                aliases: pick.detection.aliases
+            )
+            log.info(
+                "gate(spot) \(originalWord, privacy: .public)→\(pick.detection.term, privacy: .public): score=\(pick.detection.score, format: .fixed(precision: 2)) \(d.label, privacy: .public)"
+            )
+
+            result += originalTranscript[cursor..<w.range.lowerBound]
+            let publishedStart = result.count
+            // Preserve trailing punctuation attached to the original word so a
+            // bare term doesn't eat the original's comma/period. The matched
+            // "word" run can include punctuation (we split on whitespace only).
+            let publishedText: String = d.pass
+                ? Self.preservingEdgePunctuation(replacement: pick.detection.term, original: originalWord)
+                : originalWord
+            result += publishedText
+
+            let originalStart = originalTranscript.distance(from: originalTranscript.startIndex, to: w.range.lowerBound)
+            proposals.append(
+                Proposal(
+                    originalWord: originalWord,
+                    term: pick.detection.term,
+                    decision: d.label,
+                    outcome: d.pass ? "applied" : "kept",
+                    confidence: d.confidence,
+                    margin: d.margin,
+                    unsure: d.unsure,
+                    askCandidate: d.askCandidate,
+                    occurrenceIndex: pick.wordIndex,
+                    originalStart: originalStart,
+                    originalLength: originalTranscript.distance(from: w.range.lowerBound, to: w.range.upperBound),
+                    publishedStart: publishedStart,
+                    publishedLength: publishedText.count
+                )
+            )
+            if d.pass { applied += 1 } else { blocked.append(originalWord) }
+            cursor = w.range.upperBound
+        }
+        result += originalTranscript[cursor...]
+        return Result(text: result, applied: applied, blocked: blocked, proposals: proposals)
+    }
+
+    /// Carry any LEADING and TRAILING punctuation from the original token onto
+    /// the bare vocab term, so "(Jamie," → "(Jamy," not "Jamy". Only
+    /// NON-letter/NON-digit edge characters are moved; an internal apostrophe in
+    /// the term is left intact. If the original is all punctuation (no letters/
+    /// digits — shouldn't happen for a plausible near-miss), return the bare term.
+    private static func preservingEdgePunctuation(replacement: String, original: String) -> String {
+        let leading = original.prefix { !$0.isLetter && !$0.isNumber }
+        let trailing = original.reversed().prefix { !$0.isLetter && !$0.isNumber }
+        // Guard against double-counting when the whole token is non-alphanumeric.
+        guard leading.count + trailing.count < original.count else { return replacement }
+        return String(leading) + replacement + String(trailing.reversed())
+    }
+
     // MARK: - Gate decision
 
     /// Returns (pass, confidence, margin, label, unsure, askCandidate). `label`
@@ -214,15 +432,15 @@ enum VocabularyGate {
     /// intent-matched cases the live "Did you mean X?" pill should surface —
     /// computed at each terminal return, additive only.
     private static func decide(
-        _ r: VocabularyRescorer.RescoringResult,
+        originalWord: String,
+        term: String,
+        margin: Float,
         wordConfidence: [String: Float],
         commonWords: CommonWords,
         overrides: [CorrectionStore.OverrideEntry],
         aliases: [String]
     ) -> (pass: Bool, confidence: Float, margin: Float, label: String, unsure: Bool, askCandidate: Bool) {
-        let margin = (r.replacementScore ?? r.originalScore) - r.originalScore
-        let base = normalize(r.originalWord)
-        let term = r.replacementWord ?? ""
+        let base = normalize(originalWord)
         let baseWords = base.split(separator: " ").map(String.init)
         let measured = baseWords.compactMap { wordConfidence[$0] }.min()
         let confidence = measured ?? lowConfidence

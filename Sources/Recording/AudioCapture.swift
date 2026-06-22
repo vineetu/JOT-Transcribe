@@ -469,7 +469,7 @@ public actor AudioCapture: AudioCapturing {
         // Note: stored as a NSObjectProtocol — fine to remove from any
         // thread in `finishDisconnectStream`.
         deviceListObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name.AVCaptureDeviceWasDisconnected,
+            forName: AVCaptureDevice.wasDisconnectedNotification,
             object: nil,
             queue: nil
         ) { notification in

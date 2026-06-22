@@ -27,6 +27,11 @@ public enum PostProcessing {
             return applyEnglish(text)
         case .tdt_0_6b_ja:
             return applyJapanese(text)
+        case .qwen3_multilingual:
+            // Qwen3 emits clean native punctuation/casing (and spaceless CJK
+            // for zh/yue) — the English regex chain would mangle CJK and the
+            // Qwen3 path doesn't invoke this method anyway. Passthrough.
+            return text
         }
     }
 

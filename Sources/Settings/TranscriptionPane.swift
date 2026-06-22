@@ -8,6 +8,20 @@ struct TranscriptionPane: View {
     @AppStorage("jot.preserveClipboard") private var preserveClipboard: Bool = true
     @AppStorage("jot.speakerLabels.enabled") private var speakerLabelsEnabled: Bool = true
 
+    /// AI-search Stage B: semantic-search gate. DEFAULT ON (opt-out). Disabling
+    /// stops all indexing/embedding; substring search always works regardless.
+    /// See `SemanticSearchSettings` (default mirrors `= true`).
+    @AppStorage(SemanticSearchSettings.enabledKey) private var semanticSearchEnabled: Bool = true
+
+    /// Live model-download progress for the semantic-search model (advanced-only).
+    @State private var semanticDownload = SemanticDownloadState()
+
+    private struct SemanticDownloadState: Equatable {
+        var isDownloading: Bool = false
+        var fraction: Double = 0
+        var error: String?
+    }
+
     /// v1.14: paste / press-return / keep-clipboard toggles are gated
     /// behind the **global** Advanced features flag in Settings →
     /// General — not behind a per-pane disclosure. When Advanced is off
@@ -123,6 +137,8 @@ struct TranscriptionPane: View {
                 }
             }
 
+            semanticSearchSection
+
             Section {
                 Button {
                     setSidebarSelection(.settings(.ai))
@@ -143,6 +159,15 @@ struct TranscriptionPane: View {
         }
         .formStyle(.grouped)
         .onAppear { holder.refreshInstalled() }
+        .onChange(of: semanticSearchEnabled) { _, isOn in
+            // Toggling ON (re-enabling after an opt-out) kicks off the one-time
+            // download + a backfill of anything indexed-missing. Toggling OFF is
+            // a no-op here — the gate inside the indexer/controller stops all
+            // further work; existing chunk rows are harmless and left in place.
+            guard isOn else { return }
+            Task.detached(priority: .utility) { try? await EmbeddingGemmaService.shared.prewarm() }
+            Task(priority: .background) { await RecordingIndexer.shared?.backfillMissing() }
+        }
     }
 
     /// Two-way binding over the active language. Reads `holder.activeLanguage`;
@@ -272,6 +297,114 @@ struct TranscriptionPane: View {
             return "Downloading… · \(footprint)"
         }
         return installed ? "Installed · \(footprint)" : "Not installed · \(footprint)"
+    }
+
+    /// AI-search Stage B: the Semantic search section. A default-ON opt-out
+    /// toggle plus (advanced-only) the model-download progress, live indexing
+    /// progress, and a "Rebuild index" button. Normal users see only the toggle
+    /// + a one-line description; the index fills silently in the background.
+    @ViewBuilder
+    private var semanticSearchSection: some View {
+        Section {
+            HStack {
+                Toggle("Semantic search", isOn: $semanticSearchEnabled)
+                InfoPopoverButton(
+                    title: "Semantic search",
+                    body: "Finds recordings by meaning, not just exact words — searching “rent increase” can surface a recording where you said “the landlord is raising my payment.” It runs fully on-device: enabling it downloads a one-time search model (about 339 MB) and quietly indexes your existing recordings in the background. Exact-text search always works whether this is on or off."
+                )
+            }
+
+            if advancedEnabled {
+                semanticAdvancedRows
+            }
+        } header: {
+            Text("Semantic search")
+        } footer: {
+            Text("On-device meaning-based search over your recordings. Downloads a one-time model and indexes in the background; exact-text search works regardless.")
+        }
+    }
+
+    /// Advanced-only diagnostics: model download state, live indexing progress,
+    /// and a manual rebuild. Hidden entirely for normal users.
+    @ViewBuilder
+    private var semanticAdvancedRows: some View {
+        // Model download state.
+        HStack(alignment: .firstTextBaseline) {
+            Text("Search model")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer()
+            if semanticDownload.isDownloading {
+                HStack(spacing: 6) {
+                    ProgressView(value: semanticDownload.fraction)
+                        .frame(width: 100)
+                    Text("\(Int(semanticDownload.fraction * 100))%")
+                        .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+                }
+            } else if EmbeddingGemmaService.isDownloaded() {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text("Downloaded").font(.system(size: 11, weight: .medium)).foregroundStyle(.green)
+                }
+            } else {
+                Button("Download") { startSemanticDownload() }
+                    .controlSize(.small)
+                    .disabled(!semanticSearchEnabled)
+            }
+        }
+        if let error = semanticDownload.error {
+            Text(error)
+                .font(.system(size: 11)).foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        // Live indexing progress (advanced-only).
+        if let indexer = RecordingIndexer.shared, indexer.isSweeping {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Indexing")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(indexer.sweepDone) of \(indexer.sweepTotal)")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
+
+        // Manual rebuild.
+        HStack {
+            Button("Rebuild index") {
+                Task { await RecordingIndexer.shared?.rebuildAll() }
+            }
+            .controlSize(.small)
+            .disabled(!semanticSearchEnabled || (RecordingIndexer.shared?.isSweeping ?? false))
+            Spacer()
+        }
+    }
+
+    private func startSemanticDownload() {
+        semanticDownload = SemanticDownloadState(isDownloading: true, fraction: 0, error: nil)
+        Task {
+            do {
+                try await EmbeddingGemmaService.shared.prewarm { progress in
+                    let frac = progress.bytesTotal > 0
+                        ? Double(progress.bytesReceived) / Double(progress.bytesTotal)
+                        : 0
+                    Task { @MainActor in
+                        if semanticDownload.isDownloading {
+                            semanticDownload.fraction = min(max(frac, 0), 1)
+                        }
+                    }
+                }
+                await MainActor.run { semanticDownload = SemanticDownloadState() }
+                // Once the model is present, drain any historical backlog.
+                Task(priority: .background) { await RecordingIndexer.shared?.backfillMissing() }
+            } catch {
+                await MainActor.run {
+                    semanticDownload = SemanticDownloadState(
+                        isDownloading: false, fraction: 0, error: error.localizedDescription
+                    )
+                }
+            }
+        }
     }
 
     @ViewBuilder
