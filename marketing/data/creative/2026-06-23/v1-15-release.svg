@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Card panel -->
+  <rect x="40" y="40" width="1000" height="1000" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- Decorative pill shape top-right (abstract "dragged to corner" motif) -->
+  <rect x="796" y="96" width="184" height="56" rx="28" fill="#CE231D" fill-opacity="0.10" stroke="#CE231D" stroke-width="1.5"/>
+  <text x="888" y="131" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#CE231D" text-anchor="middle" font-weight="600">move me</text>
+
+  <!-- Version badge -->
+  <rect x="100" y="96" width="160" height="56" rx="28" fill="#CE231D"/>
+  <text x="180" y="131" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="700" fill="#f0f0f0" text-anchor="middle">v1.15</text>
+
+  <!-- Main headline -->
+  <text x="100" y="280" font-family="Helvetica, Arial, sans-serif" font-size="94" font-weight="800" fill="#f0f0f0">The pill</text>
+  <text x="100" y="388" font-family="Helvetica, Arial, sans-serif" font-size="94" font-weight="800" fill="#f0f0f0">is yours</text>
+  <text x="100" y="496" font-family="Helvetica, Arial, sans-serif" font-size="94" font-weight="800" fill="#CE231D">now.</text>
+
+  <!-- Subtext -->
+  <text x="100" y="564" font-family="Helvetica, Arial, sans-serif" font-size="30" fill="#9a9a9f">Drag it anywhere on your screen. New in v1.15.</text>
+
+  <!-- Feature chips: 2 columns × 3 rows -->
+
+  <!-- Row 1 -->
+  <!-- Chip: Movable pill (accent) -->
+  <rect x="100" y="618" width="370" height="64" rx="32" fill="#CE231D" fill-opacity="0.14" stroke="#CE231D" stroke-width="1.5"/>
+  <text x="285" y="657" font-family="Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#CE231D" text-anchor="middle">Movable pill</text>
+
+  <!-- Chip: Better search -->
+  <rect x="490" y="618" width="370" height="64" rx="32" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1.5"/>
+  <text x="675" y="657" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f" text-anchor="middle">Better search</text>
+
+  <!-- Row 2 -->
+  <!-- Chip: Cleaner transcripts -->
+  <rect x="100" y="700" width="370" height="64" rx="32" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1.5"/>
+  <text x="285" y="739" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f" text-anchor="middle">Cleaner transcripts</text>
+
+  <!-- Chip: Simpler settings -->
+  <rect x="490" y="700" width="370" height="64" rx="32" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1.5"/>
+  <text x="675" y="739" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f" text-anchor="middle">Simpler settings</text>
+
+  <!-- Row 3 -->
+  <!-- Chip: Smarter vocabulary -->
+  <rect x="100" y="782" width="370" height="64" rx="32" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1.5"/>
+  <text x="285" y="821" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f" text-anchor="middle">Smarter vocabulary</text>
+
+  <!-- Chip: More languages (experimental) -->
+  <rect x="490" y="782" width="370" height="64" rx="32" fill="#0d0d0e" stroke="#2a2a2e" stroke-width="1.5"/>
+  <text x="675" y="821" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f" text-anchor="middle">More languages &#x2736;</text>
+
+  <!-- Tags row -->
+  <text x="100" y="924" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f">Free  ·  Open source  ·  On-device  ·  macOS 15+</text>
+
+  <!-- Footer -->
+  <circle cx="100" cy="974" r="9" fill="#CE231D"/>
+  <text x="122" y="981" font-family="Helvetica, Arial, sans-serif" font-size="25" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

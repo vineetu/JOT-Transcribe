@@ -1,57 +1,50 @@
 {
-  "date": "2026-06-22",
+  "date": "2026-06-23",
   "downloads": {
-    "total": 194,
-    "delta": 42,
-    "avg7": 10,
+    "total": 206,
+    "delta": 12,
+    "avg7": 11,
     "goal": 100
   },
   "creative": {
-    "concept": "67 days. Honest numbers. — builder transparency carousel pairs with a PR-description use-case tip card. Fresh format (use-case tip last ran June 18; carousel is new-week eligible). Carousel slide 5 — '0 roundup mentions, 190 downloads anyway' — is the designed scroll-stopper and comment trigger.",
+    "concept": "v1.15 release day — 'The pill is yours now.' Release card with 6-feature chip grid; red accent on Movable pill; decorative 'move me' pill outline top-right reinforces the drag gesture. No carousel (ran yesterday). Storyboard shows the drag motion for the first time.",
     "cards": [
       {
-        "file": "marketing/data/creative/2026-06-22/pr-description-tip.svg",
-        "title": "Use-case tip: Dictate your PR description",
-        "use": "Primary visual for LinkedIn and X. Three-step flow: git diff → ⌥ Space → speak. Export as 1080×1080 PNG."
+        "file": "marketing/data/creative/2026-06-23/v1-15-release.svg",
+        "title": "v1.15 — The pill is yours now.",
+        "use": "Primary visual for LinkedIn, X, Instagram, and Show HN today. Export as 1080×1080 PNG. The red 'Movable pill' chip against dark background is the scroll-stopper; the 'move me' pill outline top-right hints at the drag interaction."
       }
     ],
-    "carousel": [
-      "marketing/data/creative/2026-06-22/slide-1.svg",
-      "marketing/data/creative/2026-06-22/slide-2.svg",
-      "marketing/data/creative/2026-06-22/slide-3.svg",
-      "marketing/data/creative/2026-06-22/slide-4.svg",
-      "marketing/data/creative/2026-06-22/slide-5.svg",
-      "marketing/data/creative/2026-06-22/slide-6.svg"
-    ],
+    "carousel": [],
     "storyboard": {
-      "title": "Dictating a PR description — Jot in the terminal",
-      "duration_s": 17,
-      "use": "Instagram Reel / X video / GIF — developer workflow hook; fresh after a week of commit-message and standup angles",
+      "title": "The movable pill — drag, position, dictate",
+      "duration_s": 15,
+      "use": "Instagram Reel / X video / GIF — first clip ever showing the pill being repositioned; the drag gesture is inherently visual and earns a second take from anyone who has used Jot before",
       "shots": [
         {
-          "t": "0–3s",
-          "visual": "GitHub PR form open in browser, 'Description' field empty, cursor blinking — the blank PR everyone dreads",
-          "overlay": "Every PR."
+          "t": "0–2s",
+          "visual": "Mac desktop, Dynamic Island-style pill sitting under the notch in its default position — established, familiar",
+          "overlay": "You can move this now."
         },
         {
-          "t": "3–6s",
-          "visual": "Terminal open; dev types git diff --stat and skims the output",
-          "overlay": "You know what changed."
+          "t": "2–6s",
+          "visual": "Hand reaches up, grabs the pill, drags it smoothly to the bottom-left corner of the screen; pill follows the cursor with fluid motion",
+          "overlay": "Anywhere."
         },
         {
-          "t": "6–8s",
-          "visual": "Dev clicks into GitHub PR description field; presses ⌥ Space; Dynamic Island pill appears under Mac notch",
-          "overlay": "One hotkey."
+          "t": "6–9s",
+          "visual": "Hand presses ⌥ Space; pill in its new position begins pulsing with an audio waveform",
+          "overlay": "Hotkey."
         },
         {
-          "t": "8–15s",
-          "visual": "Pill pulses with audio waveform; dev speaks the PR description naturally — what changed, why, how to test",
+          "t": "9–14s",
+          "visual": "User speaks; pill pulses in the corner; text appears at cursor in VS Code or Mail",
           "overlay": "Speak."
         },
         {
-          "t": "15–17s",
-          "visual": "Full PR description text in GitHub; pill vanished; 'Submit pull request' button visible; jot-transcribe.com watermark",
-          "overlay": "Done. Reviewers thank you."
+          "t": "14–15s",
+          "visual": "Wide desktop: pill resting in corner, text visible in editor; jot-transcribe.com watermark lower-right",
+          "overlay": "Free. v1.15."
         }
       ]
     }
@@ -59,52 +52,60 @@
   "drafts": [
     {
       "channel": "linkedin",
-      "text": "PR descriptions. The part of the workflow everyone half-asses.\n\nPress ⌥ Space, say what changed and why — 30 seconds, full context for reviewers, lands wherever your cursor is. No window-switching. No typing.\n\nJot is free, open-source Mac dictation: hotkey, speak, text at cursor. On-device on the Neural Engine. No cloud, no subscription.\n\nWhat part of your dev workflow are you still typing when you could speak it?\n\n#indiedev #macOS #buildinpublic",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-22",
+      "text": "v1.15 shipped at 5am.\n\nThe dictation pill is movable now — drag it anywhere on screen, corner, edge, wherever doesn't interrupt your layout. Previously it was anchored under the notch.\n\nAlso: better recordings search, cleaner transcripts, smarter vocabulary, simpler settings.\n\nmacOS 15 required from today. Still $0. Still on-device. Still nothing leaves your Mac.\n\nWhere would you put a floating status indicator?\n\n#macOS #indiedev #buildinpublic",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-23",
       "publish_window_pt": "7:00–8:30am PT",
       "recommended": true,
-      "note": "Attach pr-description-tip.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. Closing question is the engagement trigger. Monday morning is the strongest LinkedIn window."
+      "note": "Attach v1-15-release.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. Closing question is the engagement trigger."
     },
     {
       "channel": "x",
-      "text": "PR descriptions: the part everyone half-asses because typing is slow.\n\n⌥ Space → speak what changed → Jot pastes it.\n30 seconds. Full context. Free Mac dictation. On-device.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-22",
+      "text": "v1.15 is live. The dictation pill is movable now — drag it anywhere on your screen. Better search, cleaner transcripts, simpler settings. Free. On-device. macOS 15+.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-23",
       "publish_window_pt": "6:30–9:00am PT",
       "recommended": true,
-      "note": "Attach pr-description-tip.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. ~168 characters, within 200-char limit."
+      "note": "Attach v1-15-release.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. ~167 characters, within 200 limit."
     },
     {
       "channel": "reddit",
-      "text": "I started dictating my PR descriptions instead of typing them — here's what changed\n\nFor months, my PR descriptions looked like this: 'Fixed the thing. Tests pass.' I knew they were bad. But typing a proper description after writing the code felt like the worst overhead — you just want to push.\n\nThen I started using Jot (free, open-source Mac dictation I built). Press ⌥ Space in my terminal or browser, speak what I changed and why, it pastes into the PR description field. The whole thing takes 25–30 seconds.\n\nWhat changed: my PR descriptions now actually explain context. What changed, why, what to look for in the review. Same information I'd tell a teammate verbally — just transcribed.\n\nThe thing I didn't expect: speaking is more natural than typing for explanations. When I type, I compress. When I speak, I give context. Reviewers have noticed.\n\nA few things I found:\n- Jot pastes wherever your cursor is, so no window-switching\n- On-device transcription means it works offline; nothing leaves your Mac\n- ~150-word limit fits comfortably in a solid PR description\n\nApple Silicon only, macOS 14+. Free and open source.\n\n(I built this — disclosure)\n\nLink in comments.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-22",
+      "text": "Jot v1.15 — the dictation pill is movable now (free, open-source Mac dictation)\n\nQuick background: I built Jot because I was paying $85/year for a Mac dictation app and decided the on-device transcription tech was commoditized enough that a free version should exist. Jot sits in the menu bar: press a hotkey, speak, transcript pastes wherever your cursor is in any app. Transcription runs entirely on the Apple Neural Engine — no cloud, no account, no audio leaves the Mac.\n\nv1.15 shipped this morning. Here's what changed:\n\n**Movable dictation pill.** The floating status indicator was previously anchored under the Mac notch. Now you can drag it anywhere on screen and it remembers the position. Most-requested feature, especially from people with external monitors or window layouts where the notch area is occupied.\n\n**Better recordings search.** Fuzzy search across all stored transcripts, not just the current session. Useful for finding something you dictated last week.\n\n**Smarter custom vocabulary.** The vocabulary booster improves from corrections over time. Product names and proper nouns that keep mistranscribing get smarter after a few manual fixes.\n\n**Cleaner transcripts.** Post-processing pass improved; fewer hallucinated filler words.\n\n**Simpler settings.** Tighter layout, less visual noise.\n\n**More languages (experimental).** Expanding the supported language set beyond the current roster — still in progress.\n\n**macOS 15 now required.** I raised the deployment floor from macOS 14 to macOS 15 to access CoreMLLLM for on-device AI. If you're on Sonoma (macOS 14), the last compatible release is v1.14.1.\n\nApple Silicon only. Completely free. Open source on GitHub.\n\n(I built this — disclosure)\n\nLink in comments.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-23",
       "publish_window_pt": "6:00–8:00am PT",
-      "recommended": false,
-      "note": "Post to r/productivity (rotating: macapps Jun 11, MacOS Jun 12, productivity Jun 13, macapps Jun 14, MacOS Jun 15, productivity Jun 16, macapps Jun 17, MacOS Jun 18, productivity Jun 19, macapps Jun 20, MacOS Jun 21, productivity Jun 22). First line is the post title. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit was June 19 (3 days ago); needs 4+ days — earliest is June 23. Answer every comment in the first hour."
+      "recommended": true,
+      "note": "Post to r/macapps (rotation: macapps Jun 23). First line is the post title. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:true — last recommended:true reddit was June 19 (4 days ago); threshold of 4+ days met today. Answer every comment in the first hour."
     },
     {
       "channel": "instagram",
-      "text": "The PR description you keep putting off.\n\nPress a hotkey. Speak what changed. Jot pastes it.\n\n30 seconds. Free. On-device.\n\nLink in bio.\n\n#macOS #developer #git #dictation #voicetotext #speechtotext #opensource #indiedev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-22",
+      "text": "v1.15 is live.\n\nThe dictation pill moves now. Drag it anywhere on your screen — corner, edge, wherever.\n\nBetter search. Cleaner transcripts. Simpler settings. More languages.\n\nFree. On-device. Open source.\n\nLink in bio.\n\n#macOS #dictation #voicetotext #opensource #macapps #indiedev #buildinpublic #speechtotext",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-23",
       "publish_window_pt": "11am–1pm PT",
-      "recommended": false,
-      "visual": "marketing/data/creative/2026-06-22/pr-description-tip.svg as a static 1080×1080 PNG, or use carousel slide-1 through slide-6 as a multi-image post.",
-      "note": "recommended:false — last recommended:true instagram was June 20 (2 days ago); needs 3+ days — earliest is June 23. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
+      "recommended": true,
+      "visual": "marketing/data/creative/2026-06-23/v1-15-release.svg as a static 1080×1080 PNG post.",
+      "note": "recommended:true — last recommended:true instagram was June 20 (3 days ago); threshold of 3+ days met today (June 23). Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
+    },
+    {
+      "channel": "hn",
+      "text": "Show HN: Jot v1.15 – free on-device Mac dictation; pill is draggable, better search",
+      "utm_url": "https://jot-transcribe.com/?utm_source=hn&utm_medium=social&utm_campaign=daily-2026-06-23",
+      "publish_window_pt": "6:00–8:00am ET TODAY (Tue Jun 23)",
+      "recommended": true,
+      "note": "Post TODAY — it's Tuesday, the ideal HN window. The utm_url goes in the submission URL field (not the text). First comment: 'Hi HN! Jot is a free, open-source Mac dictation app I've been building since April. Press a hotkey (⌥Space by default), speak, and the transcript pastes wherever your cursor is — terminal, Mail, VS Code, Slack, any text field. Transcription runs entirely on-device on the Apple Neural Engine (NVIDIA Parakeet TDT). No cloud, no account, no audio leaves the Mac. v1.15 ships two most-requested changes: (1) The dictation pill is now draggable — previously pinned under the notch; you can drag it anywhere and it remembers the position. External-monitor users have been asking for this since v1.0. (2) Better recordings search — fuzzy search across all stored transcripts, not just the current session. Also: cleaner transcripts, simpler settings, smarter custom vocabulary, experimental more-language support. macOS floor bumped to 15 (was 14) to access CoreMLLLM for on-device AI features. Stack: SwiftUI + AppKit (NSPanel for the pill), FluidAudio wrapping Parakeet for inference, sindresorhus/KeyboardShortcuts for hotkeys, Sparkle for auto-update. Repo: https://github.com/vineetu/JOT-Transcribe' — Never solicit upvotes."
     }
   ],
   "opportunities": [
     {
-      "url": "https://medium.com/@ryanshrott/the-best-ai-dictation-apps-for-mac-in-2026-e5a21577a9d3",
-      "title": "The Best AI Dictation Apps for Mac in 2026 — Ryan Shrott (Medium)",
-      "why": "A second 2026 Mac dictation roundup by Ryan Shrott surfaced today (different URL from the April article in the June 21 brief). Jot almost certainly absent. Medium comments are open to anyone, rank well in search, and a brief honest disclosure note would surface Jot to high-intent comparison-shopping readers.",
-      "suggested_reply": "Great roundup. One I'd add: Jot (jot-transcribe.com) — free, open-source, on-device on the Apple Neural Engine. No subscription, no cloud, no account. I built it. (Disclosure: developer.)"
+      "url": "https://www.getvoibe.com/blog/superwhisper-alternatives/",
+      "title": "11 Best Superwhisper Alternatives in 2026 — Voibe",
+      "why": "High-SEO alternatives roundup surfacing on every 'superwhisper free alternative' search; Jot not listed despite being the only fully-free open-source on-device option. Voibe allows reader comments; the v1.15 release is a natural hook for a first-time mention.",
+      "suggested_reply": "Great list. One worth adding: Jot (jot-transcribe.com) — free, open-source, fully on-device on the Apple Neural Engine. No subscription, no account, no audio leaves the Mac. Hotkey, speak, text at cursor. Just shipped v1.15 with a draggable pill and better search. I built it. (Disclosure: developer.)"
     },
     {
-      "url": "https://machow2.com/best-dictation-software-mac/",
-      "title": "Best Dictation Software for Mac (2026): Top AI & Free Apps — machow2.com",
-      "why": "High-SEO roundup surfacing on every 'free mac dictation' search — Jot not listed. Not comment-enabled; outreach window opens June 26 — flagged as priority contact for next cycle.",
+      "url": "https://spokenly.app/superwhisper-alternative",
+      "title": "SuperWhisper Alternative 2026: Free Local + BYOK Cloud — Spokenly",
+      "why": "Competitor comparison page — readers actively choosing are exactly Jot's audience. Not comment-enabled; flag for outreach to spokenly.app blog on June 26.",
       "suggested_reply": null
     }
   ],
   "outreach": [],
-  "notes": "v1.14.1 confirmed at 75 downloads via GitHub MCP (was ~33 on June 19); total estimated at 194 (+42 from June 21 baseline of 152, avg7=10/day). The acceleration is real — 42 new downloads in 3 days suggests Show HN residual + sustained organic discovery. Two new free competitors appearing in roundups today: Spokenly (free local Parakeet) and Voibe ($149 lifetime) — Jot is absent from all coverage including their own comparison articles. iTunes API 403 (8th+ consecutive day); appstore.json date updated to 2026-06-22, all other values preserved including installs:0 from App Store Connect. Outreach window reopens June 26 — priority targets: machow2.com and speakmac.app (both run high-SEO Mac dictation roundups that exclude Jot). Reddit recommended:false (last true June 19; earliest June 23). Instagram recommended:false (last true June 20; earliest June 23). Monday is the strongest LinkedIn day — PR description angle targets the developer cohort from Show HN. The honest-numbers carousel ('0 roundup mentions, 190 downloads anyway') gives Vineet a strong LinkedIn document-post option this week."
+  "notes": "v1.15 shipped at 05:01 UTC today (Tue Jun 23) — first release requiring macOS 15. Headline feature is the movable dictation pill, most-requested change since launch. Total 206 (+12 from Jun 22's 194): v1.14.1 moved 75→84, v1.15 at 3 within ~6h of release; v1.13.1=28, v1.13=12, v1.12=2, v1.11=11, v1.10=2 confirmed; older releases estimated at 64 from Jun 22 baseline. avg7=11/day — accelerating. Show HN eligible today (Tue 6–8am ET). All four channels recommended:true (Reddit ≥4 days since Jun 19; Instagram ≥3 days since Jun 20). iTunes API 403 (9th day); appstore.json date updated, all values preserved. Outreach window reopens June 26 — priority: machow2.com, speakmac.app, and a direct Voibe comment on the superwhisper-alternatives page. The movable pill is Jot's best visual marketing moment to date — recording the 10–15s drag Reel today while the release is fresh is the highest-leverage action of the week."
 }
