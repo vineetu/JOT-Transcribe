@@ -340,11 +340,39 @@ if [[ "${SKIP_NOTARIZE:-0}" == "1" ]]; then
     warn "SKIP_NOTARIZE=1 set — skipping notarization + stapling."
     warn "DO NOT ship this DMG. It is for local visual iteration only."
 else
-    NOTARY_PROFILE="${NOTARY_PROFILE:-Jot}"
-    log "Submitting DMG to Apple for notarization (profile: ${NOTARY_PROFILE})…"
-    xcrun notarytool submit "${DMG_PATH}" \
-        --keychain-profile "${NOTARY_PROFILE}" \
-        --wait
+    # Notarization auth. PREFER direct credentials (Apple ID + team + app-specific
+    # password) over the keychain `--keychain-profile`, because the login-keychain
+    # notary profile is unreliable on this machine — it gets wiped/re-locked
+    # between runs and fails non-interactively ("No Keychain password item found"
+    # / "User interaction is not allowed"). Direct creds need no keychain at all.
+    #
+    # Creds come from env (NOTARY_APPLE_ID / NOTARY_TEAM_ID / NOTARY_PASSWORD).
+    # If those aren't already exported, source an optional local creds file
+    # (gitignored, OUTSIDE the repo by default) so this stays push-button without
+    # ever putting the secret in version control. Falls back to the keychain
+    # profile when no direct creds are available.
+    NOTARY_CREDS_FILE="${NOTARY_CREDS_FILE:-$HOME/.config/jot/notary.env}"
+    if [[ -z "${NOTARY_PASSWORD:-}" && -f "${NOTARY_CREDS_FILE}" ]]; then
+        log "Loading notary credentials from ${NOTARY_CREDS_FILE}"
+        # shellcheck disable=SC1090
+        source "${NOTARY_CREDS_FILE}"
+    fi
+
+    if [[ -n "${NOTARY_APPLE_ID:-}" && -n "${NOTARY_TEAM_ID:-}" && -n "${NOTARY_PASSWORD:-}" ]]; then
+        log "Submitting DMG to Apple for notarization (direct creds: ${NOTARY_APPLE_ID})…"
+        xcrun notarytool submit "${DMG_PATH}" \
+            --apple-id "${NOTARY_APPLE_ID}" \
+            --team-id "${NOTARY_TEAM_ID}" \
+            --password "${NOTARY_PASSWORD}" \
+            --wait
+    else
+        NOTARY_PROFILE="${NOTARY_PROFILE:-Jot}"
+        log "Submitting DMG to Apple for notarization (keychain profile: ${NOTARY_PROFILE})…"
+        log "  (set NOTARY_APPLE_ID/NOTARY_TEAM_ID/NOTARY_PASSWORD or create ${NOTARY_CREDS_FILE} to skip the keychain)"
+        xcrun notarytool submit "${DMG_PATH}" \
+            --keychain-profile "${NOTARY_PROFILE}" \
+            --wait
+    fi
 
     log "Stapling notarization ticket to DMG"
     xcrun stapler staple "${DMG_PATH}"
