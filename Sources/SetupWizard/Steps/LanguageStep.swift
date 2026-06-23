@@ -84,7 +84,7 @@ struct LanguageStep: View {
                 downloadStatus
             }
 
-            Text("Jot picks the on-device model for your language automatically. You can switch languages later from Settings → Transcription.")
+            Text("Jot picks the on-device model for your language automatically. You can switch languages later from Settings → General.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

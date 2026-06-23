@@ -1142,7 +1142,7 @@ final class HelpChatStore {
     Providers [cleanup-providers]: Apple Intelligence (on-device, free).
     Cloud (OpenAI, Anthropic, Gemini) with your API key. Ollama local.
 
-    Editable prompt [cleanup-prompt]: customize in Settings → Prompts.
+    Editable prompt [cleanup-prompt]: customize in Settings → AI.
 
     ## Prompts (optional)
 
@@ -1151,7 +1151,7 @@ final class HelpChatStore {
 
     Library [prompt-library]: 30+ bundled prompts across Essentials,
     Convert, Email, Rewrite, Code, Translate. Read-only. Browse and
-    inspect at Settings → Prompts.
+    inspect at Settings → AI.
 
     Picker [prompt-picker]: open during Rewrite to pick a prompt
     instead of the default. Pinned and recently-used float to top;
@@ -1170,7 +1170,7 @@ final class HelpChatStore {
 
     Pin to picker [prompt-pin]: pin any prompt — bundled or your own —
     and it floats to the top of the picker plus a Pinned section in
-    Settings → Prompts.
+    Settings → AI.
 
     Intent classifier [articulate-intent-classifier]: used only by
     Rewrite with Voice. Routes spoken instructions into voice-

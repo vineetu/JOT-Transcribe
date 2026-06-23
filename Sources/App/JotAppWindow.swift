@@ -301,7 +301,7 @@ struct JotAppWindow: View {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                Text("Couldn’t finish downloading \(modelName). Open Settings → Transcription to retry.")
+                Text("Couldn’t finish downloading \(modelName). Open Settings → General to retry.")
                     .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
                 Spacer()
@@ -327,12 +327,11 @@ struct JotAppWindow: View {
         _ raw: AppSidebarSelection,
         advancedEnabled: Bool
     ) -> AppSidebarSelection {
-        // v1.14: Sound pane was removed from the sidebar entirely.
-        // Any persisted/incoming selection pointing at `.sound` is
-        // redirected to General so the user never lands on an orphan.
-        if case .settings(.sound) = raw {
-            return .settings(.general)
-        }
+        // v1.15: the Transcription, Sound, and Prompts panes were folded
+        // into General / AI and their enum cases removed, so there is no
+        // orphan `.sound`/`.transcription`/`.prompts` selection to
+        // redirect here anymore — all former deep-links now construct
+        // `.general` / `.ai` directly at the call site.
         guard !advancedEnabled else { return raw }
         switch raw {
         case .askJot, .settings(.vocabulary):
@@ -363,14 +362,8 @@ struct JotAppWindow: View {
                                     llmConfiguration: llmConfiguration,
                                     hotkeyRouter: hotkeyRouter
                                 )
-            case .transcription: TranscriptionPane()
             case .speakerLabels: SpeakerLabelsPane()
             case .vocabulary:    VocabularyPane()
-            case .prompts:       PromptsPane(
-                                    urlSession: urlSession,
-                                    appleIntelligence: appleIntelligence
-                                )
-            case .sound:         SoundPane()
             case .ai:            RewritePane(
                                     urlSession: urlSession,
                                     appleIntelligence: appleIntelligence

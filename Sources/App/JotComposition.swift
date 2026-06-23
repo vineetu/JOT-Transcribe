@@ -385,38 +385,34 @@ enum JotComposition {
                     )
                 case .qwen3_multilingual:
                     // Experimental Qwen3-ASR languages (Mandarin / Cantonese /
-                    // Vietnamese). Sibling conformers wrapping FluidAudio's
-                    // `Qwen3AsrManager` — NOT the `AsrManager` batch path.
-                    // Single on-disk bundle; the active language is a per-call
-                    // ISO hint (`zh`/`yue`/`vi`). No custom vocabulary (the
-                    // CTC-110M spotter is Latin/English-oriented).
+                    // Vietnamese / Arabic / Hindi / …). Wraps FluidAudio's
+                    // `Qwen3AsrManager` — NOT the `AsrManager` batch path. Single
+                    // on-disk bundle; the active language is a per-call ISO hint
+                    // (`zh`/`yue`/`hi`/…). No custom vocabulary (the CTC-110M
+                    // spotter is Latin/English-oriented).
                     //
-                    // Live preview is now ON: a `DualPipelineTranscriber` pairs
-                    // the batch `Qwen3Transcriber` (authoritative final
-                    // transcript over the FULL audio) with a
-                    // `Qwen3StreamingTranscriber` preview backed by FluidAudio's
-                    // re-transcribe sliding-window `Qwen3StreamingManager`. The
-                    // preview BORROWS the batch transcriber's loaded model
-                    // (single model load) and is DISCARDED at stop — exactly the
-                    // JA / v3 contract (preview rides on top; batch is the
-                    // truth). This avoids the streaming manager's 30 s window +
-                    // 512-token cap degrading long dictations.
+                    // BATCH-ONLY — no live preview. Qwen3-ASR is autoregressive
+                    // and applies the language only as a SOFT chat-template prompt
+                    // hint (no hard language lock, unlike Parakeet v3's CTC script
+                    // filter). On the short, growing windows a re-transcribe
+                    // streamer uses, that soft hint doesn't hold and the preview
+                    // free-associates into other languages mid-recording. So we
+                    // return the bare `Qwen3Transcriber`: no streaming session
+                    // starts (VoiceInputPipeline only streams a
+                    // `DualPipelineTranscriber`), the recording pill shows the
+                    // standard "listening" indicator, and the authoritative
+                    // transcript is the single batch decode over the FULL audio at
+                    // stop — where the language hint reliably holds. Live preview
+                    // can return here if FluidAudio ever exposes a hard language
+                    // constraint for Qwen3.
                     //
                     // Gated `@available(macOS 15, *)`; the deployment target is
                     // already macOS 15, so this is the compiler-required
                     // annotation only.
-                    let qwen3Batch = Qwen3Transcriber(
+                    return Qwen3Transcriber(
                         bundleDirectory: ModelCache.shared.cacheURL(for: modelID),
                         languageHint: language.qwen3Language,
                         spaceless: language.isSpaceless
-                    )
-                    return DualPipelineTranscriber(
-                        qwen3Batch: qwen3Batch,
-                        qwen3Preview: Qwen3StreamingTranscriber(
-                            batch: qwen3Batch,
-                            languageHint: language.qwen3Language,
-                            spaceless: language.isSpaceless
-                        )
                     )
                 case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
                     return Transcriber(modelID: modelID, language: language)
@@ -711,11 +707,16 @@ enum JotComposition {
 
         // Wire the TAP-default resolver: a TAP on the Rewrite hotkey fires
         // the user-selected default prompt (Settings → Prompts or the
-        // picker's "Set as default") through the fixed-prompt path. Returns
-        // nil when no default is set / the selection no longer resolves, so
-        // the tap falls back to the editable shared Rewrite prompt.
+        // picker's "Set as default") through the fixed-prompt path. When no
+        // user default is selected, fall back to the bundled "Rewrite"
+        // prompt — whose body is the hard-coded fixed-Rewrite system prompt
+        // (`RewritePrompt.default`). That prompt shows up in the picker like
+        // any other bundled prompt and is the rewrite default, so the fixed
+        // `.rewrite` hotkey always resolves a concrete, library-visible
+        // prompt rather than a string literal.
         rewriteController.defaultRewriteResolver = { [weak promptStore] in
-            guard let prompt = promptStore?.defaultPrompt() else { return nil }
+            guard let promptStore else { return nil }
+            let prompt = promptStore.defaultPrompt() ?? promptStore.bundledRewritePrompt()
             return (body: prompt.body, title: prompt.title)
         }
 

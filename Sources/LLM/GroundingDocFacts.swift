@@ -51,7 +51,7 @@ enum Parakeetv3DetectedLanguage: String, CaseIterable, Sendable {
 /// separately downloadable Parakeet 0.6B JA model).
 ///
 /// Keep this enum small and concept-focused. Adding a case here means
-/// "Jot has a model installable from Settings → Transcription that
+/// "Jot has a model installable from Settings → General that
 /// produces transcripts in this language." The grounding-doc generator
 /// renders prose off `.allCases`, so Ask Jot can correctly answer
 /// "does Jot support <language>?".

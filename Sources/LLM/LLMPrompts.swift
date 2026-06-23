@@ -8,9 +8,12 @@ import Foundation
 /// quality gains on generalizable tasks. Each prompt targets ~280 tokens
 /// (range 150–300).
 ///
-/// These defaults back the `transformPrompt` and `rewritePrompt` properties
-/// on `LLMConfiguration`. The "Reset to default" button in the Customize
-/// Prompt disclosure reassigns the user-editable string to these values.
+/// v1.16: these defaults are now the *only* prompts the cleanup and
+/// no-instruction-rewrite paths use — the editable prompt surfaces in
+/// Settings → AI were removed (they caused confusion). `TransformPrompt.default`
+/// is hard-coded into `LLMClient.transform(...)`; `RewritePrompt.default` is
+/// hard-coded into `LLMClient.rewrite(...)` and also ships as the bundled
+/// "Rewrite" library prompt (`prompt-library.json` id `"rewrite"`).
 enum TransformPrompt {
     static let `default`: String = """
         You are a dictation post-processor. Input is raw speech-to-text from a single speaker dictating at a keyboard cursor; output replaces the transcript verbatim in whatever app the user is typing in.
@@ -68,9 +71,10 @@ enum TransformPrompt {
 /// outright) — keeping each path's prompt focused on its single job
 /// reads cleaner to the model.
 enum RewritePrompt {
-    /// **User-editable** Rewrite prompt — drives the no-instruction
-    /// path only. Backed by `LLMConfiguration.rewritePrompt` for
-    /// Settings → AI → Customize Prompt.
+    /// Hard-coded Rewrite prompt — drives the no-instruction path only.
+    /// v1.16: no longer user-editable (the editor was removed). Used
+    /// directly by `LLMClient.rewrite(...)` and shipped as the bundled
+    /// "Rewrite" library prompt (`prompt-library.json` id `"rewrite"`).
     ///
     /// Philosophy: the selection was dictated, and the model's job
     /// is to **articulate** it — render what the speaker said aloud

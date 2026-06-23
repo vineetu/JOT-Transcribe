@@ -112,17 +112,17 @@ enum AdvancedContent {
                 expansionProse:
                     "Jot has two separate system prompts. Cleanup's prompt (Settings → AI → Customize prompt) controls how dictation transcripts get tidied up — disfluencies, punctuation, grammar. Rewrite's Shared system prompt (Settings → AI → Shared system prompt) is the foundation of every rewrite, used by Default Rewrite, Rewrite with Voice, and every prompt picked from the library. Editing one does not affect the other. "
                     + "\n\nOn top of the Shared system prompt, Jot appends a short branch-specific tendency chosen automatically by the intent classifier — voice-preserving, shape change, translation, or code — based on your voice instruction. The appended tendency is not user-editable. "
-                    + "\n\nThis is distinct from the prompt library itself (Settings → Prompts), which holds 30+ named instructions for specific outcomes (\"make this formal\", \"convert to Mermaid\", \"summarize\"). The shared system prompt sets ground rules every prompt inherits; library entries override the task. Every provider uses the same shared prompts, so edits here apply uniformly across Apple Intelligence, OpenAI, Anthropic, Gemini, and Ollama. Both editors ship with a Reset to default button."
+                    + "\n\nThis is distinct from the prompt library itself (Settings → AI), which holds 30+ named instructions for specific outcomes (\"make this formal\", \"convert to Mermaid\", \"summarize\"). The shared system prompt sets ground rules every prompt inherits; library entries override the task. Every provider uses the same shared prompts, so edits here apply uniformly across Apple Intelligence, OpenAI, Anthropic, Gemini, and Ollama. Both editors ship with a Reset to default button."
             ),
             AdvancedCardData(
                 id: "ai-prompt-library",
                 title: "Prompt library",
                 badge: "library",
-                body: "30+ bundled prompts plus your own. Pin, search, and inspect at Settings → Prompts.",
+                body: "30+ bundled prompts plus your own. Pin, search, and inspect at Settings → AI.",
                 expansionProse:
                     "The prompt library is the catalog of named instructions you can apply to selected text via the Rewrite picker. Bundled prompts ship across six categories — Essentials, Convert, Email, Rewrite, Code, Translate — and are read-only; they update only on app release. Tap any bundled row to open a detail sheet with the full body, sample input/output, voice augment hint, provider compatibility list, and the pin toggle. "
                     + "\n\nAdd your own under My prompts. Title and body are required; sample input/output are optional. ✨ Generate sample asks your configured AI provider to fill the sample fields sequentially — first a plausible input for your prompt body, then the prompt run against that input to produce the output. Phase indicators show \"Generating input…\" then \"Generating output…\"; on failure the button becomes Try again with the error inline. User prompts are stored locally on this Mac via SwiftData, never synced, never sent to a provider unless the prompt is actually used at rewrite time. "
-                    + "\n\nPin any prompt — bundled or yours — and it floats to the top of the rewrite picker and shows up in a Pinned section in Settings → Prompts. Each bundled prompt declares which providers it's been verified against; the picker may demote rows where your active provider is untested. Custom prompts default to \"works with all\"."
+                    + "\n\nPin any prompt — bundled or yours — and it floats to the top of the rewrite picker and shows up in a Pinned section in Settings → AI. Each bundled prompt declares which providers it's been verified against; the picker may demote rows where your active provider is untested. Custom prompts default to \"works with all\"."
             ),
             AdvancedCardData(
                 id: "ai-test-connection",
@@ -256,7 +256,7 @@ enum AdvancedContent {
                 body: "Three distinct sounds for recording state changes.",
                 expansionProse:
                     "Start, stop, and cancel each play a distinct tone so you know the recorder's "
-                    + "state without looking at the pill. Toggle individually in Settings → Sound."
+                    + "state without looking at the pill. Toggle individually in Settings → General."
             ),
             AdvancedCardData(
                 id: "sound-transcription-complete",

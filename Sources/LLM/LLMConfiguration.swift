@@ -38,20 +38,14 @@ final class LLMConfiguration: ObservableObject {
             "jot.transformEnabled",
             store: defaults
         )
-        self._transformPrompt = AppStorage(
-            wrappedValue: TransformPrompt.default,
-            "jot.llm.transformPrompt",
-            store: defaults
-        )
-        self._rewritePrompt = AppStorage(
-            wrappedValue: RewritePrompt.default,
-            "jot.llm.rewritePrompt",
-            store: defaults
-        )
-        // Must run BEFORE the first read of `rewritePrompt` so an
-        // un-customized user gets the new default on their next
-        // rewrite, not the legacy default cached from a prior launch.
-        RewritePromptMigration.runIfNeeded(defaults: defaults)
+        // v1.16: the editable cleanup (`jot.llm.transformPrompt`) and
+        // shared-rewrite (`jot.llm.rewritePrompt`) prompts were removed —
+        // editing them caused confusion. Cleanup now always uses
+        // `TransformPrompt.default` and Rewrite always uses
+        // `RewritePrompt.default` (the latter also surfaces as the bundled
+        // "Rewrite" library prompt). Any previously-stored customizations
+        // under those keys are intentionally ignored, not migrated; the
+        // keys are simply no longer read or written.
         LLMConfigMigration.runIfNeeded(keychain: keychain, defaults: defaults)
     }
 
@@ -89,12 +83,6 @@ final class LLMConfiguration: ObservableObject {
 
     @AppStorage(LLMConfiguration.providerKey) var provider: LLMProvider = LLMConfiguration.firstInstallDefaultProvider
     @AppStorage("jot.transformEnabled") var transformEnabled: Bool = false
-
-    @AppStorage("jot.llm.transformPrompt") var transformPrompt: String = TransformPrompt.default
-    // The Swift property name has been refactored across releases; the
-    // underlying @AppStorage key stays `"jot.llm.rewritePrompt"` so users'
-    // customized prompts survive every rename. Do NOT change the key literal.
-    @AppStorage("jot.llm.rewritePrompt") var rewritePrompt: String = RewritePrompt.default
 
     // MARK: - Per-provider storage keys
 

@@ -26,7 +26,7 @@ final class PromptStore: ObservableObject {
     static let maxRecent = 3
 
     /// Bundled, read-only catalog decoded from `Resources/prompt-library.json`
-    /// at init. Exposed so `PromptsPane` can render a "Built-in prompts"
+    /// at init. Exposed so `PromptsSettingsContent` can render a "Built-in prompts"
     /// browse section alongside the editable user list.
     let bundledPrompts: [Prompt]
     var allPrompts: [Prompt] {
@@ -45,9 +45,42 @@ final class PromptStore: ObservableObject {
     /// `@AppStorage`-equivalent key for the user-selected default Rewrite
     /// prompt. Holds a prompt id — a bundled JSON id (e.g. `"improve-writing"`)
     /// or a user prompt's UUID string. Empty / missing means "no default
-    /// selected": the TAP path falls back to the editable shared Rewrite
-    /// prompt (`LLMConfiguration.rewritePrompt`) so nothing breaks.
+    /// selected": the TAP path falls back to the bundled "Rewrite" prompt
+    /// (`bundledRewritePromptID`) so the fixed `.rewrite` hotkey resolves a
+    /// concrete, library-visible prompt rather than a string literal.
     static let defaultPromptIDKey = "jot.prompts.defaultPromptID"
+
+    /// Bundled-library id of the read-only "Rewrite" prompt. Its body is
+    /// the fixed-Rewrite system prompt (kept in sync with
+    /// `RewritePrompt.default`). The fixed `.rewrite` hotkey resolves its
+    /// instruction from this prompt when no user default is selected, so
+    /// "Rewrite" shows up in the picker like any other bundled prompt and
+    /// is the rewrite default.
+    static let bundledRewritePromptID = "rewrite"
+
+    /// The bundled "Rewrite" prompt, looked up by id. Used by the
+    /// `RewriteController` default-resolver fallback so a TAP with no
+    /// user-selected default still fires a concrete, library-visible
+    /// prompt. Falls back to a synthesized `Prompt` (carrying
+    /// `RewritePrompt.default`) on the off-chance the JSON entry is
+    /// missing, so the fixed-rewrite path never dead-ends.
+    func bundledRewritePrompt() -> Prompt {
+        if let prompt = bundledPrompts.first(where: { $0.id == Self.bundledRewritePromptID }) {
+            return prompt
+        }
+        return Prompt(
+            id: Self.bundledRewritePromptID,
+            title: "Rewrite",
+            tier: .essentials,
+            category: "Essentials",
+            tags: ["rewrite"],
+            body: RewritePrompt.default,
+            sampleInput: nil,
+            sampleOutput: nil,
+            voiceAugmentHint: nil,
+            providerCompatibility: Self.userPromptProviderCompatibility
+        )
+    }
 
     init(modelContext: ModelContext? = nil, bundle: Bundle = .main, defaults: UserDefaults = .standard) {
         self.modelContext = modelContext
@@ -292,8 +325,8 @@ final class PromptStore: ObservableObject {
         objectWillChange.send()
     }
 
-    /// Clear the default selection — the TAP path reverts to the editable
-    /// shared Rewrite prompt (`LLMConfiguration.rewritePrompt`).
+    /// Clear the default selection — the TAP path reverts to the bundled
+    /// "Rewrite" prompt (`bundledRewritePrompt()`, body == `RewritePrompt.default`).
     func clearDefault() {
         defaults.removeObject(forKey: Self.defaultPromptIDKey)
         objectWillChange.send()

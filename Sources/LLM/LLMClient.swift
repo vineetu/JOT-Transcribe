@@ -59,8 +59,7 @@ actor LLMClient {
                 provider: p,
                 apiKey: c.apiKey(for: p),
                 baseURL: c.effectiveBaseURL(for: p),
-                model: c.effectiveModel(for: p),
-                sharedInvariants: c.rewritePrompt
+                model: c.effectiveModel(for: p)
             )
         }
 
@@ -68,9 +67,9 @@ actor LLMClient {
         // 1. Override present (picker row picked) → use the override
         //    verbatim. Picked prompts are self-contained; no classifier
         //    branch, no shared invariants.
-        // 2. No instruction (⌥/ tap, default Rewrite) → use the user-
-        //    editable Rewrite prompt (`config.sharedInvariants`) verbatim.
-        //    No classifier branch is appended: the prompt already says
+        // 2. No instruction (⌥/ tap, default Rewrite) → use the hard-coded
+        //    Rewrite prompt (`RewritePrompt.default`) verbatim. No
+        //    classifier branch is appended: the prompt already says
         //    everything the `.voicePreserving` branch was saying.
         // 3. With instruction (⌥. Rewrite with Voice, picker ⌘⏎ voice-
         //    augment) → use the internal with-voice prompt + the
@@ -81,10 +80,14 @@ actor LLMClient {
         if let override = systemPromptOverride, !override.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             systemPrompt = override
         } else if instruction == nil {
-            // No-instruction path. The user-editable Rewrite prompt is
-            // the entire system prompt; the model has everything it
-            // needs to articulate the dictation.
-            systemPrompt = config.sharedInvariants
+            // No-instruction path. The hard-coded Rewrite prompt is the
+            // entire system prompt; the model has everything it needs to
+            // articulate the dictation. Editing this prompt was removed in
+            // v1.16 (it caused confusion) — the fixed `.rewrite` hotkey
+            // resolves the bundled "Rewrite" prompt (same text) as a
+            // systemPromptOverride, so this fallback is only reached if no
+            // override is supplied.
+            systemPrompt = RewritePrompt.default
         } else {
             // With-instruction path. Route the spoken instruction to a
             // branch-specific tendency block and append it to the
@@ -783,8 +786,13 @@ actor LLMClient {
             // Homophone rule appends only for cloud providers. Apple
             // Intelligence's on-device model regresses with it (reverts
             // correct fixes, over-edits). See TransformPrompt.homophoneRule.
+            //
+            // v1.16: the cleanup prompt is hard-coded to
+            // `TransformPrompt.default`. The editable cleanup prompt was
+            // removed (it caused confusion); `c.transformPrompt` is no
+            // longer read. The hardening preamble below is preserved.
             let sanitizedTransformPrompt = CleanupPromptHardening.stripControlCharacters(
-                from: c.transformPrompt
+                from: TransformPrompt.default
             )
             var systemPrompt = p == .appleIntelligence
                 ? sanitizedTransformPrompt

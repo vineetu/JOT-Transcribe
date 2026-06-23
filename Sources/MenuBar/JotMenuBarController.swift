@@ -613,7 +613,9 @@ final class JotMenuBarController: NSObject {
     /// on detection (via `TranscriberHolder.routeToSettings`) and when the
     /// persistent repairing pill is tapped.
     func openTranscriptionSettings() {
-        openUnifiedWindow(selection: .settings(.transcription))
+        // v1.15: the Transcription pane folded into General; the language
+        // picker + model-download/repair status row now live there.
+        openUnifiedWindow(selection: .settings(.general))
     }
 
     @objc private func checkForUpdates() {

@@ -425,24 +425,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Either way we anchor on a word that is ACTUALLY present; if Transform
         // reworded BOTH away, the correction is moot → drop the ask (graceful
         // fallback). Cap at 3 (anti-nag, §4).
-        let askable = result.corrections
+        let resolved = result.corrections
             .filter { $0.askCandidate }
             .compactMap { AskItem(correction: $0, in: text) }
-            .prefix(3)
 
-        guard let pill = overlay?.pillViewModel, !askable.isEmpty else {
-            // Unchanged fast path — deliver immediately.
+        guard let pill = overlay?.pillViewModel, !resolved.isEmpty else {
+            // Unchanged fast path — deliver immediately (zero added latency; no
+            // ask candidates means no need to touch the CorrectionStore actor).
             Task { @MainActor in await delivery.deliver(text) }
             return
         }
 
-        runAskSequence(
-            staged: text,
-            candidates: Array(askable),
-            index: 0,
-            delivery: delivery,
-            pill: pill
-        )
+        // Suppression GATE (activates the previously-dead CorrectionStore
+        // consumers `keyboardSuppressedPairs()` / `isBlockSuppressed(...)`, which
+        // had ZERO callers on macOS). Before asking, drop any pair the owner has
+        // already rejected — kept the original ≥ `keyboardKeepSuppressThreshold`
+        // times on a BLOCKED pair, or tapped "Stop asking". Otherwise the SAME
+        // heard→term correction re-asks on every recording. Mirrors jot-mobile's
+        // `CorrectionAsksPublisher` (the `keyboardSuppressed.contains(pairKey(r))`
+        // filter, ~lines 41 & 65). The actor read is async, so we hop off the
+        // synchronous choke point; the gate's non-ask default is just "deliver
+        // the staged text as-is" (the gate already applied/kept per its decision),
+        // so a fully-suppressed batch takes the same fast path. Suppression is
+        // keyboard-only — the transcript review reads neither signal.
+        Task { @MainActor in
+            let suppressed = await CorrectionStore.shared.keyboardSuppressedPairs()
+            let askable = resolved.filter { !suppressed.contains($0.suppressionKey) }.prefix(3)
+
+            guard !askable.isEmpty else {
+                // Every candidate is suppressed → no ask. Deliver the staged text
+                // unchanged (matches the no-ask default: keep the gate's outcome).
+                await delivery.deliver(text)
+                return
+            }
+
+            runAskSequence(
+                staged: text,
+                candidates: Array(askable),
+                index: 0,
+                delivery: delivery,
+                pill: pill
+            )
+        }
     }
 
     /// One resolvable ask, anchored on a word currently PRESENT in the staged
@@ -468,6 +492,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 return nil
             }
         }
+
+        /// `"<normalized-original>|<lowercased-term>"` — the exact key shape
+        /// `CorrectionStore.keyboardSuppressedPairs()` emits, so the gate above
+        /// can test membership. Must match the store's `normalize` (lowercase +
+        /// trim the same punctuation set) and term-lowercasing, mirroring
+        /// jot-mobile's `CorrectionAsksPublisher.pairKey`.
+        var suppressionKey: String {
+            "\(AppDelegate.normalizeForStore(from))|\(term.lowercased())"
+        }
+    }
+
+    /// Mirrors `CorrectionStore.normalize` so suppression-pair keys align with
+    /// the store's normalized `originalWord`. (The store is an actor and keeps
+    /// this private, so we duplicate the one-liner here — same as jot-mobile's
+    /// `CorrectionAsksPublisher.normalize`.)
+    nonisolated static func normalizeForStore(_ s: String) -> String {
+        s.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: " .,!?;:\"'()"))
     }
 
     /// Resolve the ask candidates SEQUENTIALLY in the one pill (§4), mutating the
@@ -546,11 +587,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             onDismiss: {
                 // Keep-original → the text should hold the ORIGINAL word. For an
                 // applied candidate, splice term→from; for a blocked one it's
-                // already the original. Write nothing to the store (a passive
-                // ignore is not a rejection, §3).
+                // already the original.
                 let kept = c.applied
                     ? Self.replaceWholeWord(c.term, with: c.from, in: staged)
                     : staged
+                // PERSIST the reject so this pair stops re-asking every recording
+                // (activates the previously-dead suppression path; mirrors
+                // CorrectionReviewModel.swift's only writer). An explicit keep IS a
+                // rejection here (unlike the iOS publisher's passive-ignore, which
+                // had a separate transcript-review surface to learn from):
+                //   * BLOCKED pair (common-word near-miss): `net` ignores keeps, so
+                //     count it via `noteBlockedKeep` — at the threshold the gate
+                //     above suppresses it.
+                //   * APPLIED pair (silent-OOV): the gate changed the text and the
+                //     owner reverted it → record the negative signal via `revert`
+                //     (net ≤ −1 demotes any learned override too).
+                Task {
+                    if c.applied {
+                        await CorrectionStore.shared.revert(originalWord: c.from, term: c.term)
+                    } else {
+                        await CorrectionStore.shared.noteBlockedKeep(originalWord: c.from, term: c.term)
+                    }
+                }
                 next(kept)
             },
             onAccept: { [weak delivery] in
@@ -558,9 +616,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 // PASTE the accumulated gate defaults (staged as-is — prior asks'
                 // edits are already in it) IMMEDIATELY and END the sequence. Do
                 // NOT advance through the remaining asks' countdowns; "automatically
-                // paste it" means one shot, not a wait-through. Nothing learned.
-                // resolveAsk is idempotent so this is the single terminal deliver
-                // (§8 M4/M5).
+                // paste it" means one shot, not a wait-through.
+                // Timeout-as-keep is the same "keep original" verdict as onDismiss,
+                // so persist it identically — otherwise an ignored ask re-surfaces
+                // forever. Only the CURRENT ask is recorded (the remaining asks in
+                // the queue were never shown, so the owner made no verdict on them).
+                if c.applied {
+                    Task { await CorrectionStore.shared.revert(originalWord: c.from, term: c.term) }
+                } else {
+                    Task { await CorrectionStore.shared.noteBlockedKeep(originalWord: c.from, term: c.term) }
+                }
                 Task { @MainActor in await delivery?.deliver(staged) }
             }
         )

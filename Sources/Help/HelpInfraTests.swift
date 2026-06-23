@@ -432,29 +432,33 @@ enum InfoCircleAnchorRegistry {
         ("GeneralPane.runSetupWizardAgain",    "resetting-jot"),
         // GeneralPane.donationReminder has helpAnchor: nil
 
-        // TranscriptionPane
-        ("TranscriptionPane.transcriptionLanguage",       "transcription-language"),
-        ("TranscriptionPane.autoPaste",                   "dictation"),
-        ("TranscriptionPane.pressReturnAfterPasting",     "dictation"),
-        ("RewritePane.cleanUpTranscriptWithAI",        "cleanup"),
-        ("PromptsPane.cleanupPrompt",                  "cleanup-prompt"),
-        ("TranscriptionPane.keepLastTranscriptOnClipboard", "dictation"),
+        // GeneralPane — Transcription language + dictation delivery
+        // (relocated from the removed TranscriptionPane, v1.15 IA collapse)
+        ("GeneralPane.transcriptionLanguage",       "transcription-language"),
+        ("GeneralPane.autoPaste",                   "dictation"),
+        ("GeneralPane.pressReturnAfterPasting",     "dictation"),
+        ("GeneralPane.keepLastTranscriptOnClipboard", "dictation"),
 
-        // RewritePane
+        // AI pane (RewritePane) — provider/auth/test + folded-in Prompts.
+        // v1.16: the editable cleanup-prompt and shared-rewrite-prompt
+        // InfoPopoverButtons were removed (the prompts are now hard-coded),
+        // so their `cleanup-prompt` / `ai-editable-prompts` anchor entries
+        // are dropped here. The `cleanup` toggle popover stays.
+        ("RewritePane.cleanUpTranscriptWithAI",        "cleanup"),
         ("RewritePane.provider",           "ai-cloud-providers"),
         ("RewritePane.baseURL",            "ai-custom-base-url"),
         ("RewritePane.model",              "ai-cloud-providers"),
         ("RewritePane.apiKey",             "ai-custom-base-url"),
         ("RewritePane.testConnection",     "ai-test-connection"),
-        ("RewritePane.sharedSystemPrompt", "ai-editable-prompts"),
 
-        // SoundPane — 5 chime rows + volume slider
-        ("SoundPane.recordingStart",          "sound-recording-chimes"),
-        ("SoundPane.recordingStop",           "sound-recording-chimes"),
-        ("SoundPane.recordingCanceled",       "sound-recording-chimes"),
-        ("SoundPane.transcriptionComplete",   "sound-transcription-complete"),
-        ("SoundPane.error",                   "sound-error-chime"),
-        ("SoundPane.chimeVolume",             "sound-recording-chimes"),
+        // GeneralPane — Sound (relocated from the removed SoundPane):
+        // 5 chime rows + volume slider
+        ("GeneralPane.sound.recordingStart",          "sound-recording-chimes"),
+        ("GeneralPane.sound.recordingStop",           "sound-recording-chimes"),
+        ("GeneralPane.sound.recordingCanceled",       "sound-recording-chimes"),
+        ("GeneralPane.sound.transcriptionComplete",   "sound-transcription-complete"),
+        ("GeneralPane.sound.error",                   "sound-error-chime"),
+        ("GeneralPane.sound.chimeVolume",             "sound-recording-chimes"),
 
         // ShortcutsPane — header + 5 ForEach bindings + Cancel recording
         ("ShortcutsPane.globalShortcuts",     "modifier-required"),

@@ -248,11 +248,11 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "You pick a language, not a model — Jot loads the right transcription model for you (Settings → Transcription, or during setup). English uses an English-optimized model for best accuracy; the European languages share Jot's multilingual model; Japanese is a separate download. Only the active model is kept hot in memory.",
+                        prose: "You pick a language, not a model — Jot loads the right transcription model for you (Settings → General, or during setup). English uses an English-optimized model for best accuracy; the European languages share Jot's multilingual model; Japanese is a separate download. Only the active model is kept hot in memory.",
                         warning: "Custom Vocabulary applies only to European-language transcription. The Japanese model uses a different tokenizer, so vocabulary boosts are not applied when Japanese is selected.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
-                            pane: .transcription,
+                            pane: .general,
                             anchor: "transcription-language"
                         )
                     )
@@ -263,10 +263,10 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Pick the language you speak in Settings → Transcription; Jot downloads and loads the right on-device model automatically. English uses Parakeet v2; 25 European languages share Parakeet v3 with a script hint; Japanese is a separate model. You never choose a model directly — the exact model in use is shown in About → Acknowledgements.",
+                        prose: "Pick the language you speak in Settings → General; Jot downloads and loads the right on-device model automatically. English uses Parakeet v2; 25 European languages share Parakeet v3 with a script hint; Japanese is a separate model. You never choose a model directly — the exact model in use is shown in About → Acknowledgements.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
-                            pane: .transcription,
+                            pane: .general,
                             anchor: "transcription-language"
                         )
                     )
@@ -322,7 +322,7 @@ struct BasicsContent {
                         prose: "The default cleanup prompt removes fillers, fixes grammar and punctuation, and preserves your voice. Power users can rewrite it; a reset-to-default restores the shipped version.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
-                            pane: .prompts,
+                            pane: .ai,
                             anchor: "cleanup-prompt"
                         )
                     )
@@ -360,10 +360,10 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "30+ bundled prompts ship with Jot, grouped into Essentials, Convert, Email, Rewrite, Code, and Translate. Tap a row to read the full prompt, see sample input/output, and check provider compatibility. Bundled prompts are read-only; the library lives in Settings → Prompts.",
+                        prose: "30+ bundled prompts ship with Jot, grouped into Essentials, Convert, Email, Rewrite, Code, and Translate. Tap a row to read the full prompt, see sample input/output, and check provider compatibility. Bundled prompts are read-only; the library lives in Settings → AI.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
-                            pane: .prompts,
+                            pane: .ai,
                             anchor: "prompt-library"
                         )
                     )
@@ -415,10 +415,10 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Add your own prompts under Settings → Prompts → 'My prompts'. Title and body are required; sample input/output are optional. ✨ Generate sample asks your configured AI provider to fill the samples — first a plausible input, then run the prompt against it for the output. User prompts stay local (SwiftData on this Mac).",
+                        prose: "Add your own prompts under Settings → AI → 'My prompts'. Title and body are required; sample input/output are optional. ✨ Generate sample asks your configured AI provider to fill the samples — first a plausible input, then run the prompt against it for the output. User prompts stay local (SwiftData on this Mac).",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
-                            pane: .prompts,
+                            pane: .ai,
                             anchor: "user-prompts"
                         )
                     )
@@ -429,7 +429,7 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "Pin any prompt — bundled or user-authored — and it floats to the top of the picker plus a Pinned section in Settings → Prompts. Pin/unpin is available on every row and inside each prompt's detail sheet."
+                        prose: "Pin any prompt — bundled or user-authored — and it floats to the top of the picker plus a Pinned section in Settings → AI. Pin/unpin is available on every row and inside each prompt's detail sheet."
                     )
                 ),
                 SubRow(

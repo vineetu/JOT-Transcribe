@@ -223,20 +223,15 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_eou_streaming:
+             .tdt_0_6b_v3_eou_streaming,
+             // Qwen3 is BATCH-ONLY in Jot: no live preview (the autoregressive
+             // model's soft language hint drifts on short streaming windows), so
+             // it fetches / caches only its single batch bundle. `ModelCache`
+             // / `ModelDownloader` special-case Qwen3 before this branch anyway.
+             .qwen3_multilingual:
             return false
         case .tdt_0_6b_v3_nemotron_streaming,
-             .nemotron_en,
-             // Qwen3 now has a live preview driven by FluidAudio's
-             // `Qwen3StreamingManager`, so it advertises streaming support. The
-             // preview REUSES the single Qwen3 batch bundle — there is NO
-             // separate streaming bundle on disk. `streamingPartialCacheURL`
-             // still returns `nil` for Qwen3, and `ModelCache.isCached` /
-             // `ModelDownloader.performDownload` special-case Qwen3 BEFORE the
-             // generic `supportsStreaming` branch (single-bundle download +
-             // batch-only presence), so this flag does not trigger a phantom
-             // second-bundle fetch.
-             .qwen3_multilingual:
+             .nemotron_en:
             return true
         }
     }
@@ -308,7 +303,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         case .nemotron_en:
             return "English-only. Single model handles both the final transcript and the live preview in the pill. Smaller and faster than option 1; best on read-style English; v2/v3 batch is more accurate on noisy/conversational audio. Doesn't support custom vocabulary — switch to Parakeet v3 if you rely on boosted terms."
         case .qwen3_multilingual:
-            return "Experimental. One on-device model for Mandarin, Cantonese, and Vietnamese. Emits native punctuation and CJK characters. Shows a live preview in the pill while you speak; the final transcript is a full batch pass. Doesn't support custom vocabulary."
+            return "Experimental. One on-device model covering many languages Parakeet can't — Mandarin, Cantonese, Vietnamese, Arabic, Hindi, Korean, and more. Emits native punctuation and scripts. No live preview for these languages: the recording pill shows a listening indicator and the transcript appears when you stop (a single batch pass). Doesn't support custom vocabulary."
         case .tdt_0_6b_v3, .tdt_0_6b_v3_nemotron_streaming, .tdt_0_6b_ja:
             return nil
         }
