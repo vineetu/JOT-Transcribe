@@ -292,36 +292,34 @@ public actor Transcriber: Transcribing {
             }
         }
 
-        // Post-transcription cleanup chain (ParagraphSegmenter →
-        // FillerWordCleaner → NumberNormalizer) is gated to Parakeet v2
-        // only. v3 and newer models (v3 default, v3 int4, v3+Nemotron,
-        // Japanese, Nemotron-only) already produce well-cased,
-        // filler-trimmed, paragraph-aware transcripts natively from
-        // their RNN-T/TDT heads — running the regex chain on top
-        // double-edits and occasionally regresses correct casing.
-        // v2 still benefits because its training is older and emits
-        // rawer text.
-        // v1.13.1: `PostProcessing.apply()` is now scoped to v2 alongside
-        // the rest of the deterministic cleanup chain. v3+ models (v3
-        // default, v3 int4, v3+Nemotron, v3+EOU, Japanese, Nemotron-only)
-        // already emit well-cased, filler-trimmed transcripts from their
-        // TDT/RNN-T heads — pure pass-through is the right default.
+        // Paragraph segmentation (deterministic, pause-based — jot-mobile parity)
+        // runs for ANY model that returns per-word token timings: Parakeet v2 AND
+        // v3. v3 emits well-cased, punctuated text but NOT paragraph breaks, so
+        // without this its transcripts were one undifferentiated block. The
+        // segmenter only inserts `\n\n` (1.4s pause after sentence-final
+        // punctuation, with safety caps + timing verification) — it never
+        // rewrites words, so it's safe to run on v3's already-clean text.
+        // Nemotron / Qwen3 emit plain text with NO timings, so `tokenTimings` is
+        // nil and they remain a single block (deterministic-only by design).
+        //
+        // The v2-ONLY regex cleanup chain (FillerWordCleaner → NumberNormalizer →
+        // PostProcessing) stays scoped to v2: v3 already emits well-cased,
+        // filler-trimmed text and the regex pass would double-edit / regress its
+        // casing.
+        var segmented = transcriptText
+        if let timings = result.tokenTimings {
+            segmented = ParagraphSegmenter.segment(
+                rescoredText: segmented,
+                tokenTimings: timings
+            )
+        }
         let cleaned: String
         if modelID == .tdt_0_6b_v2_en_streaming {
-            let segmented: String
-            if let timings = result.tokenTimings {
-                segmented = ParagraphSegmenter.segment(
-                    rescoredText: transcriptText,
-                    tokenTimings: timings
-                )
-            } else {
-                segmented = transcriptText
-            }
             let dedupped = FillerWordCleaner.clean(segmented)
             let normalized = NumberNormalizer.normalize(dedupped)
             cleaned = PostProcessing.apply(normalized, language: modelID)
         } else {
-            cleaned = transcriptText
+            cleaned = segmented
         }
         return TranscriptionResult(
             text: cleaned,

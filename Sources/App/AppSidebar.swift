@@ -51,10 +51,11 @@ struct AppSidebar: View {
                 .tag(AppSidebarSelection.home)
 
             DisclosureGroup(isExpanded: $settingsExpanded) {
-                // v1.14 sidebar order: General → Shortcuts → Transcription
-                // → Vocabulary (Advanced only) → AI → Prompts. Sound was
-                // removed entirely — per-event chime tuning isn't useful
-                // to enough users to warrant a top-level pane.
+                // v1.15 sidebar order: General → Shortcuts → Vocabulary
+                // (Advanced only) → AI. The standalone Transcription, Sound,
+                // and Prompts panes were folded into other panes —
+                // Transcription + Sound into General, Prompts into AI — so
+                // the sidebar collapses from 7 sub-rows to 4.
                 subRow(
                     title: "General",
                     systemImage: "slider.horizontal.3",
@@ -64,11 +65,6 @@ struct AppSidebar: View {
                     title: "Shortcuts",
                     systemImage: "command",
                     tag: .settings(.shortcuts)
-                )
-                subRow(
-                    title: "Transcription",
-                    systemImage: "waveform.badge.mic",
-                    tag: .settings(.transcription)
                 )
                 if Features.speakerLabels {
                     subRow(
@@ -95,11 +91,6 @@ struct AppSidebar: View {
                     title: "AI",
                     systemImage: "sparkles",
                     tag: .settings(.ai)
-                )
-                subRow(
-                    title: "Prompts",
-                    systemImage: "text.bubble",
-                    tag: .settings(.prompts)
                 )
             } label: {
                 // v1.14: clicking the Settings row toggles the disclosure;

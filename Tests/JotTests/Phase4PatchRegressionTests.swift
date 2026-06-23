@@ -31,8 +31,8 @@ struct Phase4PatchRegressionTests {
     /// Two installed models, primary = .tdt_0_6b_v3. Deleting the
     /// active primary must transfer primary to the remaining installed
     /// model BEFORE the cache is removed. We exercise the algorithm
-    /// `TranscriptionPane.delete(_:)` runs by composing
-    /// `TranscriptionPane.pickFallbackPrimary(excluding:installed:)`
+    /// `GeneralPane.delete(_:)` runs by composing
+    /// `GeneralPane.pickFallbackPrimary(excluding:installed:)`
     /// (the static helper backing the production `delete` path) with
     /// `TranscriberHolder.setPrimary(_:)`.
     @Test func deleteActiveModel_transfersPrimaryToFallback() async throws {
@@ -52,7 +52,7 @@ struct Phase4PatchRegressionTests {
         // about to be deleted. Pre-fix `delete(_:)` skipped this step
         // entirely and removed the cache while primary still pointed at
         // the deleted model — the next cold load failed with model-missing.
-        let fallback = TranscriptionPane.pickFallbackPrimary(
+        let fallback = GeneralPane.pickFallbackPrimary(
             excluding: .tdt_0_6b_v3,
             installed: holder.installedModelIDs
         )
@@ -67,7 +67,7 @@ struct Phase4PatchRegressionTests {
     /// (i.e. user is deleting the JA model while v3 is also installed).
     /// Documents the deterministic preference contract.
     @Test func pickFallbackPrefersV3WhenInstalled() {
-        let result = TranscriptionPane.pickFallbackPrimary(
+        let result = GeneralPane.pickFallbackPrimary(
             excluding: .tdt_0_6b_ja,
             installed: [.tdt_0_6b_v3, .tdt_0_6b_ja]
         )
@@ -78,7 +78,7 @@ struct Phase4PatchRegressionTests {
     /// `canDelete(_:)` already gates the Delete button so the View
     /// never reaches the `delete(_:)` body in this state.
     @Test func pickFallbackReturnsNilWhenNoOtherInstalled() {
-        let result = TranscriptionPane.pickFallbackPrimary(
+        let result = GeneralPane.pickFallbackPrimary(
             excluding: .tdt_0_6b_v3,
             installed: [.tdt_0_6b_v3]
         )

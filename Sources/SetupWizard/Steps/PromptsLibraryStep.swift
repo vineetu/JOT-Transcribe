@@ -63,7 +63,7 @@ struct PromptsLibraryStep: View {
                 teaserStrip
             }
 
-            Text("Need your own? You can also save custom prompts anytime in Settings → Prompts.")
+            Text("Need your own? You can also save custom prompts anytime in Settings → AI.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

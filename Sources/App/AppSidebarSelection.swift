@@ -17,19 +17,22 @@ public enum AppSidebarSelection: Hashable {
 }
 
 /// The panes inside the expanded Settings group. Order here matches the
-/// order the sidebar renders (General → Transcription → Vocabulary →
-/// Prompts → Sound → AI → Shortcuts).
+/// order the sidebar renders (General → Vocabulary → AI → Shortcuts).
+///
+/// v1.15 IA collapse: the standalone `transcription`, `sound`, and
+/// `prompts` panes were folded into other panes — Transcription + Sound →
+/// General, Prompts → AI. Their enum cases were removed; all former
+/// deep-links now resolve to `.general` / `.ai` (see `JotAppWindow`
+/// routing, `AppSidebar` rows, and the Help `BasicsContent` `pane:`
+/// targets).
 public enum SettingsSubsection: Hashable {
     case general
-    case transcription
     case vocabulary
-    case prompts
-    case sound
     case ai
     case shortcuts
     /// Speaker Labels piece A: identifies the device-owner voice and labels
-    /// other speakers in meeting recordings. Placed between Transcription
-    /// and Vocabulary in the sidebar.
+    /// other speakers in meeting recordings. Gated behind
+    /// `Features.speakerLabels` (currently off); the card lives in General.
     case speakerLabels
 }
 

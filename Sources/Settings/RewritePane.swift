@@ -7,7 +7,6 @@ import SwiftUI
 struct RewritePane: View {
     @EnvironmentObject private var config: LLMConfiguration
     @Environment(\.helpNavigator) private var navigator
-    @Environment(\.setSidebarSelection) private var setSidebarSelection
     @State private var apiKeyInput: String = ""
     @State private var testStatus: TestStatus = .idle
     @State private var isTesting = false
@@ -168,70 +167,6 @@ struct RewritePane: View {
                     }
                 }
 
-                Section("Cleanup") {
-                    HStack {
-                        Toggle("Clean up transcript with AI", isOn: $config.transformEnabled)
-                            .disabled(!config.isMinimallyConfigured)
-                            .help("Sends transcript text to your LLM provider to remove filler words and fix grammar. Configure a provider in AI settings.")
-                        Spacer()
-                        InfoPopoverButton(
-                            title: "Clean up transcript with AI",
-                            body: "Sends the raw transcript to your configured LLM for light cleanup — filler removal, grammar, list detection — while preserving your voice. When on: every transcript is transformed before delivery.",
-                            helpAnchor: "cleanup"
-                        )
-                    }
-                    // The editable cleanup prompt now lives in the unified
-                    // Prompts panel (Settings → Prompts → Cleanup) alongside
-                    // every other prompt. The toggle stays here because it
-                    // governs the automatic post-dictation behavior.
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Edit the cleanup prompt in the Prompts pane.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button {
-                            setSidebarSelection(.settings(.prompts))
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("Open Prompts")
-                                Image(systemName: "arrow.right")
-                            }
-                        }
-                        .buttonStyle(.link)
-                    }
-                }
-
-                Section("Rewrite") {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Configure Rewrite shortcuts in the Shortcuts pane.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button {
-                            setSidebarSelection(.settings(.shortcuts))
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text("Open Shortcuts")
-                                Image(systemName: "arrow.right")
-                            }
-                        }
-                        .buttonStyle(.link)
-                    }
-
-                    CustomizePromptDisclosure(
-                        label: "Shared system prompt",
-                        text: $config.rewritePrompt,
-                        defaultValue: RewritePrompt.default,
-                        info: .init(
-                            title: "Shared system prompt",
-                            body: "The foundation of every Rewrite call. When you trigger Rewrite or Rewrite with Voice, Jot sends this text plus a short branch-specific tendency it picks automatically based on your instruction — voice-preserving, shape change, translation, or code. Cleanup has its own separate prompt for transcripts; editing this here does not affect Cleanup. Edit with care — malformed prompts can break Rewrite.",
-                            helpAnchor: "ai-editable-prompts"
-                        )
-                    )
-                }
-
                 Section("Test") {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -284,6 +219,20 @@ struct RewritePane: View {
                         }
                     }
                 }
+
+                // v1.15: the standalone Prompts pane folded into AI. v1.16:
+                // the editable cleanup / shared-rewrite prompt editors were
+                // removed (they caused confusion) — cleanup now hard-codes
+                // `TransformPrompt.default` and rewrite hard-codes
+                // `RewritePrompt.default`. These sections now cover just the
+                // Cleanup feature toggle + the collapsible Prompts library
+                // (Pinned / My prompts / built-ins incl. Rewrite + Improve
+                // writing). Rendered without their own Form so they share
+                // this pane's grouped chrome.
+                PromptsSettingsContent(
+                    urlSession: urlSession,
+                    appleIntelligence: appleIntelligence
+                )
             }
             .formStyle(.grouped)
             .onAppear { consumePendingSettingsFieldAnchor(with: proxy) }

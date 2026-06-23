@@ -97,51 +97,72 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
 
     public var id: String { rawValue }
 
-    /// Localized, human-readable language name for the picker rows. **No model
-    /// name, no footprint, no badge** (design §5.2/§5.3 — model identity is
-    /// surfaced only in About).
-    public var displayName: String {
+    /// English name + native endonym. Native == English where there is no
+    /// distinct endonym in another script/spelling (English).
+    private var names: (english: String, native: String) {
         switch self {
-        case .english:    return "English"
-        case .japanese:   return "日本語 (Japanese)"
-        case .mandarin:   return "中文 (Mandarin) — Experimental"
-        case .cantonese:  return "粵語 (Cantonese) — Experimental"
-        case .vietnamese: return "Tiếng Việt (Vietnamese) — Experimental"
-        case .arabic:      return "العربية (Arabic) — Experimental"
-        case .persian:     return "فارسی (Persian) — Experimental"
-        case .korean:      return "한국어 (Korean) — Experimental"
-        case .thai:        return "ไทย (Thai) — Experimental"
-        case .turkish:     return "Türkçe (Turkish) — Experimental"
-        case .hindi:       return "हिन्दी (Hindi) — Experimental"
-        case .indonesian:  return "Bahasa Indonesia (Indonesian) — Experimental"
-        case .malay:       return "Bahasa Melayu (Malay) — Experimental"
-        case .filipino:    return "Filipino — Experimental"
-        case .macedonian:  return "Македонски (Macedonian) — Experimental"
-        case .spanish:    return "Español (Spanish)"
-        case .french:     return "Français (French)"
-        case .german:     return "Deutsch (German)"
-        case .italian:    return "Italiano (Italian)"
-        case .portuguese: return "Português (Portuguese)"
-        case .romanian:   return "Română (Romanian)"
-        case .polish:     return "Polski (Polish)"
-        case .czech:      return "Čeština (Czech)"
-        case .slovak:     return "Slovenčina (Slovak)"
-        case .slovenian:  return "Slovenščina (Slovenian)"
-        case .croatian:   return "Hrvatski (Croatian)"
-        case .bosnian:    return "Bosanski (Bosnian)"
-        case .russian:    return "Русский (Russian)"
-        case .ukrainian:  return "Українська (Ukrainian)"
-        case .belarusian: return "Беларуская (Belarusian)"
-        case .bulgarian:  return "Български (Bulgarian)"
-        case .serbian:    return "Српски (Serbian)"
-        case .danish:     return "Dansk (Danish)"
-        case .dutch:      return "Nederlands (Dutch)"
-        case .finnish:    return "Suomi (Finnish)"
-        case .greek:      return "Ελληνικά (Greek)"
-        case .hungarian:  return "Magyar (Hungarian)"
-        case .swedish:    return "Svenska (Swedish)"
+        case .english:    return ("English", "English")
+        case .japanese:   return ("Japanese", "日本語")
+        case .mandarin:   return ("Mandarin", "中文")
+        case .cantonese:  return ("Cantonese", "粵語")
+        case .vietnamese: return ("Vietnamese", "Tiếng Việt")
+        case .arabic:     return ("Arabic", "العربية")
+        case .persian:    return ("Persian", "فارسی")
+        case .korean:     return ("Korean", "한국어")
+        case .thai:       return ("Thai", "ไทย")
+        case .turkish:    return ("Turkish", "Türkçe")
+        case .hindi:      return ("Hindi", "हिन्दी")
+        case .indonesian: return ("Indonesian", "Bahasa Indonesia")
+        case .malay:      return ("Malay", "Bahasa Melayu")
+        case .filipino:   return ("Filipino", "Filipino")
+        case .macedonian: return ("Macedonian", "Македонски")
+        case .spanish:    return ("Spanish", "Español")
+        case .french:     return ("French", "Français")
+        case .german:     return ("German", "Deutsch")
+        case .italian:    return ("Italian", "Italiano")
+        case .portuguese: return ("Portuguese", "Português")
+        case .romanian:   return ("Romanian", "Română")
+        case .polish:     return ("Polish", "Polski")
+        case .czech:      return ("Czech", "Čeština")
+        case .slovak:     return ("Slovak", "Slovenčina")
+        case .slovenian:  return ("Slovenian", "Slovenščina")
+        case .croatian:   return ("Croatian", "Hrvatski")
+        case .bosnian:    return ("Bosnian", "Bosanski")
+        case .russian:    return ("Russian", "Русский")
+        case .ukrainian:  return ("Ukrainian", "Українська")
+        case .belarusian: return ("Belarusian", "Беларуская")
+        case .bulgarian:  return ("Bulgarian", "Български")
+        case .serbian:    return ("Serbian", "Српски")
+        case .danish:     return ("Danish", "Dansk")
+        case .dutch:      return ("Dutch", "Nederlands")
+        case .finnish:    return ("Finnish", "Suomi")
+        case .greek:      return ("Greek", "Ελληνικά")
+        case .hungarian:  return ("Hungarian", "Magyar")
+        case .swedish:    return ("Swedish", "Svenska")
         }
     }
+
+    /// English name — the stable sort key and the leading half of `displayName`.
+    public var englishName: String { names.english }
+
+    /// Native endonym (may be in a non-Latin / RTL script).
+    public var nativeName: String { names.native }
+
+    /// Picker row label. Uniform left-to-right **"English — native"** (just the
+    /// English name when the endonym is identical, e.g. English / Filipino). RTL
+    /// scripts (Arabic, Persian) render within the LTR row — we deliberately do
+    /// NOT flip the row direction, so every language reads the same way. The
+    /// "Experimental" marker is NOT in this string — it's a separate badge in the
+    /// picker row (see `isExperimental`).
+    public var displayName: String {
+        let n = names
+        return n.native == n.english ? n.english : "\(n.english) — \(n.native)"
+    }
+
+    /// Experimental (Qwen3-ASR) languages — surfaced with a small badge in the
+    /// picker rather than a text suffix. Derived from `qwen3Language` so the two
+    /// can't drift.
+    public var isExperimental: Bool { qwen3Language != nil }
 
     /// The model the language picker resolves to. **English is tier-aware**:
     /// Nemotron on eligible hardware (≥ M2 Pro AND ≥ 16 GB), else v2. Japanese
@@ -277,21 +298,15 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
-    /// Picker presentation order: English and Japanese first (the two model
-    /// forks), then the European languages alphabetically by display name.
+    /// Picker presentation order: every language sorted alphabetically by its
+    /// ENGLISH name. With type-to-search in the picker, a single predictable
+    /// alphabetical list beats hand-pinned groupings (the user can always type
+    /// to jump). Experimental languages are interleaved alphabetically and
+    /// marked with a badge, not segregated.
     public static var presentationOrder: [LanguageChoice] {
-        // English and Japanese first (the two original model forks), then the
-        // experimental Qwen3 languages grouped together, then the European
-        // languages alphabetically by display name.
-        let leading: [LanguageChoice] = [
-            .english, .japanese, .mandarin, .cantonese, .vietnamese,
-            .arabic, .persian, .korean, .thai, .turkish, .hindi,
-            .indonesian, .malay, .filipino, .macedonian,
-        ]
-        let european = LanguageChoice.allCases
-            .filter { !leading.contains($0) }
-            .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-        return leading + european
+        LanguageChoice.allCases.sorted {
+            $0.englishName.localizedCaseInsensitiveCompare($1.englishName) == .orderedAscending
+        }
     }
 
     // MARK: - System-locale resolution (design §5.1)

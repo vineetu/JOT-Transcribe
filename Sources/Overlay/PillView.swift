@@ -395,13 +395,12 @@ private struct RecordingContent: View {
     var body: some View {
         HStack(spacing: 10) {
             PulsingDot(color: Color(nsColor: .systemRed), reduceMotion: reduceMotion)
-            // Compact amplitude trail to the right of the dot. Always
-            // visible while recording — the streaming text region sits
-            // alongside, not on top of, the audio meter so the user
-            // always sees that the mic is hearing them.
-            AmplitudeTrail(reduceMotion: reduceMotion)
-                .frame(width: 56, height: 22)
             if let text = trimmedPartial {
+                // Streaming WITH text: a compact meter beside the live transcript
+                // (the transcript is the primary signal, the meter just confirms
+                // the mic is live).
+                AmplitudeTrail(reduceMotion: reduceMotion)
+                    .frame(width: 56, height: 22)
                 // Truncated trailing-fit text — the latest words win
                 // when the partial overflows the available width.
                 Text(text)
@@ -412,14 +411,16 @@ private struct RecordingContent: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .transition(.opacity)
             } else if isStreamingSession {
-                // Streaming session, partial not arrived yet — keep the
-                // text slot reserved (empty) so the first partial lands
-                // here without a brief waveform flash in between.
+                // Streaming session, first partial not arrived yet — compact meter
+                // + a reserved (empty) text slot so the partial lands here without
+                // a waveform flash in between.
+                AmplitudeTrail(reduceMotion: reduceMotion)
+                    .frame(width: 56, height: 22)
                 Spacer(minLength: 0)
             } else {
-                // Non-streaming primary — fill the flexible space with a
-                // wider waveform so the user sees something alive in the
-                // place where a streaming session would show transcript.
+                // Non-streaming (e.g. the experimental Qwen3 languages — no live
+                // preview): a SINGLE waveform spanning the pill is the whole
+                // "we're listening" indicator. One meter, not two.
                 AmplitudeTrail(reduceMotion: reduceMotion)
                     .frame(maxWidth: .infinity, maxHeight: 22)
                     .transition(.opacity)
@@ -445,26 +446,12 @@ private struct ExpandedRecordingContent: View {
     let streamingPartial: String?
     let reduceMotion: Bool
 
-    private var lines: [String] {
-        guard let text = streamingPartial?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty
-        else { return [] }
-        // Split on sentence-terminal punctuation followed by whitespace.
-        // Keep the punctuation so each line reads naturally.
-        var result: [String] = []
-        var current = ""
-        for ch in text {
-            current.append(ch)
-            if (ch == "." || ch == "!" || ch == "?") {
-                let trimmed = current.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty { result.append(trimmed) }
-                current = ""
-            }
-        }
-        let tail = current.trimmingCharacters(in: .whitespaces)
-        if !tail.isEmpty { result.append(tail) }
-        return result.suffix(15).map { $0 }
+    /// The live transcript as one flowing string. We deliberately do NOT split
+    /// on sentence punctuation — breaking a new line after every "." read as
+    /// choppy/weird. It renders as naturally-wrapping prose; any real paragraph
+    /// breaks (\n\n) the transcript already carries are preserved by `Text`.
+    private var transcript: String {
+        streamingPartial?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     var body: some View {
@@ -489,30 +476,26 @@ private struct ExpandedRecordingContent: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    if lines.isEmpty {
+                    if transcript.isEmpty {
                         Text("Listening…")
                             .font(.system(size: 13))
                             .foregroundStyle(.white.opacity(0.4))
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .padding(14)
                     } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(Array(lines.enumerated()), id: \.offset) { idx, line in
-                                Text(line)
-                                    .font(.system(size: 14))
-                                    .foregroundStyle(idx == lines.count - 1 ? .white : Color.white.opacity(0.6))
-                                    .id(idx)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
+                        Text(transcript)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white)
+                            .lineSpacing(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                            .id("transcript")
                     }
                 }
                 .onChange(of: streamingPartial ?? "") { _, _ in
-                    if !lines.isEmpty {
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            proxy.scrollTo(lines.count - 1, anchor: .bottom)
-                        }
+                    guard !transcript.isEmpty else { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo("transcript", anchor: .bottom)
                     }
                 }
             }

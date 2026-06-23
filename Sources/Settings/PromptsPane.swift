@@ -3,23 +3,26 @@ import KeyboardShortcuts
 import SwiftData
 import SwiftUI
 
-struct PromptsPane: View {
+/// v1.15: the standalone Prompts pane was folded into the AI pane
+/// (`RewritePane`). This view renders the prompt-management *sections*
+/// (no `Form` wrapper) so the AI pane can append them inside its own
+/// `Form` — net AI pane = Provider · Authentication · Test · Prompts.
+/// It also owns the Cleanup feature toggle and the shared Rewrite system
+/// prompt editor (relocated here from the AI pane's removed Cleanup /
+/// Rewrite sections) so all LLM-prompt management lives in one place.
+struct PromptsSettingsContent: View {
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.helpNavigator) private var navigator
     @EnvironmentObject private var llmConfiguration: LLMConfiguration
     @EnvironmentObject private var promptStore: PromptStore
-    @State private var editorDraft: PromptEditorDraft?
-    @State private var pendingDelete: PromptDeletion?
-    @State private var searchText = ""
-    /// Expansion state for the relocated Cleanup prompt editor. Auto-opens
-    /// when a Settings → AI popover deep-links to `cleanup-prompt`.
-    @State private var cleanupPromptExpanded: Bool = false
-    /// Drives the read-only inspection sheet for a tapped built-in prompt.
-    @State private var inspectingBuiltIn: BuiltInPromptInspection?
-    /// "How to use prompts" card collapsed state. Default open on a fresh
-    /// install (first-visit users need the orientation), persists across
-    /// launches once the user collapses it.
-    @AppStorage("jot.promptsPane.howToCardCollapsed") private var howToCollapsed: Bool = false
+    /// "How to use prompts" card collapsed state. Default collapsed — the
+    /// one-line description above it already orients first-time users; the
+    /// step-by-step lives behind the disclosure. Persists across launches.
+    @AppStorage("jot.promptsPane.howToCardCollapsed") private var howToCollapsed: Bool = true
+    /// Drives the full prompt-library sheet (v1.17). The library moved out of
+    /// an inline DisclosureGroup — a large managed list belongs in a presented
+    /// sheet where a real `List`/`Section` renders natively, not dumped inline
+    /// in a settings `Form`.
+    @State private var isLibraryPresented = false
 
     private let urlSession: URLSession
     private let appleIntelligence: any AppleIntelligenceClienting
@@ -33,65 +36,31 @@ struct PromptsPane: View {
     }
 
     var body: some View {
-        Form {
-            headerSection
-            howToUseSection
+        // No `Form` / `.formStyle` wrapper: these sections are embedded
+        // inside the AI pane's existing Form. Wrapping in a second Form
+        // would double the grouped-inset chrome.
+        Group {
+            // Always-visible: the Clean up transcript with AI toggle.
             cleanupSection
-            searchSection
-            if !pinnedPromptsFiltered().isEmpty {
-                pinnedSection
-            }
-            builtInSections
-            myPromptsSection
-            if !promptStore.userPrompts.isEmpty { statusFooter }
+
+            // Compact Prompts section (v1.17): a one-line description, the
+            // collapsible "How to use" walkthrough, and a "Manage prompts…"
+            // button. The full library (search · pinned · built-ins · my
+            // prompts) lives in a presented sheet, opened by the button.
+            promptsSection
         }
-        .formStyle(.grouped)
         .onAppear {
             _ = modelContext
             promptStore.reloadUserPrompts()
-            consumePendingCleanupAnchor()
         }
-        .onChange(of: navigator.pendingSettingsFieldAnchor) { _, _ in
-            consumePendingCleanupAnchor()
-        }
-        .sheet(item: $editorDraft) { draft in
-            PromptEditorSheet(
-                draft: draft,
-                llmClient: LLMClient(
-                    session: urlSession,
-                    appleClient: appleIntelligence,
-                    llmConfiguration: llmConfiguration
-                ),
-                onCancel: { editorDraft = nil },
-                onSave: { values in
-                    save(values, for: draft)
-                    editorDraft = nil
-                }
+        .sheet(isPresented: $isLibraryPresented) {
+            PromptLibrarySheet(
+                urlSession: urlSession,
+                appleIntelligence: appleIntelligence,
+                onDismiss: { isLibraryPresented = false }
             )
-        }
-        .sheet(item: $inspectingBuiltIn) { inspection in
-            BuiltInPromptDetailSheet(
-                prompt: inspection.prompt,
-                onDismiss: { inspectingBuiltIn = nil }
-            )
-        }
-        .alert(
-            "Delete prompt?",
-            isPresented: Binding(
-                get: { pendingDelete != nil },
-                set: { if !$0 { pendingDelete = nil } }
-            ),
-            presenting: pendingDelete
-        ) { deletion in
-            Button("Delete", role: .destructive) {
-                promptStore.deleteUserPrompt(deletion.prompt)
-                pendingDelete = nil
-            }
-            Button("Cancel", role: .cancel) {
-                pendingDelete = nil
-            }
-        } message: { deletion in
-            Text("This removes \"\(deletion.title)\" from your prompt library.")
+            .environmentObject(promptStore)
+            .environmentObject(llmConfiguration)
         }
     }
 
@@ -126,36 +95,35 @@ struct PromptsPane: View {
 
     @ViewBuilder
     private var howToUseSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: howToCollapsed ? 0 : 10) {
-                // Header — fully clickable row that toggles collapse.
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        howToCollapsed.toggle()
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "lightbulb")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.tint)
-                        Text("How to use prompts")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: howToCollapsed ? "chevron.right" : "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: howToCollapsed ? 0 : 10) {
+            // Header — fully clickable row that toggles collapse.
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    howToCollapsed.toggle()
                 }
-                .buttonStyle(.plain)
-
-                if !howToCollapsed {
-                    howToBody
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "lightbulb")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.tint)
+                    Text("How to use prompts")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: howToCollapsed ? "chevron.right" : "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 4)
+            .buttonStyle(.plain)
+
+            if !howToCollapsed {
+                howToBody
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
@@ -233,149 +201,208 @@ struct PromptsPane: View {
         }
     }
 
-    /// Relocated home for the editable Cleanup (Transform) prompt. The
-    /// automatic post-dictation cleanup itself stays wired in Settings → AI
-    /// (the `transformEnabled` toggle + the `transform()` pipeline, which
-    /// still reads `LLMConfiguration.transformPrompt`). Only the prompt-text
-    /// editing moved here so all prompt management lives in one panel. The
-    /// binding is the same `@AppStorage "jot.llm.transformPrompt"` key, so a
-    /// user's previously-customized cleanup text is read here unchanged — no
-    /// migration required.
+    /// The "Clean up transcript with AI" toggle. v1.16: the editable
+    /// cleanup prompt was removed — cleanup now always uses the hard-coded
+    /// `TransformPrompt.default` (editing it caused confusion). This is the
+    /// `transformEnabled` toggle plus an info popover describing what
+    /// cleanup does; the `transform()` pipeline reads
+    /// `@AppStorage("jot.transformEnabled")` unchanged.
     private var cleanupSection: some View {
-        Section("Cleanup") {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Cleanup prompt")
-                        .font(.system(size: 13, weight: .medium))
-                    Text("Built-in prompt that runs automatically on every dictation when Auto-correct is on (toggle in Settings → AI). Edits here apply to that cleanup pass.")
+        Section {
+            HStack {
+                Toggle("Clean up transcript with AI", isOn: $llmConfiguration.transformEnabled)
+                    .disabled(!llmConfiguration.isMinimallyConfigured)
+                    .help("Sends transcript text to your LLM provider to remove filler words and fix grammar. Configure a provider above.")
+                Spacer()
+                InfoPopoverButton(
+                    title: "Clean up transcript with AI",
+                    body: "Automatically polishes every dictation before it's delivered: removes filler words (\"um\", \"uh\", \"like\"), fixes grammar, punctuation, and capitalization, normalizes spoken numbers (\"two thirty\" → \"2:30\"), and detects lists — all while preserving your wording, voice, and meaning. It runs through your configured AI provider; Apple Intelligence keeps it fully on-device. When off: the raw transcript is delivered unchanged.",
+                    helpAnchor: "cleanup"
+                )
+            }
+        }
+    }
+
+    /// Compact Prompts section (v1.17). A one-line description, the
+    /// collapsible "How to use" walkthrough, and a "Manage prompts…" button
+    /// that opens the full library sheet. The cramped inline library (intro
+    /// blocks · search · pinned · built-ins · my prompts) moved into
+    /// `PromptLibrarySheet`, where a real `List`/`Section` renders natively.
+    @ViewBuilder
+    private var promptsSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 14) {
+                // Header + one-line description.
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "text.bubble")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.tint)
+                        Text("Prompts")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.primary)
+                    }
+                    Text("Pick prompts from the picker (⌥/) to rewrite selected text — built-ins like Rewrite and Improve writing, plus your own.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+
+                // Collapsible "How to use" walkthrough (collapsed by default).
+                howToUseSection
+
+                // Opens the full prompt library in a sheet.
+                Button {
+                    isLibraryPresented = true
+                } label: {
+                    Label("Manage prompts…", systemImage: "slider.horizontal.3")
+                        .font(.system(size: 13))
+                }
+                .controlSize(.regular)
             }
-            .padding(.vertical, 2)
-
-            CustomizePromptDisclosure(
-                label: "Customize prompt",
-                text: $llmConfiguration.transformPrompt,
-                defaultValue: TransformPrompt.default,
-                info: .init(
-                    title: "Cleanup prompt",
-                    body: "System prompt for Clean up transcript with AI. Tells the LLM how to polish the raw transcript — filler removal, grammar, list detection — while preserving your voice. The cleanup pass itself is toggled in Settings → AI.",
-                    helpAnchor: "cleanup-prompt"
-                ),
-                isExpanded: $cleanupPromptExpanded
-            )
-            .id("cleanup-prompt")
+            .padding(.vertical, 4)
         }
     }
 
-    private func consumePendingCleanupAnchor() {
-        guard navigator.pendingSettingsFieldAnchor == "cleanup-prompt" else { return }
-        withAnimation {
-            cleanupPromptExpanded = true
-        }
-        navigator.clearPendingSettingsFieldAnchor()
+}
+
+// MARK: - Prompt Library sheet
+
+/// v1.17: the full prompt library, presented as a sheet from the AI pane's
+/// compact "Manage prompts…" button. A large managed list belongs in a
+/// presented sheet — inside a `NavigationStack { List { Section } }` the
+/// sections render with native left-aligned headers and `.searchable` works
+/// correctly (both of which break when the list is dumped inline in a
+/// settings `Form`). Owns search, the editor / built-in-detail sheets, and
+/// the delete confirmation; mutates state through the shared `PromptStore`.
+private struct PromptLibrarySheet: View {
+    @EnvironmentObject private var llmConfiguration: LLMConfiguration
+    @EnvironmentObject private var promptStore: PromptStore
+    @State private var searchText = ""
+    @State private var editorDraft: PromptEditorDraft?
+    @State private var pendingDelete: PromptDeletion?
+    @State private var inspectingBuiltIn: BuiltInPromptInspection?
+
+    private let urlSession: URLSession
+    private let appleIntelligence: any AppleIntelligenceClienting
+    let onDismiss: () -> Void
+
+    init(
+        urlSession: URLSession,
+        appleIntelligence: any AppleIntelligenceClienting,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.urlSession = urlSession
+        self.appleIntelligence = appleIntelligence
+        self.onDismiss = onDismiss
     }
 
-    private var searchSection: some View {
-        Section {
-            // Why default style (not `.plain`) + `roundedBorder` ground:
-            // a `.plain` TextField inside a Form Section row reads as
-            // static label text — users tap and nothing visibly happens.
-            // The default rounded-border style gives the field an obvious
-            // hit area and matches every other macOS Settings search box.
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-
-                TextField("Search prompts", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 13))
-
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
+    var body: some View {
+        NavigationStack {
+            List {
+                let pinned = pinnedPromptsFiltered()
+                if !pinned.isEmpty {
+                    Section("Pinned") {
+                        ForEach(pinned, id: \.id) { prompt in
+                            BrowserRow(prompt: prompt) { open(prompt) }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Clear search")
                 }
-            }
-            .padding(.vertical, 2)
-        }
-    }
 
-    private var pinnedSection: some View {
-        Section("Pinned") {
-            ForEach(pinnedPromptsFiltered()) { prompt in
-                BrowserRow(prompt: prompt) {
-                    open(prompt)
+                ForEach(bundledCategoriesInOrder, id: \.self) { category in
+                    let prompts = bundledPromptsFiltered(in: category)
+                    if !prompts.isEmpty {
+                        Section(category) {
+                            ForEach(prompts, id: \.id) { prompt in
+                                BrowserRow(prompt: prompt) {
+                                    inspectingBuiltIn = BuiltInPromptInspection(prompt: prompt)
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-        }
-    }
 
-    private var myPromptsSection: some View {
-        Section("My prompts") {
-            if promptStore.userPrompts.isEmpty {
-                emptyStateView
-            } else {
-                ForEach(userPromptsFiltered(), id: \.id) { prompt in
-                    UserPromptRow(
-                        prompt: prompt,
-                        isPinned: promptStore.isPinned(prompt.promptID),
-                        isDefault: promptStore.isDefault(prompt.promptID),
-                        onTogglePin: { promptStore.togglePin(prompt.promptID) },
-                        onToggleDefault: { promptStore.toggleDefault(prompt.promptID) },
-                        onEdit: { editorDraft = PromptEditorDraft(prompt: prompt) },
-                        onDelete: { pendingDelete = PromptDeletion(prompt: prompt) }
-                    )
-                }
-            }
-            addPromptButton
-        }
-    }
-
-    @ViewBuilder
-    private var builtInSections: some View {
-        ForEach(bundledCategoriesInOrder, id: \.self) { category in
-            let prompts = bundledPromptsFiltered(in: category)
-            if !prompts.isEmpty {
-                Section(category) {
-                    ForEach(prompts) { prompt in
-                        BrowserRow(prompt: prompt) {
-                            inspectingBuiltIn = BuiltInPromptInspection(prompt: prompt)
+                Section("My prompts") {
+                    let userPrompts = userPromptsFiltered()
+                    if promptStore.userPrompts.isEmpty {
+                        emptyStateView
+                    } else if userPrompts.isEmpty {
+                        Text("No prompts match \"\(searchText)\".")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(userPrompts, id: \.id) { prompt in
+                            UserPromptRow(
+                                prompt: prompt,
+                                isPinned: promptStore.isPinned(prompt.promptID),
+                                isDefault: promptStore.isDefault(prompt.promptID),
+                                onTogglePin: { promptStore.togglePin(prompt.promptID) },
+                                onToggleDefault: { promptStore.toggleDefault(prompt.promptID) },
+                                onEdit: { editorDraft = PromptEditorDraft(prompt: prompt) },
+                                onDelete: { pendingDelete = PromptDeletion(prompt: prompt) }
+                            )
                         }
                     }
                 }
             }
-        }
-    }
-
-    private var headerSection: some View {
-        Section {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Custom prompts")
-                        .font(.system(size: 13, weight: .medium))
-                    Text("Add reusable prompts for rewrite workflows. Bundled prompts stay read-only and continue to appear in the prompt picker.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            .listStyle(.inset)
+            .searchable(text: $searchText, placement: .toolbar, prompt: "Search prompts")
+            .navigationTitle("Prompts")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { onDismiss() }
                 }
-                Spacer()
-                InfoPopoverButton(
-                    title: "Custom prompts",
-                    body: "Custom prompts are saved locally on this Mac and appear in the prompt picker when you search. Use them for repeat rewrite instructions, formatting rules, or domain-specific transformations."
-                )
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        editorDraft = PromptEditorDraft()
+                    } label: {
+                        Label("Add Prompt", systemImage: "plus")
+                    }
+                    .help("Add a custom prompt")
+                    .keyboardShortcut("n", modifiers: .command)
+                }
             }
-            .padding(.vertical, 2)
+        }
+        .frame(minWidth: 540, minHeight: 580)
+        .onAppear { promptStore.reloadUserPrompts() }
+        .sheet(item: $editorDraft) { draft in
+            PromptEditorSheet(
+                draft: draft,
+                llmClient: LLMClient(
+                    session: urlSession,
+                    appleClient: appleIntelligence,
+                    llmConfiguration: llmConfiguration
+                ),
+                onCancel: { editorDraft = nil },
+                onSave: { values in
+                    save(values, for: draft)
+                    editorDraft = nil
+                }
+            )
+        }
+        .sheet(item: $inspectingBuiltIn) { inspection in
+            BuiltInPromptDetailSheet(
+                prompt: inspection.prompt,
+                onDismiss: { inspectingBuiltIn = nil }
+            )
+        }
+        .alert(
+            "Delete prompt?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            presenting: pendingDelete
+        ) { deletion in
+            Button("Delete", role: .destructive) {
+                promptStore.deleteUserPrompt(deletion.prompt)
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingDelete = nil
+            }
+        } message: { deletion in
+            Text("This removes \"\(deletion.title)\" from your prompt library.")
         }
     }
 
@@ -384,7 +411,7 @@ struct PromptsPane: View {
             Image(systemName: "text.bubble")
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
-                .padding(.top, 16)
+                .padding(.top, 8)
             Text("No custom prompts yet.")
                 .font(.system(size: 14, weight: .medium))
             Text("Add prompts you want to reuse from the picker.")
@@ -393,30 +420,7 @@ struct PromptsPane: View {
                 .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-    }
-
-    private var addPromptButton: some View {
-        Button {
-            editorDraft = PromptEditorDraft()
-        } label: {
-            Label("Add Prompt", systemImage: "plus")
-                .font(.system(size: 13))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
-        .keyboardShortcut("n", modifiers: .command)
-    }
-
-    private var statusFooter: some View {
-        Section {
-            HStack {
-                Text("\(promptStore.userPrompts.count) prompt\(promptStore.userPrompts.count == 1 ? "" : "s")")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-            }
-        }
+        .padding(.vertical, 8)
     }
 
     private func save(_ values: PromptFormValues, for draft: PromptEditorDraft) {
@@ -525,7 +529,7 @@ private struct UserPromptRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(prompt.title)
                         .font(.system(size: 13, weight: .medium))
@@ -538,8 +542,11 @@ private struct UserPromptRow: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer(minLength: 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer(minLength: 8)
             HStack(spacing: 8) {
                 Button {
                     onToggleDefault()
@@ -585,7 +592,9 @@ private struct UserPromptRow: View {
                 }
             }
         }
-        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.1)) { isHovered = hovering }
         }
@@ -606,7 +615,7 @@ private struct BrowserRow: View {
         HStack(alignment: .top, spacing: 10) {
             Button(action: onOpen) {
                 HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             Text(prompt.title)
                                 .font(.system(size: 13, weight: .semibold))
@@ -620,8 +629,11 @@ private struct BrowserRow: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
+                            .truncationMode(.tail)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer(minLength: 8)
                 }
                 .contentShape(Rectangle())
             }
@@ -647,7 +659,8 @@ private struct BrowserRow: View {
             .buttonStyle(.plain)
             .help(promptStore.isPinned(prompt.id) ? "Unpin prompt" : "Pin prompt")
         }
-        .padding(.vertical, 3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
     }
 
     private var previewText: String {
