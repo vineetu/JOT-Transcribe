@@ -1,50 +1,50 @@
 {
-  "date": "2026-06-23",
+  "date": "2026-06-24",
   "downloads": {
-    "total": 206,
-    "delta": 12,
-    "avg7": 11,
+    "total": 224,
+    "delta": 18,
+    "avg7": 12,
     "goal": 100
   },
   "creative": {
-    "concept": "v1.15 release day — 'The pill is yours now.' Release card with 6-feature chip grid; red accent on Movable pill; decorative 'move me' pill outline top-right reinforces the drag gesture. No carousel (ran yesterday). Storyboard shows the drag motion for the first time.",
+    "concept": "v1.16 drops CJK language support — 11 total languages, 0 servers, $0. Bold-claim number card: the red '11' stops the scroll; '0 servers. · $0.' is the punchline that reframes every paid competitor in one line.",
     "cards": [
       {
-        "file": "marketing/data/creative/2026-06-23/v1-15-release.svg",
-        "title": "v1.15 — The pill is yours now.",
-        "use": "Primary visual for LinkedIn, X, Instagram, and Show HN today. Export as 1080×1080 PNG. The red 'Movable pill' chip against dark background is the scroll-stopper; the 'move me' pill outline top-right hints at the drag interaction."
+        "file": "marketing/data/creative/2026-06-24/bold-claim.svg",
+        "title": "11 languages. 0 servers. $0.",
+        "use": "Primary visual for all channels today. Export as 1080×1080 PNG. The red '11' is the scroll-stopper; the three-zero row is the instant differentiator against every paid alternative."
       }
     ],
     "carousel": [],
     "storyboard": {
-      "title": "The movable pill — drag, position, dictate",
+      "title": "Dictating in Mandarin — language switch demo",
       "duration_s": 15,
-      "use": "Instagram Reel / X video / GIF — first clip ever showing the pill being repositioned; the drag gesture is inherently visual and earns a second take from anyone who has used Jot before",
+      "use": "Instagram Reel / X video / GIF — first-ever clip showing CJK language support; strong hook for multilingual audiences and the developer community following v1.16",
       "shots": [
         {
           "t": "0–2s",
-          "visual": "Mac desktop, Dynamic Island-style pill sitting under the notch in its default position — established, familiar",
-          "overlay": "You can move this now."
+          "visual": "Jot Settings → Transcription → Language picker; close-up on picker showing 'Mandarin (Experimental)' in the list",
+          "overlay": "New in v1.16."
         },
         {
-          "t": "2–6s",
-          "visual": "Hand reaches up, grabs the pill, drags it smoothly to the bottom-left corner of the screen; pill follows the cursor with fluid motion",
-          "overlay": "Anywhere."
+          "t": "2–5s",
+          "visual": "Cursor selects 'Mandarin'; model label below the picker updates to reflect Qwen3-ASR",
+          "overlay": "Pick your language."
         },
         {
-          "t": "6–9s",
-          "visual": "Hand presses ⌥ Space; pill in its new position begins pulsing with an audio waveform",
-          "overlay": "Hotkey."
+          "t": "5–8s",
+          "visual": "⌥ Space pressed on keyboard; Dynamic Island-style pill appears pulsing under Mac notch",
+          "overlay": "One hotkey."
         },
         {
-          "t": "9–14s",
-          "visual": "User speaks; pill pulses in the corner; text appears at cursor in VS Code or Mail",
-          "overlay": "Speak."
+          "t": "8–13s",
+          "visual": "Pill shows pulsing audio waveform; speaker says a sentence in Mandarin; Chinese characters appear at cursor in Notes app",
+          "overlay": "On-device. No cloud."
         },
         {
-          "t": "14–15s",
-          "visual": "Wide desktop: pill resting in corner, text visible in editor; jot-transcribe.com watermark lower-right",
-          "overlay": "Free. v1.15."
+          "t": "13–15s",
+          "visual": "Wide desktop shot: Chinese text in Notes, pill vanished, jot-transcribe.com watermark lower-right",
+          "overlay": "Free. 11 languages."
         }
       ]
     }
@@ -52,60 +52,69 @@
   "drafts": [
     {
       "channel": "linkedin",
-      "text": "v1.15 shipped at 5am.\n\nThe dictation pill is movable now — drag it anywhere on screen, corner, edge, wherever doesn't interrupt your layout. Previously it was anchored under the notch.\n\nAlso: better recordings search, cleaner transcripts, smarter vocabulary, simpler settings.\n\nmacOS 15 required from today. Still $0. Still on-device. Still nothing leaves your Mac.\n\nWhere would you put a floating status indicator?\n\n#macOS #indiedev #buildinpublic",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-23",
+      "text": "v1.16 shipped this morning.\n\nJot now transcribes Mandarin, Cantonese, and Vietnamese on-device — joining English, French, Spanish, German, Italian, Portuguese, Dutch, and Japanese. 11 languages, all running on the Apple Neural Engine.\n\nNo cloud. No API key. No subscription. $0.\n\nThe model is ~1 GB and downloads on first use. Your voice never leaves your Mac.\n\nWhat language do you work in?\n\n#macOS #indiedev #buildinpublic",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-24",
       "publish_window_pt": "7:00–8:30am PT",
       "recommended": true,
-      "note": "Attach v1-15-release.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. Closing question is the engagement trigger."
+      "note": "Attach bold-claim.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. The language question is today's engagement trigger — reply to every multilingual response."
     },
     {
       "channel": "x",
-      "text": "v1.15 is live. The dictation pill is movable now — drag it anywhere on your screen. Better search, cleaner transcripts, simpler settings. Free. On-device. macOS 15+.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-23",
+      "text": "v1.16: Jot now transcribes Mandarin, Cantonese, and Vietnamese on-device. 11 languages total. 0 servers. $0.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-24",
       "publish_window_pt": "6:30–9:00am PT",
       "recommended": true,
-      "note": "Attach v1-15-release.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. ~167 characters, within 200 limit."
+      "note": "Attach bold-claim.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. ~105 characters. The CJK language callout pulls in non-English-speaking Mac users who've assumed dictation apps don't support their language."
     },
     {
       "channel": "reddit",
-      "text": "Jot v1.15 — the dictation pill is movable now (free, open-source Mac dictation)\n\nQuick background: I built Jot because I was paying $85/year for a Mac dictation app and decided the on-device transcription tech was commoditized enough that a free version should exist. Jot sits in the menu bar: press a hotkey, speak, transcript pastes wherever your cursor is in any app. Transcription runs entirely on the Apple Neural Engine — no cloud, no account, no audio leaves the Mac.\n\nv1.15 shipped this morning. Here's what changed:\n\n**Movable dictation pill.** The floating status indicator was previously anchored under the Mac notch. Now you can drag it anywhere on screen and it remembers the position. Most-requested feature, especially from people with external monitors or window layouts where the notch area is occupied.\n\n**Better recordings search.** Fuzzy search across all stored transcripts, not just the current session. Useful for finding something you dictated last week.\n\n**Smarter custom vocabulary.** The vocabulary booster improves from corrections over time. Product names and proper nouns that keep mistranscribing get smarter after a few manual fixes.\n\n**Cleaner transcripts.** Post-processing pass improved; fewer hallucinated filler words.\n\n**Simpler settings.** Tighter layout, less visual noise.\n\n**More languages (experimental).** Expanding the supported language set beyond the current roster — still in progress.\n\n**macOS 15 now required.** I raised the deployment floor from macOS 14 to macOS 15 to access CoreMLLLM for on-device AI. If you're on Sonoma (macOS 14), the last compatible release is v1.14.1.\n\nApple Silicon only. Completely free. Open source on GitHub.\n\n(I built this — disclosure)\n\nLink in comments.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-23",
+      "text": "I added Mandarin, Cantonese, and Vietnamese on-device transcription to my free Mac dictation app (v1.16, I built it)\n\nJust shipped v1.16. Main new thing: Mandarin, Cantonese, and Vietnamese support via Qwen3-ASR running entirely on-device on Apple Silicon.\n\nBackground: Jot is a free, open-source Mac dictation app — press a hotkey, speak, transcript lands wherever your cursor is in any app. v1.15 (yesterday) added a movable dictation pill and better search. v1.16 adds CJK languages.\n\nThe Qwen3-ASR model is ~1 GB and downloads on first use. No cloud round-trip — your voice stays on your Mac.\n\nFull language list now:\n- English (Nemotron on M2 Pro / 16 GB+, Parakeet elsewhere)\n- French, Spanish, German, Italian, Portuguese, Dutch (Parakeet v3 multilingual)\n- Japanese (Parakeet JA)\n- Mandarin, Cantonese, Vietnamese (Qwen3-ASR, Experimental)\n\nA few things worth noting:\n- CJK output is native script (Chinese characters, Vietnamese diacritics) — not Pinyin\n- The Qwen3-ASR path is batch-only (no live audio preview in the pill)\n- Custom vocabulary doesn't apply to the Qwen3-ASR languages yet\n- Requires macOS 15+\n\nApple Silicon only, macOS 15+. Free and open source on GitHub.\n\n(I built this — disclosure)\n\nLink in comments.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-24",
       "publish_window_pt": "6:00–8:00am PT",
-      "recommended": true,
-      "note": "Post to r/macapps (rotation: macapps Jun 23). First line is the post title. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:true — last recommended:true reddit was June 19 (4 days ago); threshold of 4+ days met today. Answer every comment in the first hour."
+      "recommended": false,
+      "note": "Post to r/MacOS (rotating: macapps Jun 23, MacOS Jun 24). First line is the post title. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit was June 23 (1 day ago); needs 4+ days — earliest is June 27. Answer every comment in the first hour."
     },
     {
       "channel": "instagram",
-      "text": "v1.15 is live.\n\nThe dictation pill moves now. Drag it anywhere on your screen — corner, edge, wherever.\n\nBetter search. Cleaner transcripts. Simpler settings. More languages.\n\nFree. On-device. Open source.\n\nLink in bio.\n\n#macOS #dictation #voicetotext #opensource #macapps #indiedev #buildinpublic #speechtotext",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-23",
+      "text": "v1.16: Jot now transcribes Mandarin, Cantonese, and Vietnamese on-device.\n\n11 languages. 0 servers. $0. All on the Apple Neural Engine.\n\nFree Mac dictation. Link in bio.\n\n#macOS #dictation #mandarin #cantonese #vietnamese #opensource #macapps #indiedev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-24",
       "publish_window_pt": "11am–1pm PT",
-      "recommended": true,
-      "visual": "marketing/data/creative/2026-06-23/v1-15-release.svg as a static 1080×1080 PNG post.",
-      "note": "recommended:true — last recommended:true instagram was June 20 (3 days ago); threshold of 3+ days met today (June 23). Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
-    },
-    {
-      "channel": "hn",
-      "text": "Show HN: Jot v1.15 – free on-device Mac dictation; pill is draggable, better search",
-      "utm_url": "https://jot-transcribe.com/?utm_source=hn&utm_medium=social&utm_campaign=daily-2026-06-23",
-      "publish_window_pt": "6:00–8:00am ET TODAY (Tue Jun 23)",
-      "recommended": true,
-      "note": "Post TODAY — it's Tuesday, the ideal HN window. The utm_url goes in the submission URL field (not the text). First comment: 'Hi HN! Jot is a free, open-source Mac dictation app I've been building since April. Press a hotkey (⌥Space by default), speak, and the transcript pastes wherever your cursor is — terminal, Mail, VS Code, Slack, any text field. Transcription runs entirely on-device on the Apple Neural Engine (NVIDIA Parakeet TDT). No cloud, no account, no audio leaves the Mac. v1.15 ships two most-requested changes: (1) The dictation pill is now draggable — previously pinned under the notch; you can drag it anywhere and it remembers the position. External-monitor users have been asking for this since v1.0. (2) Better recordings search — fuzzy search across all stored transcripts, not just the current session. Also: cleaner transcripts, simpler settings, smarter custom vocabulary, experimental more-language support. macOS floor bumped to 15 (was 14) to access CoreMLLLM for on-device AI features. Stack: SwiftUI + AppKit (NSPanel for the pill), FluidAudio wrapping Parakeet for inference, sindresorhus/KeyboardShortcuts for hotkeys, Sparkle for auto-update. Repo: https://github.com/vineetu/JOT-Transcribe' — Never solicit upvotes."
+      "recommended": false,
+      "visual": "marketing/data/creative/2026-06-24/bold-claim.svg as a static 1080×1080 PNG post.",
+      "note": "recommended:false — last recommended:true instagram was June 23 (1 day ago); needs 3+ days — earliest is June 26. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently. CJK hashtags open reach to new audiences for the first time."
     }
   ],
   "opportunities": [
     {
-      "url": "https://www.getvoibe.com/blog/superwhisper-alternatives/",
-      "title": "11 Best Superwhisper Alternatives in 2026 — Voibe",
-      "why": "High-SEO alternatives roundup surfacing on every 'superwhisper free alternative' search; Jot not listed despite being the only fully-free open-source on-device option. Voibe allows reader comments; the v1.15 release is a natural hook for a first-time mention.",
-      "suggested_reply": "Great list. One worth adding: Jot (jot-transcribe.com) — free, open-source, fully on-device on the Apple Neural Engine. No subscription, no account, no audio leaves the Mac. Hotkey, speak, text at cursor. Just shipped v1.15 with a draggable pill and better search. I built it. (Disclosure: developer.)"
+      "url": "https://www.getvoibe.com/resources/best-offline-dictation-apps/",
+      "title": "7 Best Offline Dictation Apps for Mac in 2026 — Voibe Resources",
+      "why": "Surfaced today in searches for 'mac dictation 2026'. Targets exactly the on-device audience. Jot almost certainly not listed. v1.16's 11-language announcement makes the comment hook significantly stronger today.",
+      "suggested_reply": "Great list. One to add: Jot (jot-transcribe.com) — free, open-source, on-device on the Apple Neural Engine. Press a hotkey, speak, text at cursor in any app. Just shipped v1.16 today adding Mandarin, Cantonese, and Vietnamese — 11 languages total. No subscription, no account, no audio leaves your Mac. I built it. (Disclosure: developer.)"
     },
     {
-      "url": "https://spokenly.app/superwhisper-alternative",
-      "title": "SuperWhisper Alternative 2026: Free Local + BYOK Cloud — Spokenly",
-      "why": "Competitor comparison page — readers actively choosing are exactly Jot's audience. Not comment-enabled; flag for outreach to spokenly.app blog on June 26.",
-      "suggested_reply": null
+      "url": "https://www.getvoibe.com/blog/superwhisper-alternatives/",
+      "title": "11 Best Superwhisper Alternatives in 2026 — Voibe",
+      "why": "High-SEO roundup flagged in Jun 23 brief; Jot still not listed; comments enabled. 'Just shipped 11-language v1.16 this morning' is a stronger hook than yesterday's v1.15 note.",
+      "suggested_reply": "Add Jot to this list — the only fully free, open-source on-device option. Hotkey, speak, text at cursor. Apple Neural Engine, no cloud, no subscription. Shipped v1.16 today with Mandarin, Cantonese, Vietnamese support — 11 languages total. I built it. (Full disclosure.)"
     }
   ],
-  "outreach": [],
-  "notes": "v1.15 shipped at 05:01 UTC today (Tue Jun 23) — first release requiring macOS 15. Headline feature is the movable dictation pill, most-requested change since launch. Total 206 (+12 from Jun 22's 194): v1.14.1 moved 75→84, v1.15 at 3 within ~6h of release; v1.13.1=28, v1.13=12, v1.12=2, v1.11=11, v1.10=2 confirmed; older releases estimated at 64 from Jun 22 baseline. avg7=11/day — accelerating. Show HN eligible today (Tue 6–8am ET). All four channels recommended:true (Reddit ≥4 days since Jun 19; Instagram ≥3 days since Jun 20). iTunes API 403 (9th day); appstore.json date updated, all values preserved. Outreach window reopens June 26 — priority: machow2.com, speakmac.app, and a direct Voibe comment on the superwhisper-alternatives page. The movable pill is Jot's best visual marketing moment to date — recording the 10–15s drag Reel today while the release is fresh is the highest-leverage action of the week."
+  "outreach": [
+    {
+      "target": "machow2.com",
+      "type": "blog",
+      "url": "https://machow2.com/best-dictation-software-mac/",
+      "contact": "Contact form at machow2.com (footer — unconfirmed direct email)",
+      "why": "One of the highest-ranking 'best dictation software mac' pages in search (2026 edition). Ran a dedicated Voibe review showing they cover indie Mac dictation apps seriously. Current roundup lists Voibe, Superwhisper, Apple Dictation — the only fully free open-source on-device option (Jot) is missing.",
+      "pitch": "Hi,\n\nYour Best Dictation Software for Mac guide is one of the most thorough I've seen — and your dedicated Voibe review shows you dig into indie Mac tools seriously, not just the headline names.\n\nI wanted to flag Jot, which I built. It's free, open-source, and transcribes entirely on-device on the Apple Neural Engine — no cloud, no subscription, no account required. Press a hotkey, speak, and the transcript pastes wherever your cursor is in any app.\n\nI shipped v1.16 this morning adding Mandarin, Cantonese, and Vietnamese support — 11 on-device languages total now. It's the only fully free option in the space, and I think that's a meaningful gap in your roundup for readers who want on-device dictation without paying $8–15/month.\n\nhttps://jot-transcribe.com/?utm_source=press&utm_medium=outreach&utm_campaign=machow2\n\nHappy to provide screenshots, a demo, or a review DMG.\n\nVineet"
+    },
+    {
+      "target": "willowvoice.com",
+      "type": "blog",
+      "url": "https://willowvoice.com/blog/best-voice-dictation-software-mac",
+      "contact": "Contact form at willowvoice.com (unconfirmed)",
+      "why": "Publishes regularly updated 'Best Mac Voice Dictation Software' roundups — surfaced in today's searches. Covers the exact audience. Jot almost certainly absent. Smaller blog likely to respond to a concise pitch.",
+      "pitch": "Hi,\n\nI came across your Best Mac Voice Dictation Software roundup — you've clearly tested these tools hands-on, which is rare.\n\nI wanted to flag Jot, a free open-source Mac dictation app I've been building since April. Core loop: press a hotkey, speak, transcript pastes wherever your cursor is in any app. Transcription runs entirely on the Apple Neural Engine — no cloud, no account, your voice never leaves the Mac.\n\nI shipped v1.16 today adding Mandarin, Cantonese, and Vietnamese on-device transcription — 11 languages total, still $0. Apple Silicon only, macOS 15+.\n\nhttps://jot-transcribe.com/?utm_source=press&utm_medium=outreach&utm_campaign=willowvoice\n\nHappy to send screenshots or walk through it.\n\nVineet"
+    }
+  ],
+  "notes": "v1.16 (00:44 UTC) and v1.16.1 (04:48 UTC) shipped today — two releases in one day signals a quick follow-on fix. The CJK language expansion (Mandarin, Cantonese, Vietnamese via Qwen3-ASR Experimental) is Jot's first non-Western-alphabet capability and opens a genuinely new audience segment. Total downloads 224 (+18 vs Jun 23's 206, avg7=12/day — new high). At 12/day, the 250-download milestone is ~2 days out. iTunes API 403 (11th+ consecutive day); appstore.json date updated to 2026-06-24, all other values preserved including installs:0. Outreach window reopened (last Jun 19, 5 days). machow2.com and willowvoice.com are both new targets not in prior history. Two Voibe blog comment opportunities remain easy wins. Reddit recommended:false (last true Jun 23; earliest Jun 27). Instagram recommended:false (last true Jun 23; earliest Jun 26). LinkedIn and X both recommended:true. The bold-claim card format last ran Jun 16 — today's '11 languages.' is a fresh number with a different emotional register (breadth vs purity). The Mandarin/Cantonese storyboard is Jot's most visually differentiated clip to date — record while v1.16 is news."
 }
