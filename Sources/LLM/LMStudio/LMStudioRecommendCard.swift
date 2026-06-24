@@ -128,13 +128,13 @@ struct LMStudioRecommendCard: View {
             }
 
         case .installing(let progress):
-            progressRow(label: "Installing LM Studio…", progress: progress)
+            progressRow(label: "Installing LM Studio (~580 MB)…", progress: progress)
 
         case .readyNoModel:
             modelDownloadSection
 
         case .downloadingModel(let progress):
-            progressRow(label: "Downloading Qwen 3.5 9B…", progress: progress)
+            progressRow(label: "Downloading Qwen 3.5 9B (~6 GB, a few minutes)…", progress: progress)
 
         case .configured:
             advisory("Ready — Qwen 3.5 9B (local), thinking off.", color: .green, symbol: "checkmark.circle.fill")
@@ -180,11 +180,15 @@ struct LMStudioRecommendCard: View {
     // MARK: - Reusable bits
 
     @ViewBuilder
+    // `progress` is intentionally ignored: `lms get` / `install.sh` print a
+    // fresh NN% per shard/file, so a value-driven bar fills, resets, and refills
+    // ("growing crazy"). We can't reliably aggregate multi-file percentages, so
+    // we show a calm INDETERMINATE bar instead of a misleading fake number.
     private func progressRow(label: String, progress: Double) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(.system(size: 12))
-            ProgressView(value: progress)
+            ProgressView()
                 .progressViewStyle(.linear)
         }
     }
