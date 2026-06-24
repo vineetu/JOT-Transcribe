@@ -332,9 +332,13 @@ struct JotAppWindow: View {
         // orphan `.sound`/`.transcription`/`.prompts` selection to
         // redirect here anymore — all former deep-links now construct
         // `.general` / `.ai` directly at the call site.
+        // v1.16: Vocabulary is always visible (no longer Advanced-gated),
+        // so it is NOT redirected here — only the Ask Jot row remains
+        // Advanced-only. The richer in-pane alias editor is gated inside
+        // VocabRow, not by hiding the pane.
         guard !advancedEnabled else { return raw }
         switch raw {
-        case .askJot, .settings(.vocabulary):
+        case .askJot:
             return .home
         default:
             return raw

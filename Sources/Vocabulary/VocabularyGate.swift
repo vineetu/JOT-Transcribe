@@ -53,6 +53,16 @@ enum VocabularyGate {
     /// engine's cbw≈3.0) above which a correction counts as "earned" even
     /// against a confident or common word.
     static let earnedMargin: Float = 4.0
+    /// Confirmations (`override.net`) at which a COMMON-word original becomes
+    /// eligible to auto-apply instead of asking every time. Rare/OOV originals
+    /// arm at 1 confirm (step 0); common words need this many — the
+    /// single-mistap guard (matches the consumer-keyboard "learns a word after
+    /// ~2 corrections" heuristic). The armed common-word override still runs
+    /// BEHIND plausibility (step 1) + the confidence ceiling (step 3), so a
+    /// confidently-heard legit common word is never swapped — "count × acoustic
+    /// confidence" per the ASR-correction literature. A revert (net ≤ −1)
+    /// disarms instantly at step 0. See docs/research + CorrectionStore.
+    static let commonArmThreshold = 2
 
     /// One proposal the CTC spotter surfaced, with the gate's verdict — kept so
     /// the review surface can persist it per-transcript and let the owner
@@ -454,13 +464,15 @@ enum VocabularyGate {
 
         // (0) USER-CONFIRMED OVERRIDE (top of the gate). A confirmed mapping
         //     fires on the spotter's proposal alone — bypassing the guards — for
-        //     this exact (originalWord → term) pair only. **A common-word original
-        //     is NEVER auto-applied**: silently rewriting an everyday word
-        //     everywhere is the headline over-correction bug, and per-occurrence
-        //     review can't undo a paste that already left the device. For common
-        //     originals the gate keeps proposing-and-asking; only the UI
-        //     pre-highlights the learned term. Auto-apply is reserved for
-        //     rare/OOV originals (net ≥ 1) and multi-word terms (self-gating below).
+        //     this exact (originalWord → term) pair only. A **rare/OOV** original
+        //     auto-applies HERE on the spotter's proposal alone (net ≥ 1),
+        //     bypassing the guards — never second-guessed. A **common-word**
+        //     original is deliberately NOT auto-applied here (silently rewriting
+        //     an everyday word everywhere is the headline over-correction bug);
+        //     instead it arms at step (4) after `commonArmThreshold` confirms AND
+        //     only once it has cleared plausibility (1) + the confidence ceiling
+        //     (3) — "count × acoustic confidence", so a confidently-heard legit
+        //     common word is never swapped. Multi-word terms self-gate below.
         if let ov = overrides.first(where: { $0.originalWord == base && $0.term == term }) {
             // DEMOTED: the owner reverted this mapping → stop auto-applying it.
             // Works for common AND rare originals, so a wrong auto-correction the
@@ -512,12 +524,22 @@ enum VocabularyGate {
         //     swapped. (For a language whose common-word list is missing,
         //     `commonWords.isCommon` is always false, so this guard is a no-op.)
         if isCommon {
-            // §9 Option B (ii): a common-word near-miss BLOCKED by this brake but
-            // otherwise plausible (we passed the plausibility guard above) and a
-            // single-word term — the "did you mean Lisa?" case. We surface the
-            // ask so the user can choose the term this time (a confirm learns it,
-            // though the gate still won't auto-apply a common original — see
-            // CorrectionStore). Multi-word terms already returned at step (2).
+            // ARMED common-word override (count × confidence). We only reach here
+            // having already cleared plausibility (1) and the confidence ceiling
+            // (3) — i.e. the audio genuinely matches the term and this is NOT a
+            // confidently-heard legit common word. So once the user has confirmed
+            // this exact pair `commonArmThreshold`× (net), auto-apply it instead
+            // of asking forever. A revert (net ≤ −1) disarmed it back at step (0).
+            // This is the iOS-style "learns after ~2 corrections" behavior, made
+            // safe by riding behind the acoustic guards rather than a blind count.
+            if let ov = overrides.first(where: { $0.originalWord == base && $0.term == term }),
+               ov.net >= Self.commonArmThreshold {
+                return (true, confidence, margin, "OVERRIDE", unsure, false)
+            }
+            // §9 Option B (ii): not yet armed — a common-word near-miss that's
+            // plausible and a single-word term ("did you mean Lisa?"). Surface the
+            // ask so the user can choose the term this time; each confirm advances
+            // net toward the arm threshold. Multi-word terms already returned at (2).
             return (false, confidence, margin, "BLOCK", unsure, true)
         }
         // (5) OOV-ish word (a likely name/jargon mis-hear) → allow.

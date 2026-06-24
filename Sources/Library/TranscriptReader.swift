@@ -21,11 +21,23 @@ struct TranscriptReader: View {
     let text: String
     /// Explicit reading-column width, measured by the parent.
     let width: CGFloat
+    /// Called after a vocabulary mapping is successfully added, with the
+    /// selection's character range (in the displayed transcript) and the
+    /// canonical term to substitute in. The owner (which holds the SwiftData
+    /// `Recording`) performs the edit + persistence; the reader stays
+    /// decoupled from the model. Defaults to a no-op for contexts that don't
+    /// want inline edits.
+    var onReplaceSelection: (NSRange, String) -> Void = { _, _ in }
     @State private var height: CGFloat = 1
 
     var body: some View {
-        SelectableTranscriptText(text: text, width: width, height: $height)
-            .frame(width: width, height: max(height, 1), alignment: .topLeading)
+        SelectableTranscriptText(
+            text: text,
+            width: width,
+            height: $height,
+            onReplaceSelection: onReplaceSelection
+        )
+        .frame(width: width, height: max(height, 1), alignment: .topLeading)
     }
 }
 
@@ -43,6 +55,7 @@ private struct SelectableTranscriptText: NSViewRepresentable {
     let text: String
     let width: CGFloat
     @Binding var height: CGFloat
+    let onReplaceSelection: (NSRange, String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(height: $height) }
 
@@ -66,6 +79,7 @@ private struct SelectableTranscriptText: NSViewRepresentable {
         tv.textContainer?.lineFragmentPadding = 0
         tv.textContainer?.widthTracksTextView = true
 
+        tv.onReplaceSelection = onReplaceSelection
         apply(text: text, to: tv)
         context.coordinator.textView = tv
         context.coordinator.recomputeHeight(width: width)
@@ -73,6 +87,11 @@ private struct SelectableTranscriptText: NSViewRepresentable {
     }
 
     func updateNSView(_ tv: VocabSelectableTextView, context: Context) {
+        // Refresh the captured closure each pass: the owner's closure can close
+        // over a value type (the @Bindable recording) that SwiftUI re-creates
+        // across body evaluations, so a stale closure could write to an old
+        // recording after sidebar navigation.
+        tv.onReplaceSelection = onReplaceSelection
         context.coordinator.textView = tv
         var changed = false
         if tv.string != text {
@@ -137,6 +156,12 @@ private struct SelectableTranscriptText: NSViewRepresentable {
 /// menu (only when there's a selection) and presents the mapping editor in a
 /// transient popover anchored at the selection.
 final class VocabSelectableTextView: NSTextView {
+    /// Set by the representable. Called with the selected character range and
+    /// the canonical term after a vocab mapping is successfully added, so the
+    /// owner can edit + persist the transcript. The NSTextView never touches
+    /// SwiftData itself.
+    var onReplaceSelection: (NSRange, String) -> Void = { _, _ in }
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()
         let selection = selectedSubstring()
@@ -163,6 +188,36 @@ final class VocabSelectableTextView: NSTextView {
         return ns.substring(with: range).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The selected range tightened to the trimmed substring — i.e. the range
+    /// that exactly covers `selectedSubstring()`, with leading/trailing
+    /// whitespace dropped. This is the range we replace so the substitution
+    /// lands on the words, not the surrounding spaces. Returns `nil` when the
+    /// selection is empty or all-whitespace.
+    private func trimmedSelectedRange() -> NSRange? {
+        let range = selectedRange()
+        guard range.length > 0,
+              let ns = string as NSString?,
+              range.location + range.length <= ns.length
+        else { return nil }
+        // Work in UTF-16 units throughout — `selectedRange()` is UTF-16, so
+        // trimming via `NSString.character(at:)` keeps the offsets consistent
+        // even for non-BMP characters (a Swift `Character` count would not).
+        let ws = CharacterSet.whitespacesAndNewlines
+        let start = range.location
+        let end = range.location + range.length
+        var lead = start
+        while lead < end, let scalar = Unicode.Scalar(ns.character(at: lead)), ws.contains(scalar) {
+            lead += 1
+        }
+        var tail = end
+        while tail > lead, let scalar = Unicode.Scalar(ns.character(at: tail - 1)), ws.contains(scalar) {
+            tail -= 1
+        }
+        let length = tail - lead
+        guard length > 0 else { return nil }
+        return NSRange(location: lead, length: length)
+    }
+
     /// Bounding rect of the current selection in this view's coordinates —
     /// the anchor for the popover.
     private func selectionRectInView() -> NSRect {
@@ -178,10 +233,21 @@ final class VocabSelectableTextView: NSTextView {
         let heard = selectedSubstring()
         guard !heard.isEmpty else { return }
         let anchor = selectionRectInView()
+        // Capture the selection's range NOW, before the popover steals focus and
+        // before the user can edit the popover's "heard" field. This frozen
+        // range is the specific instance we replace on a successful add.
+        let replaceRange = trimmedSelectedRange()
+        let onReplace = onReplaceSelection
 
         let popover = NSPopover()
         popover.behavior = .transient
-        let editor = VocabMappingEditor(heard: heard) { popover.performClose(nil) }
+        let editor = VocabMappingEditor(
+            heard: heard,
+            onAdded: { term in
+                if let replaceRange { onReplace(replaceRange, term) }
+            },
+            onClose: { popover.performClose(nil) }
+        )
         popover.contentViewController = NSHostingController(rootView: editor)
         popover.show(relativeTo: anchor, of: self, preferredEdge: .maxY)
     }
@@ -193,6 +259,10 @@ final class VocabSelectableTextView: NSTextView {
 /// (keep open + show why on rejection; close on success).
 struct VocabMappingEditor: View {
     let heard: String
+    /// Called on a successful add (`.added` or `.duplicate`) with the
+    /// canonical (sanitized) term, so the host can replace the selected text
+    /// in the transcript. Fires before `onClose`.
+    let onAdded: (String) -> Void
     /// Dismisses the popover. Called only after a successful add.
     let onClose: () -> Void
 
@@ -205,8 +275,9 @@ struct VocabMappingEditor: View {
     /// won't take effect until it's enabled.
     private let boostingEnabled = VocabularyStore.shared.isEnabled
 
-    init(heard: String, onClose: @escaping () -> Void) {
+    init(heard: String, onAdded: @escaping (String) -> Void = { _ in }, onClose: @escaping () -> Void) {
         self.heard = heard
+        self.onAdded = onAdded
         self.onClose = onClose
         _heardText = State(initialValue: heard)
     }
@@ -223,6 +294,10 @@ struct VocabMappingEditor: View {
     private func add() {
         switch VocabularyStore.shared.addMapping(heard: heardText, term: termText) {
         case .added, .duplicate:
+            // Replace the originally-selected text with the canonical spelling.
+            // Use the sanitized term (what the store actually stored) so the
+            // transcript matches the saved mapping.
+            onAdded(VocabularyStore.sanitizeTerm(termText))
             onClose()
         case .rejected:
             errorText = "Use a single word or short phrase (max \(VocabularyStore.maxTermWords) words)."

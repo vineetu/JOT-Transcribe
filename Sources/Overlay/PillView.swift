@@ -89,6 +89,14 @@ struct PillView: View {
             // states; the layout collapses cleanly via `if` so the
             // pill stays flush to the notch when idle / transcribing.
             if isRecordingState {
+                // Prompt-Picker augment path: when the active Rewrite-with-Voice
+                // run is parameterized (e.g. Translate), show the picked prompt's
+                // hint so the user knows what detail to speak. Sits above the
+                // stop-hotkey hint, same below-the-pill subtitle pattern.
+                if let hint = model.augmentHint, !hint.isEmpty {
+                    augmentHintBanner(hint)
+                        .transition(.opacity)
+                }
                 stopHotkeyHint
                     .transition(.opacity)
             }
@@ -249,7 +257,12 @@ struct PillView: View {
         // the pill's subtitle on the next render.
         _ = toggleSingleKey
         _ = toggleTriggerTypeRaw
-        let label = SingleKeyMigration.effectiveBindingLabel(for: .toggleRecording) ?? "your hotkey"
+        // Rewrite-with-Voice captures (the `.rewriteWithVoice` hotkey AND the
+        // Prompt-Picker voice-augment) stop on the AI Rewrite-with-Voice
+        // binding, not the dictation toggle. The `isRewriteVoiceCapture` flip
+        // re-renders this view, so the label resolves to the right action.
+        let action: SingleKey.Action = model.isRewriteVoiceCapture ? .rewriteWithVoice : .toggleRecording
+        let label = SingleKeyMigration.effectiveBindingLabel(for: action) ?? "your hotkey"
         return HStack(spacing: 6) {
             Text("Press")
                 .foregroundStyle(.white.opacity(0.65))
@@ -268,6 +281,33 @@ struct PillView: View {
                 .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
         )
         .accessibilityLabel("Press \(label) to stop recording and paste at your cursor.")
+    }
+
+    /// Subtitle banner shown below the recording pill during a
+    /// Prompt-Picker-augmented Rewrite with Voice capture. Tells the user the
+    /// per-use detail the picked prompt wants them to speak (e.g. "Say the
+    /// target language…"). Same below-the-pill chrome as `stopHotkeyHint`,
+    /// with a speech-bubble glyph to read as "say this".
+    @ViewBuilder
+    private func augmentHintBanner(_ hint: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "text.bubble")
+                .foregroundStyle(.white.opacity(0.65))
+            Text(hint)
+                .foregroundStyle(.white)
+                .fontWeight(.medium)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .font(.system(size: 11))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color.black.opacity(0.65))
+                .shadow(color: .black.opacity(0.25), radius: 4, x: 0, y: 2)
+        )
+        .accessibilityLabel(hint)
     }
 
     private var pillSpring: Animation {

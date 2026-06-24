@@ -235,7 +235,7 @@ actor LLMClient {
             // If this branch is reached it's a programmer error — callers
             // must route `.appleIntelligence` through `AppleIntelligenceClient`.
             throw LLMError.appleIntelligenceUnavailable
-        case .openai, .ollama:
+        case .openai, .ollama, .lmStudio:
             return try buildOpenAIRequest(
                 baseURL: baseURL, apiKey: apiKey, model: model,
                 systemPrompt: systemPrompt, userPrompt: userPrompt,
@@ -373,7 +373,7 @@ actor LLMClient {
 
     private func shouldStream(provider: LLMProvider) -> Bool {
         switch provider {
-        case .openai, .anthropic, .gemini, .ollama:
+        case .openai, .anthropic, .gemini, .ollama, .lmStudio:
             return true
         case .appleIntelligence:
             return false
@@ -643,7 +643,7 @@ actor LLMClient {
         }
 
         switch provider {
-        case .openai, .ollama:
+        case .openai, .ollama, .lmStudio:
             return parseOpenAIStreamChunk(root)
         case .anthropic:
             return parseAnthropicStreamChunk(root)
@@ -732,7 +732,7 @@ actor LLMClient {
             // Apple Intelligence never reaches parse — responses are in-memory
             // strings from FoundationModels. If we're here it's a programmer error.
             throw LLMError.appleIntelligenceUnavailable
-        case .openai, .ollama:
+        case .openai, .ollama, .lmStudio:
             text = (root["choices"] as? [[String: Any]])?
                 .first?["message"]
                 .flatMap { $0 as? [String: Any] }?["content"] as? String

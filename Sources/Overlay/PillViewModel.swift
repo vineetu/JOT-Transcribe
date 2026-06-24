@@ -75,6 +75,21 @@ final class PillViewModel: ObservableObject {
 
     @Published private(set) var state: PillState = .hidden
 
+    /// Per-use voice-augment hint for a Prompt-Picker-augmented Rewrite with
+    /// Voice run (e.g. 'Say the target language…'). Mirrored straight off
+    /// `RewriteController.augmentHint` so the recording pill can show the user
+    /// what detail to speak. `nil` for ordinary recordings (dictation and the
+    /// plain `.rewriteWithVoice` hotkey path), where the recording pill renders
+    /// exactly as before.
+    @Published private(set) var augmentHint: String?
+
+    /// True while the current `.recording` pill is a Rewrite-with-Voice capture
+    /// (both entry points: the `.rewriteWithVoice` hotkey AND the Prompt-Picker
+    /// voice-augment). Drives the stop-hotkey hint to show the user's AI
+    /// Rewrite-with-Voice binding instead of the dictation toggle. Set by the
+    /// rewrite vs. recorder state handlers; only read while `.recording`.
+    @Published private(set) var isRewriteVoiceCapture: Bool = false
+
     /// True while the user has tapped the recording pill to expand it
     /// into the multi-line streaming-transcript view. Only meaningful
     /// when `state == .recording` AND a streaming session is active.
@@ -201,6 +216,10 @@ final class PillViewModel: ObservableObject {
     private var deliveryCancellable: AnyCancellable?
     private var rewriteCancellable: AnyCancellable?
     private var rewriteResultCancellable: AnyCancellable?
+    /// Mirrors `RewriteController.augmentHint` onto the view model so the
+    /// recording pill can surface the per-use augment hint during a
+    /// picker-augmented Rewrite with Voice capture.
+    private var rewriteAugmentHintCancellable: AnyCancellable?
     /// Subscriber on `StreamingPartialStore.shared.$partial`. Updates
     /// `latestPartial` and rebuilds the pill state when currently
     /// `.recording`. Same subscriber covers all three voice-capture
@@ -289,6 +308,11 @@ final class PillViewModel: ObservableObject {
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] result in
                     self?.showRewriteSuccess(result)
+                }
+            rewriteAugmentHintCancellable = rewriteController.$augmentHint
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] hint in
+                    self?.augmentHint = hint
                 }
         }
 
@@ -487,6 +511,7 @@ final class PillViewModel: ObservableObject {
             // surface — we deliberately do NOT fire the held paste, to avoid a
             // late async paste landing in the new focus / stomping this pill.
             forceResolvePendingAskKeepOriginal()
+            isRewriteVoiceCapture = false
             recordingStartedAt = startedAt
             transition(to: .recording(elapsed: Date().timeIntervalSince(startedAt), streamingPartial: latestPartial))
             startTick()
@@ -518,6 +543,7 @@ final class PillViewModel: ObservableObject {
         case .capturing:
             break
         case .recording(let startedAt):
+            isRewriteVoiceCapture = true
             recordingStartedAt = startedAt
             transition(to: .recording(elapsed: Date().timeIntervalSince(startedAt), streamingPartial: latestPartial))
             startTick()

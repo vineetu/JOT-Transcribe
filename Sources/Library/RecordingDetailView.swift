@@ -264,9 +264,35 @@ struct RecordingDetailView: View {
         } else {
             // Selectable serif transcript. Width is given explicitly (measured
             // by the page); the view reports its own height. Right-click on a
-            // selection → "Add to Vocabulary…" mapping popover.
-            TranscriptReader(text: displayedTranscript, width: transcriptReadingWidth)
+            // selection → "Add to Vocabulary…" mapping popover. On a successful
+            // add we also rewrite the selected instance to the canonical term
+            // and persist it.
+            TranscriptReader(
+                text: displayedTranscript,
+                width: transcriptReadingWidth,
+                onReplaceSelection: { range, term in
+                    applyVocabReplacement(range: range, term: term)
+                }
+            )
         }
+    }
+
+    /// Replace the single selected instance in the canonical transcript with
+    /// the canonical vocabulary term and persist it. The affordance is only
+    /// shown on the canonical transcript path (never the raw view), so this
+    /// edits `recording.transcript`. Mutating the bound model + saving the
+    /// context flows back through `displayedTranscript` → `TranscriptReader`'s
+    /// `text` input, so the reader re-renders to show the change.
+    private func applyVocabReplacement(range: NSRange, term: String) {
+        let ns = recording.transcript as NSString
+        // Guard against a stale range (e.g. the transcript changed underneath
+        // us between selection and add): only edit when the range is in bounds.
+        guard range.location >= 0,
+              range.length > 0,
+              range.location + range.length <= ns.length
+        else { return }
+        recording.transcript = ns.replacingCharacters(in: range, with: term)
+        try? context.save()
     }
 
     // MARK: - Toolbar

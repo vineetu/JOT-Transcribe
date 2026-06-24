@@ -249,7 +249,7 @@ enum AIServices {
                 urlSession: urlSession,
                 logSink: logSink
             )
-        case .openai, .anthropic, .gemini, .ollama:
+        case .openai, .anthropic, .gemini, .ollama, .lmStudio:
             return CloudAIService(
                 urlSession: urlSession,
                 appleClient: appleClient,
@@ -421,6 +421,10 @@ struct CloudAIService: AIService {
                     cloud = GeminiChatStream(session: urlSession)
                 case .ollama:
                     cloud = OllamaChatStream(session: urlSession)
+                case .lmStudio:
+                    // LM Studio speaks the OpenAI chat API verbatim — reuse
+                    // the OpenAI adapter (no LM Studio-specific stream needed).
+                    cloud = OpenAIChatStream(session: urlSession)
                 #if JOT_FLAVOR_1
                 case .flavor1:
                     cloud = Flavor1ChatStream(session: urlSession)

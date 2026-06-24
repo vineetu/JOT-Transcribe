@@ -66,6 +66,14 @@ final class RewriteController: ObservableObject {
     @Published private(set) var state: RewriteState = .idle {
         didSet { scheduleAutoRecoveryIfNeeded() }
     }
+    /// Per-use voice-augment hint for the CURRENT Rewrite-with-Voice run, when
+    /// it was started from the Prompt Picker on a prompt that carries a
+    /// `voiceAugmentHint` (e.g. Translate → 'Say the target language…'). The
+    /// status pill reads this while `state == .recording` so the user knows
+    /// what detail to speak. `nil` for the plain `.rewriteWithVoice` hotkey
+    /// path (no override, no hint) — behaves exactly as before. Set when the
+    /// run enters `.recording`, cleared when it leaves.
+    @Published private(set) var augmentHint: String?
     @Published private(set) var lastRewrite: String?
     /// Timestamp paired with `lastRewrite`. Updated on every write so
     /// `DeliveryService.pasteLast()` can compare against
@@ -183,6 +191,36 @@ final class RewriteController: ObservableObject {
         }
     }
 
+    /// Picker entry — Rewrite WITH VOICE on a hand-picked prompt that carries a
+    /// `voiceAugmentHint`. Runs the same voice flow as `toggle()`, but the
+    /// picked prompt's body becomes the LLM system-prompt override (skipping
+    /// the classifier) and the spoken text becomes the `<instruction>`. The
+    /// `augmentHint` is surfaced on the status pill during the voice capture so
+    /// the user knows what detail to speak (e.g. the target language). The
+    /// persisted row's instruction column uses the picked title. This is the
+    /// implemented counterpart to the silent picker path
+    /// (`rewrite(systemPromptOverride:pickedTitle:)`).
+    func rewriteWithVoice(
+        systemPromptOverride: String,
+        pickedTitle: String,
+        augmentHint: String?
+    ) async {
+        switch state {
+        case .idle, .error:
+            activeFlowTask = Task { @MainActor [weak self] in
+                await self?.runCustom(
+                    systemPromptOverride: systemPromptOverride,
+                    pickedTitle: pickedTitle,
+                    augmentHint: augmentHint
+                )
+            }
+        case .recording:
+            resumeSecondToggle()
+        case .capturing, .transcribing, .rewriting:
+            log.info("rewriteWithVoice(picker) ignored — rewrite in progress (\(String(describing: self.state)))")
+        }
+    }
+
     func cancel() async {
         activeFlowTask?.cancel()
         activeFlowTask = nil
@@ -247,8 +285,8 @@ final class RewriteController: ObservableObject {
     /// the override as its system prompt (skipping the classifier). The
     /// `pickedTitle` is persisted as the row's instruction column so
     /// Home reads "Make formal" rather than the generic "Rewrite this".
-    /// Voice-augment (⌘⏎ in the picker) is a separate entry point
-    /// — see `rewriteWithVoice(systemPromptOverride:pickedTitle:)`.
+    /// Prompts that carry a `voiceAugmentHint` take a separate voice path
+    /// instead — see `rewriteWithVoice(systemPromptOverride:pickedTitle:augmentHint:)`.
     func rewrite(systemPromptOverride: String, pickedTitle: String) async {
         switch state {
         case .capturing, .recording, .transcribing, .rewriting:
@@ -270,11 +308,23 @@ final class RewriteController: ObservableObject {
 
     // MARK: - Rewrite with Voice internals
 
-    private func runCustom() async {
+    /// The Rewrite-with-Voice flow. When `systemPromptOverride` is nil (the
+    /// plain `.rewriteWithVoice` hotkey path) it behaves exactly as before:
+    /// the spoken text is the instruction and the classifier-driven system
+    /// prompt governs. When a picked prompt supplies an override + title +
+    /// optional hint (the Prompt Picker augment path), the override becomes the
+    /// LLM system prompt verbatim, the picked title is persisted as the row's
+    /// instruction label, and the hint is surfaced on the pill during capture.
+    private func runCustom(
+        systemPromptOverride: String? = nil,
+        pickedTitle: String? = nil,
+        augmentHint: String? = nil
+    ) async {
         defer {
             activeFlowTask = nil
             pipelineToken = nil
             secondToggleContinuation = nil
+            self.augmentHint = nil
         }
 
         permissions.refreshAll()
@@ -318,6 +368,10 @@ final class RewriteController: ObservableObject {
             pipelineToken = token
 
             guard pipeline.stillActive(token) else { return }
+            // Surface the per-use augment hint (if any) BEFORE flipping to
+            // `.recording` so the pill can show it the instant the mic opens.
+            let trimmedHint = augmentHint?.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.augmentHint = (trimmedHint?.isEmpty == false) ? trimmedHint : nil
             state = .recording(startedAt: Date())
 
             try await waitForSecondToggle()
@@ -344,19 +398,30 @@ final class RewriteController: ObservableObject {
             state = .rewriting
             let service = rewriteService()
             let modelLabel = snapshotModelLabel()
+            // When a picked prompt supplied an override its body IS the system
+            // prompt (verbatim) and the spoken text rides in the `<instruction>`
+            // block; when nil this is the classic classifier-driven path.
             let rewritten = try await service.rewrite(
                 selectedText: selectedText,
-                instruction: instruction
+                instruction: instruction,
+                systemPromptOverride: systemPromptOverride
             )
 
             guard pipeline.stillActive(token) else { return }
             // Persist BEFORE paste so a paste failure doesn't lose the
             // row — Home becomes the recovery affordance for the rare
-            // paste-failure case (plan §6).
+            // paste-failure case (plan §6). For a picker-augment run, label
+            // the row with the picked title + the spoken detail (e.g.
+            // "Translate — to Japanese") so Home reads meaningfully; the
+            // plain hotkey path keeps persisting the raw spoken instruction.
+            let instructionLabel: String = {
+                guard let pickedTitle, !pickedTitle.isEmpty else { return instruction }
+                return "\(pickedTitle) — \(instruction)"
+            }()
             persistSession(
                 flavor: "voice",
                 selection: selectedText,
-                instruction: instruction,
+                instruction: instructionLabel,
                 output: rewritten,
                 modelUsed: modelLabel,
                 createdAt: createdAt
