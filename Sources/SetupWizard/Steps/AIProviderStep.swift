@@ -124,6 +124,13 @@ struct AIProviderStep: View {
             }
             .pickerStyle(.menu)
 
+            // LM Studio recommended-local setup, surfaced when physical
+            // RAM qualifies. Independent of the picker selection — it
+            // drives setup; selecting `.lmStudio` stays user-initiated.
+            if LMStudioSetup.ramQualifies {
+                LMStudioRecommendCard()
+            }
+
             switch pickerChoice {
             case .none:
                 Text("Pick a provider above to configure it.")

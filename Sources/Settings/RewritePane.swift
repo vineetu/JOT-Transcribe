@@ -78,7 +78,7 @@ struct RewritePane: View {
                         }
                         InfoPopoverButton(
                             title: "Provider",
-                            body: "Which service handles Auto-correct and Rewrite. Apple Intelligence runs on-device (free, no API key). OpenAI, Anthropic, Gemini, and local Ollama round out the options.",
+                            body: "Which service handles Auto-correct and Rewrite. Apple Intelligence runs on-device (free, no API key). OpenAI, Anthropic, Gemini, plus local Ollama and LM Studio round out the options.",
                             helpAnchor: "ai-cloud-providers"
                         )
                     }
@@ -126,6 +126,14 @@ struct RewritePane: View {
                             )
                         }
                     }
+
+                    // LM Studio recommended-local setup. Renders only when
+                    // physical RAM qualifies (the card hides itself via its
+                    // own `.unsupportedRAM` state). Selecting `.lmStudio`
+                    // stays user-initiated — this just drives setup.
+                    if LMStudioSetup.ramQualifies {
+                        LMStudioRecommendCard()
+                    }
                 }
 
                 #if JOT_FLAVOR_1
@@ -142,7 +150,7 @@ struct RewritePane: View {
                 // .flavor1 because that provider authenticates via JWT
                 // through Flavor1Session — pasting a JWT into this field
                 // would persist it in Keychain under the generic key path.
-                if config.provider != .ollama && config.provider != .appleIntelligence && !isFlavor1Selected {
+                if config.provider != .ollama && config.provider != .lmStudio && config.provider != .appleIntelligence && !isFlavor1Selected {
                     Section("Authentication") {
                         HStack {
                             SecureField("API Key", text: $apiKeyInput)

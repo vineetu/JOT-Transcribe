@@ -3,10 +3,15 @@ import SwiftUI
 /// The unified window's left source-list.
 ///
 /// Layout order (Advanced ON):
-///   Recents · Settings (expanded, sub-rows including Vocabulary) · Help · Ask Jot · About
+///   Recents · Settings (General · Shortcuts · AI · Vocabulary) · Help · Ask Jot · About
 ///
 /// Layout order (Advanced OFF — v1.13 slim mode):
-///   Recents · Settings (no Vocabulary sub-row) · Help · About
+///   Recents · Settings (General · Shortcuts · AI · Vocabulary) · Help · About
+///
+/// v1.16: Vocabulary is always shown (it used to be Advanced-only) and is
+/// pinned to the bottom of the Settings group. It is still hidden only when
+/// the JA-tokenized model is primary. The Advanced flag now gates just the
+/// in-pane "sounds-like" alias editor, not the sidebar row.
 ///
 /// - Settings group expand/collapse state is persisted via
 ///   `@AppStorage("jot.sidebar.settingsExpanded")`. Default expanded for
@@ -42,7 +47,9 @@ struct AppSidebar: View {
     /// side effect.
     @AppStorage("jot.sidebar.settingsExpanded") private var settingsExpanded: Bool = true
     /// v1.13: master toggle for the "Advanced" surface. Off hides the
-    /// Vocabulary sub-row and the top-level Ask Jot row.
+    /// top-level Ask Jot row. (v1.16: the Vocabulary sub-row is no longer
+    /// gated by this — it's always visible; Advanced now only controls the
+    /// in-pane alias editor.)
     @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
 
     var body: some View {
@@ -51,11 +58,13 @@ struct AppSidebar: View {
                 .tag(AppSidebarSelection.home)
 
             DisclosureGroup(isExpanded: $settingsExpanded) {
-                // v1.15 sidebar order: General → Shortcuts → Vocabulary
-                // (Advanced only) → AI. The standalone Transcription, Sound,
+                // v1.16 sidebar order: General → Shortcuts → AI →
+                // Vocabulary (last). The standalone Transcription, Sound,
                 // and Prompts panes were folded into other panes —
-                // Transcription + Sound into General, Prompts into AI — so
-                // the sidebar collapses from 7 sub-rows to 4.
+                // Transcription + Sound into General, Prompts into AI.
+                // Vocabulary is now always visible (no longer gated behind
+                // Advanced) and sits at the bottom; the Advanced flag only
+                // gates the richer in-pane "sounds-like" alias editor.
                 subRow(
                     title: "General",
                     systemImage: "slider.horizontal.3",
@@ -73,25 +82,25 @@ struct AppSidebar: View {
                         tag: .settings(.speakerLabels)
                     )
                 }
+                subRow(
+                    title: "AI",
+                    systemImage: "sparkles",
+                    tag: .settings(.ai)
+                )
                 // Vocabulary boost is incompatible with the JA-tokenized
                 // primary model (`docs/plans/japanese-support.md` §C):
                 // hide the entry while JA is primary so users don't add
-                // terms that can't apply. The user's saved list and the
-                // master toggle preference persist — the row reappears
-                // when primary swaps back to a European model.
-                // v1.13: additionally gated behind Advanced.
-                if advancedEnabled && transcriberHolder.primaryModelID != .tdt_0_6b_ja {
+                // terms that can't apply. The user's saved list persists —
+                // the row reappears when primary swaps back to a European
+                // model. Otherwise always visible (v1.16: no longer gated
+                // behind Advanced); placed last in the Settings group.
+                if transcriberHolder.primaryModelID != .tdt_0_6b_ja {
                     subRow(
                         title: "Vocabulary",
                         systemImage: "text.book.closed",
                         tag: .settings(.vocabulary)
                     )
                 }
-                subRow(
-                    title: "AI",
-                    systemImage: "sparkles",
-                    tag: .settings(.ai)
-                )
             } label: {
                 // v1.14: clicking the Settings row toggles the disclosure;
                 // it does NOT navigate. Selection is preserved so the

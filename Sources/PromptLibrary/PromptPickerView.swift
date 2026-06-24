@@ -104,16 +104,39 @@ struct PromptPickerView: View {
 
     @ViewBuilder
     private var operandStrip: some View {
-        HStack {
-            Text("Refining your selected text — pick a prompt to apply.")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+        HStack(spacing: 8) {
+            // When the focused prompt is parameterized (carries a
+            // voiceAugmentHint), tell the user that picking it will ask them to
+            // speak a detail — so the voice capture isn't a surprise. Otherwise
+            // show the standing "refining your selection" hint.
+            if let hint = focusedAugmentHint {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                Text(hint)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } else {
+                Text("Refining your selected text — pick a prompt to apply.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 8)
+    }
+
+    /// Trimmed, non-empty voice-augment hint for the currently-focused prompt,
+    /// or `nil` when the focused prompt applies silently.
+    private var focusedAugmentHint: String? {
+        guard let hint = model.focusedPrompt?.voiceAugmentHint else { return nil }
+        let trimmed = hint.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     // MARK: - Body

@@ -22,7 +22,7 @@ enum ModelCatalog {
             return ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
         case .gemini:
             return ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
-        case .ollama, .appleIntelligence:
+        case .ollama, .lmStudio, .appleIntelligence:
             return []
         #if JOT_FLAVOR_1
         case .flavor1:

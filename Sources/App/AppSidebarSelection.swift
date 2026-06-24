@@ -16,8 +16,10 @@ public enum AppSidebarSelection: Hashable {
     case about
 }
 
-/// The panes inside the expanded Settings group. Order here matches the
-/// order the sidebar renders (General → Vocabulary → AI → Shortcuts).
+/// The panes inside the expanded Settings group. Order here is the enum
+/// declaration order, not the sidebar render order. The sidebar renders
+/// (v1.16): General → Shortcuts → AI → Vocabulary, with Vocabulary always
+/// visible (no longer Advanced-gated) and pinned last.
 ///
 /// v1.15 IA collapse: the standalone `transcription`, `sound`, and
 /// `prompts` panes were folded into other panes — Transcription + Sound →

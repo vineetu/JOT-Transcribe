@@ -185,8 +185,23 @@ final class PromptPickerController {
             log.error("PromptPicker apply: rewriteController nil — drop")
             return
         }
+        // Prompts that carry a `voiceAugmentHint` are parameterized — picking
+        // them runs a short VOICE capture (showing the hint) to collect a
+        // per-use detail (e.g. Translate → "to Japanese", Summarize → "focus on
+        // decisions"), which rides into the rewrite as the `<instruction>`
+        // alongside the prompt body as the system-prompt override. Prompts with
+        // no hint apply silently exactly as before.
+        let hint = prompt.voiceAugmentHint?.trimmingCharacters(in: .whitespacesAndNewlines)
         Task { @MainActor in
-            await rc.rewrite(systemPromptOverride: prompt.body, pickedTitle: prompt.title)
+            if let hint, !hint.isEmpty {
+                await rc.rewriteWithVoice(
+                    systemPromptOverride: prompt.body,
+                    pickedTitle: prompt.title,
+                    augmentHint: hint
+                )
+            } else {
+                await rc.rewrite(systemPromptOverride: prompt.body, pickedTitle: prompt.title)
+            }
         }
     }
 

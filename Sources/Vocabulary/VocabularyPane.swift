@@ -30,6 +30,11 @@ struct VocabularyPane: View {
     @FocusState private var focusedID: VocabTerm.ID?
     @Environment(\.helpNavigator) private var navigator
     @State private var boostModelStatus: BoostModelStatus = .notDownloaded
+    /// v1.16: when Advanced is on, each term row exposes an inline
+    /// "sounds-like" alias editor (the heard → term mapping). Off keeps the
+    /// baseline single-field rows. Gating happens in `VocabRow`; the pane
+    /// only adds an explanatory line above the list.
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
 
     /// True when JA is the active primary. JA is no longer locked
     /// (v1.12 ships alias-based substitution via
@@ -61,6 +66,13 @@ struct VocabularyPane: View {
                     if store.terms.isEmpty {
                         emptyStateView
                     } else {
+                        if advancedEnabled && !isJAPrimary {
+                            Text("Under each term, add the ways Jot mis-hears it (\u{201c}sounds-like\u{201d}) so it maps them back to your spelling.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.bottom, 2)
+                        }
                         ForEach(store.terms) { term in
                             VocabRow(
                                 term: binding(for: term.id),

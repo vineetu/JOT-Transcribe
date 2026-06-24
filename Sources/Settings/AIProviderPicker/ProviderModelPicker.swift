@@ -23,11 +23,19 @@ struct ProviderModelPicker: View {
     /// disclosure auto-expands to show the endpoint that got tested.
     let justRanTestConnection: Bool
 
-    @State private var ollamaModels: [String] = []
-    @State private var ollamaError: String? = nil
-    @State private var isProbingOllama: Bool = false
+    @State private var localModels: [String] = []
+    @State private var localError: String? = nil
+    @State private var isProbingLocal: Bool = false
     @State private var probeTask: Task<Void, Never>? = nil
     @State private var userExpandedAdvanced: Bool = false
+
+    /// Providers Jot can discover models from via an unauthenticated local
+    /// `/models`-style probe: Ollama (`/api/tags`) and LM Studio
+    /// (`/v1/models`). Cloud vendors gate their `/models` endpoint behind
+    /// an API key, so they use the static `ModelCatalog` instead.
+    private var isLocallyProbeable: Bool {
+        provider == .ollama || provider == .lmStudio
+    }
 
     init(
         provider: LLMProvider,
@@ -48,7 +56,7 @@ struct ProviderModelPicker: View {
             advancedDisclosure
         }
         .onAppear {
-            if provider == .ollama { probeOllama() }
+            if isLocallyProbeable { probeLocal() }
         }
         .onDisappear {
             probeTask?.cancel()
@@ -60,10 +68,8 @@ struct ProviderModelPicker: View {
     @ViewBuilder
     private var modelRow: some View {
         HStack(spacing: 8) {
-            if availableModels.isEmpty && provider == .ollama {
-                Text(isProbingOllama
-                     ? "Loading models from Ollama…"
-                     : "No models found — run `ollama pull <name>` to add one.")
+            if availableModels.isEmpty && isLocallyProbeable {
+                Text(localEmptyStateText)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -76,11 +82,11 @@ struct ProviderModelPicker: View {
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if provider == .ollama {
+            if isLocallyProbeable {
                 Button {
-                    probeOllama(force: true)
+                    probeLocal(force: true)
                 } label: {
-                    if isProbingOllama {
+                    if isProbingLocal {
                         ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: "arrow.clockwise")
@@ -88,9 +94,22 @@ struct ProviderModelPicker: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(isProbingOllama)
-                .help("Refresh the list of installed Ollama models")
+                .disabled(isProbingLocal)
+                .help("Refresh the list of local \(provider.displayName) models")
             }
+        }
+    }
+
+    /// Empty-state / loading copy for the locally-probeable providers.
+    private var localEmptyStateText: String {
+        if isProbingLocal {
+            return "Loading models from \(provider.displayName)…"
+        }
+        switch provider {
+        case .lmStudio:
+            return "No models found — load a model in LM Studio or run `lms load <name>`."
+        default:
+            return "No models found — run `ollama pull <name>` to add one."
         }
     }
 
@@ -104,8 +123,8 @@ struct ProviderModelPicker: View {
     private var availableModels: [String] {
         var ids: [String]
         switch provider {
-        case .ollama:
-            ids = ollamaModels
+        case .ollama, .lmStudio:
+            ids = localModels
         default:
             ids = ModelCatalog.options(for: provider)
         }
@@ -137,13 +156,13 @@ struct ProviderModelPicker: View {
     @ViewBuilder
     private var statusLine: some View {
         switch provider {
-        case .ollama:
-            if let ollamaError {
-                Text(ollamaError)
+        case .ollama, .lmStudio:
+            if let localError {
+                Text(localError)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-            } else if !ollamaModels.isEmpty {
-                Text("\(ollamaModels.count) model\(ollamaModels.count == 1 ? "" : "s") installed locally")
+            } else if !localModels.isEmpty {
+                Text("\(localModels.count) model\(localModels.count == 1 ? "" : "s") available locally")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             } else {
@@ -174,7 +193,7 @@ struct ProviderModelPicker: View {
             let url = config.baseURL(for: provider).trimmingCharacters(in: .whitespacesAndNewlines)
             return !url.isEmpty && url != provider.defaultBaseURL
         }()
-        let showsCustomModel = provider != .ollama && provider != .appleIntelligence
+        let showsCustomModel = provider != .ollama && provider != .lmStudio && provider != .appleIntelligence
         #if JOT_FLAVOR_1
         let cloudProvider = showsCustomModel && provider != .flavor1
         #else
@@ -253,31 +272,43 @@ struct ProviderModelPicker: View {
         }
     }
 
-    // MARK: - Ollama probe
+    // MARK: - Local model probe (Ollama / LM Studio)
 
-    private func probeOllama(force: Bool = false) {
-        guard provider == .ollama, !isProbingOllama || force else { return }
+    private func probeLocal(force: Bool = false) {
+        guard isLocallyProbeable, !isProbingLocal || force else { return }
         probeTask?.cancel()
-        isProbingOllama = true
-        ollamaError = nil
+        isProbingLocal = true
+        localError = nil
         let session = urlSession
-        let baseURL = config.effectiveBaseURL(for: .ollama)
-        let probe = OllamaProbe()
+        let baseURL = config.effectiveBaseURL(for: provider)
+        let probe: any AIProviderProbe = provider == .lmStudio
+            ? LMStudioProbe()
+            : OllamaProbe()
+        let provider = provider
         probeTask = Task { @MainActor in
             let result = await probe.probe(baseURL: baseURL, apiKey: "", session: session)
             guard !Task.isCancelled else { return }
             switch result {
             case .success(let models):
-                ollamaModels = models.map { $0.id }.sorted()
-                ollamaError = nil
+                localModels = models.map { $0.id }.sorted()
+                localError = nil
             case .authFailure:
-                ollamaError = "Ollama refused the request — check your local config."
+                localError = "\(provider.displayName) refused the request — check your local config."
             case .unreachable:
-                ollamaError = "Ollama isn't running on \(baseURL) — start it with `ollama serve`."
+                localError = Self.unreachableText(for: provider, baseURL: baseURL)
             case .networkError:
-                ollamaError = "Couldn't reach Ollama locally."
+                localError = "Couldn't reach \(provider.displayName) locally."
             }
-            isProbingOllama = false
+            isProbingLocal = false
+        }
+    }
+
+    private static func unreachableText(for provider: LLMProvider, baseURL: String) -> String {
+        switch provider {
+        case .lmStudio:
+            return "LM Studio isn't running on \(baseURL) — start its local server (Developer tab or `lms server start`)."
+        default:
+            return "Ollama isn't running on \(baseURL) — start it with `ollama serve`."
         }
     }
 }

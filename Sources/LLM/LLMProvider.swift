@@ -6,6 +6,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     case anthropic
     case gemini
     case ollama
+    case lmStudio
     #if JOT_FLAVOR_1
     case flavor1
     #endif
@@ -21,7 +22,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     /// every case in `allCases`.
     static var userSelectable: [LLMProvider] {
         #if JOT_FLAVOR_1
-        return [.appleIntelligence, .ollama, .flavor1]
+        return [.appleIntelligence, .ollama, .lmStudio, .flavor1]
         #else
         return allCases
         #endif
@@ -34,6 +35,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic: "Anthropic"
         case .gemini: "Gemini"
         case .ollama: "Ollama (local)"
+        case .lmStudio: "LM Studio (local)"
         #if JOT_FLAVOR_1
         case .flavor1: (Bundle.main.infoDictionary?["FLAVOR_1_DISPLAY_NAME"] as? String) ?? "PFB Enterprise"
         #endif
@@ -74,6 +76,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic:    return "https://api.anthropic.com/v1"
         case .gemini:       return "https://generativelanguage.googleapis.com/v1beta"
         case .ollama:       return "http://localhost:11434/v1"
+        case .lmStudio:     return "http://localhost:1234/v1"
         #if JOT_FLAVOR_1
         case .flavor1:      return ""
         #endif
@@ -106,6 +109,10 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .anthropic:    return "claude-haiku-4-5-20251001"
         case .gemini:       return "gemini-3.1-flash-lite"
         case .ollama:       return "gemma4:31b-cloud"
+        // LM Studio JIT-loads whatever model the user has loaded in the
+        // app; there's no sensible static default. Discovery (the local
+        // /v1/models probe) fills the picker. Empty until then.
+        case .lmStudio:     return ""
         #if JOT_FLAVOR_1
         case .flavor1:      return ""
         #endif
@@ -118,7 +125,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     var requiresUserAPIKey: Bool {
         switch self {
         case .openai, .anthropic, .gemini: return true
-        case .ollama, .appleIntelligence:  return false
+        case .ollama, .lmStudio, .appleIntelligence: return false
         #if JOT_FLAVOR_1
         // Flavor-1 authenticates via short-lived JWT (not an API key);
         // credential handling lives entirely in Sources/Private/Flavor1/.
@@ -138,7 +145,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .openai:    return URL(string: "https://platform.openai.com/settings/organization/api-keys")
         case .anthropic: return URL(string: "https://platform.claude.com/settings/keys")
         case .gemini:    return URL(string: "https://aistudio.google.com/api-keys")
-        case .ollama, .appleIntelligence: return nil
+        case .ollama, .lmStudio, .appleIntelligence: return nil
         #if JOT_FLAVOR_1
         case .flavor1:   return nil
         #endif
@@ -157,7 +164,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         case .openai:    return URL(string: "https://platform.openai.com/docs/models")
         case .anthropic: return URL(string: "https://docs.claude.com/en/docs/about-claude/models")
         case .gemini:    return URL(string: "https://ai.google.dev/gemini-api/docs/models")
-        case .ollama, .appleIntelligence: return nil
+        case .ollama, .lmStudio, .appleIntelligence: return nil
         #if JOT_FLAVOR_1
         case .flavor1:   return nil
         #endif
@@ -174,7 +181,10 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     var usesFirstByteWatchdog: Bool {
         switch self {
         case .openai, .anthropic, .gemini: return true
-        case .ollama, .appleIntelligence:  return false
+        // LM Studio JIT-loads models on first request, so TTFB can blow
+        // past 3s (same reasoning as Ollama). Bounded by the outer
+        // per-request timeout instead of the first-byte watchdog.
+        case .ollama, .lmStudio, .appleIntelligence: return false
         #if JOT_FLAVOR_1
         // Flavor-1 is a cloud endpoint (always-warm); use the same 3s
         // first-byte reachability check as other cloud providers.
