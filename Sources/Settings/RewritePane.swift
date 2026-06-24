@@ -129,11 +129,11 @@ struct RewritePane: View {
 
                     // LM Studio recommended-local setup. Renders only when
                     // physical RAM qualifies (the card hides itself via its
-                    // own `.unsupportedRAM` state). Selecting `.lmStudio`
-                    // stays user-initiated — this just drives setup.
-                    if LMStudioSetup.ramQualifies {
-                        LMStudioRecommendCard()
-                    }
+                    // The card self-gates: it appears ONLY when LM Studio is the
+                    // selected provider AND still needs setup (not installed / no
+                    // model), and hides once configured. Selecting `.lmStudio`
+                    // stays user-initiated.
+                    LMStudioRecommendCard()
                 }
 
                 #if JOT_FLAVOR_1

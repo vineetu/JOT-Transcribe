@@ -20,18 +20,31 @@ struct LMStudioRecommendCard: View {
 
     var body: some View {
         Group {
-            switch setup.state {
-            case .unsupportedRAM:
-                // Below the RAM gate — don't surface the recommendation at all.
-                EmptyView()
-            default:
+            if shouldShowCard {
                 card
+            } else {
+                EmptyView()
             }
         }
-        .task {
-            // Read-only detection. Safe on appear — never spawns a process
-            // or contacts a remote host.
+        // Read-only detection on appear AND whenever the selected provider
+        // changes — so the setup card surfaces right after the user picks
+        // "LM Studio (local)", and never for other providers. Safe: never
+        // spawns a process or contacts a remote host.
+        .task(id: config.provider) {
+            guard config.provider == .lmStudio else { return }
             await setup.detectState()
+        }
+    }
+
+    /// The setup card is shown ONLY when the user has actually selected LM Studio
+    /// AND it still needs setup (not installed / no model). Hidden for other
+    /// providers, for under-RAM machines, and once configured — the provider's
+    /// model picker then shows the chosen model.
+    private var shouldShowCard: Bool {
+        guard config.provider == .lmStudio else { return false }
+        switch setup.state {
+        case .unsupportedRAM, .configured: return false
+        default: return true
         }
     }
 

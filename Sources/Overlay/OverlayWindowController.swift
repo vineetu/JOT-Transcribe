@@ -49,6 +49,13 @@ final class OverlayWindowController {
     /// expanded / awaiting-ask pill never self-dismisses it.
     private var isDraggingWindow = false
 
+    /// Drives per-cursor click-through. A borderless panel only lets clicks reach
+    /// the app beneath when `ignoresMouseEvents == true`; returning nil from
+    /// `hitTest` merely SWALLOWS the click. So while the pill is visible we poll
+    /// the cursor and set `ignoresMouseEvents` false ONLY while it's over the
+    /// capsule (so the pill stays draggable/tappable), true everywhere else.
+    private var cursorTrackTimer: Timer?
+
     /// Movable pill (v1→v2, design §D.2): the `NSScreenNumber` of the screen the
     /// current `committedDelta` was set on. `NSScreen` has no stable identity
     /// across display reconfiguration, so we key the reset on this device number
@@ -650,27 +657,60 @@ final class OverlayWindowController {
 
     private func applyClickThrough(for state: PillViewModel.PillState) {
         guard let panel else { return }
-        // Movable pill (v2, design §B/§D.2 + HIGH 1): the panel is hittable in
-        // EVERY visible state (so the drag layer below the hosting view can grab
-        // the capsule), and click-through is per-pixel via the drag view's
-        // geometry-only `hitTest`. Refresh the capsule rect FIRST, then flip
-        // `ignoresMouseEvents`, so `hitTest` never reads a stale / `.zero` rect
-        // in the window where the panel is hittable but the rect is wrong.
         switch state {
         case .hidden:
-            // Fully click-through: collapse the capsule rect so `hitTest` is
-            // transparent everywhere, then ignore mouse events entirely.
+            stopCursorTracking()
             panel.dragView.pillRectProvider = { .zero }
+            panel.hostingView.pillRectProvider = { .zero }
             panel.ignoresMouseEvents = true
         default:
-            // Every visible state: the capsule rect governs per-pixel
-            // click-through. The drag layer makes the pill draggable in passive
-            // states too; SwiftUI controls still win taps by Z-order.
-            panel.dragView.pillRectProvider = { [weak self, weak panel] in
+            // The capsule rect routes taps to the right view WHILE the window is
+            // hittable; the cursor tracker decides WHEN it's hittable (only over
+            // the capsule), so clicks/selection pass through everywhere else.
+            let capsule: () -> CGRect = { [weak self, weak panel] in
                 guard let self, let panel else { return .zero }
                 return self.capsuleRect(for: self.model.state, in: panel)
             }
-            panel.ignoresMouseEvents = false
+            panel.dragView.pillRectProvider = capsule
+            panel.hostingView.pillRectProvider = capsule
+            startCursorTracking()
+            updateClickThroughForCursor()   // apply for the first frame, pre-timer
+        }
+    }
+
+    /// Poll the cursor (~60 Hz) while the pill is visible and flip
+    /// `ignoresMouseEvents`: FALSE only while the cursor is over the capsule (pill
+    /// draggable/tappable), TRUE everywhere else so clicks and text selection
+    /// reach the app beneath. This is the only reliable partial-click-through for
+    /// a borderless panel — hitTest→nil swallows the click instead of passing it.
+    private func startCursorTracking() {
+        guard cursorTrackTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            // Timer fires on RunLoop.main → already on the main thread.
+            MainActor.assumeIsolated { self?.updateClickThroughForCursor() }
+        }
+        timer.tolerance = 1.0 / 120.0
+        RunLoop.main.add(timer, forMode: .common)   // fire during tracking/scroll
+        cursorTrackTimer = timer
+    }
+
+    private func stopCursorTracking() {
+        cursorTrackTimer?.invalidate()
+        cursorTrackTimer = nil
+    }
+
+    /// Set `ignoresMouseEvents` from the cursor's position relative to the capsule.
+    private func updateClickThroughForCursor() {
+        guard let panel else { return }
+        // Mid-drag: stay hittable so the in-flight drag isn't interrupted.
+        if isDraggingWindow {
+            if panel.ignoresMouseEvents { panel.ignoresMouseEvents = false }
+            return
+        }
+        let capsuleScreenRect = panel.convertToScreen(capsuleRect(for: model.state, in: panel))
+        let shouldIgnore = !capsuleScreenRect.contains(NSEvent.mouseLocation)
+        if panel.ignoresMouseEvents != shouldIgnore {
+            panel.ignoresMouseEvents = shouldIgnore
         }
     }
 
