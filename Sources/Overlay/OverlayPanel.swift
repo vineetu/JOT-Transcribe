@@ -54,6 +54,26 @@ final class OverlayDragView: NSView {
     }
 }
 
+/// `NSHostingView` that is click-through OUTSIDE the pill. The stable canvas is
+/// large (≈664×444) and this host fills it sitting ABOVE the drag layer, so a
+/// plain `NSHostingView` swallows every click across the whole transparent
+/// canvas — blocking text selection / clicks in the app beneath while the pill
+/// is visible. Gating `hitTest` to the capsule rect (the SAME rect the drag
+/// view uses) makes everything outside the pill pass through, while taps INSIDE
+/// the capsule still reach SwiftUI controls (ask buttons, drag) exactly as
+/// before. `{ .zero }` ⇒ fully transparent (hidden state).
+final class ClickThroughHostingView: NSHostingView<AnyView> {
+    var pillRectProvider: () -> CGRect = { .zero }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard pillRectProvider().contains(point) else { return nil }
+        return super.hitTest(point)
+    }
+
+    @MainActor required init(rootView: AnyView) { super.init(rootView: rootView) }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
+}
+
 /// Floating, borderless, click-through-by-default NSPanel that hosts the
 /// SwiftUI Dynamic Island-style pill. Lives above normal windows
 /// (`.screenSaver` level) and survives Space switches.
@@ -66,8 +86,13 @@ final class OverlayPanel: NSPanel {
     /// The geometry-only drag layer below the hosting view. Exposed so the
     /// controller can install `pillRectProvider` / `isDraggingProvider`.
     let dragView = OverlayDragView()
+    /// The SwiftUI host, exposed so the controller can install the same
+    /// capsule-rect provider used by the drag layer — keeping the large canvas
+    /// click-through outside the pill (otherwise it swallows clicks beneath).
+    let hostingView: ClickThroughHostingView
 
     init(rootView: some View) {
+        self.hostingView = ClickThroughHostingView(rootView: AnyView(rootView))
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 420, height: 52),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -90,7 +115,7 @@ final class OverlayPanel: NSPanel {
         self.ignoresMouseEvents = true
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
 
-        let hosting = NSHostingView(rootView: AnyView(rootView))
+        let hosting = hostingView
         hosting.translatesAutoresizingMaskIntoConstraints = false
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = CGColor.clear
