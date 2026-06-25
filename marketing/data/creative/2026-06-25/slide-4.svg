@@ -1,0 +1,23 @@
+<svg width="1080" height="1350" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Lesson label -->
+  <text x="90" y="130" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#CE231D" letter-spacing="5">LESSON 3 / 5</text>
+
+  <!-- Headline -->
+  <text x="90" y="268" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="700" fill="#f0f0f0">The clipboard</text>
+  <text x="90" y="344" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="700" fill="#f0f0f0">sandwich has more</text>
+  <text x="90" y="420" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="700" fill="#CE231D">bugs than the model.</text>
+
+  <!-- Body panel -->
+  <rect x="90" y="480" width="900" height="250" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="136" y="534" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">Save clipboard &#x2192; write text &#x2192; &#x2318;V &#x2192; restore.</text>
+  <text x="136" y="568" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">Trivial on paper. A dozen timing edge cases</text>
+  <text x="136" y="602" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">in practice. CoreAudio, accessibility permissions,</text>
+  <text x="136" y="636" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">and app sandboxing all have opinions.</text>
+  <text x="136" y="692" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#f0f0f0">The transcription model is the easy part.</text>
+
+  <!-- Footer -->
+  <circle cx="412" cy="1290" r="5" fill="#CE231D"/>
+  <text x="428" y="1295" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

@@ -1,0 +1,30 @@
+<svg width="1080" height="1350" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- LESSON 5 label -->
+  <text x="90" y="130" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#CE231D" letter-spacing="5">LESSON 5 / 5</text>
+
+  <!-- Headline -->
+  <text x="90" y="268" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#f0f0f0">Free is a</text>
+  <text x="90" y="348" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#f0f0f0">distribution</text>
+  <text x="90" y="428" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#CE231D">strategy.</text>
+
+  <!-- Body panel -->
+  <rect x="90" y="484" width="900" height="220" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="136" y="540" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#9a9a9f">Paid apps have a conversion funnel. Free,</text>
+  <text x="136" y="574" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#9a9a9f">open-source apps spread by word of mouth.</text>
+  <text x="136" y="626" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#f0f0f0">You don&#x2019;t need to justify the price.</text>
+  <text x="136" y="660" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#f0f0f0">You just need to be worth sharing.</text>
+
+  <!-- CTA panel -->
+  <rect x="90" y="750" width="900" height="340" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="836" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f" text-anchor="middle">Jot &#x2014; free, open-source Mac dictation</text>
+  <text x="540" y="900" font-family="Helvetica, Arial, sans-serif" font-size="48" font-weight="700" fill="#f0f0f0" text-anchor="middle">Free. On-device.</text>
+  <text x="540" y="956" font-family="Helvetica, Arial, sans-serif" font-size="48" font-weight="700" fill="#f0f0f0" text-anchor="middle">Open source.</text>
+  <text x="540" y="1012" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f" text-anchor="middle">Apple Silicon &#xb7; macOS 15+ &#xb7; $0</text>
+  <text x="540" y="1060" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#CE231D" text-anchor="middle">jot-transcribe.com</text>
+
+  <!-- Footer -->
+  <circle cx="412" cy="1290" r="5" fill="#CE231D"/>
+  <text x="428" y="1295" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

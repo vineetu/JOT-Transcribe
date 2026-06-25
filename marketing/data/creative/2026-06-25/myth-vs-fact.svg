@@ -1,0 +1,38 @@
+<svg width="1080" height="1080" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- MYTH label -->
+  <text x="540" y="128" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#3a3a3e" text-anchor="middle" letter-spacing="7">MYTH</text>
+
+  <!-- Myth statement — muted, struck-through -->
+  <text x="540" y="238" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="700" fill="#2e2e32" text-anchor="middle">"If it&#x2019;s free,</text>
+  <text x="540" y="314" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="700" fill="#2e2e32" text-anchor="middle">the audio is</text>
+  <text x="540" y="390" font-family="Helvetica, Arial, sans-serif" font-size="60" font-weight="700" fill="#2e2e32" text-anchor="middle">the product."</text>
+
+  <!-- Strikethrough lines (at cap-height midpoint ≈ baseline − 20px for 60px type) -->
+  <line x1="90" y1="222" x2="990" y2="222" stroke="#CE231D" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  <line x1="90" y1="298" x2="990" y2="298" stroke="#CE231D" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  <line x1="90" y1="374" x2="990" y2="374" stroke="#CE231D" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+
+  <!-- Divider with red pip -->
+  <rect x="90" y="448" width="900" height="1" fill="#2a2a2e"/>
+  <circle cx="540" cy="448" r="5" fill="#CE231D"/>
+
+  <!-- FACT label -->
+  <text x="540" y="516" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#CE231D" text-anchor="middle" letter-spacing="7">FACT</text>
+
+  <!-- Fact — big, white -->
+  <text x="540" y="624" font-family="Helvetica, Arial, sans-serif" font-size="66" font-weight="700" fill="#f0f0f0" text-anchor="middle">Open source</text>
+  <text x="540" y="706" font-family="Helvetica, Arial, sans-serif" font-size="66" font-weight="700" fill="#f0f0f0" text-anchor="middle">means no secrets.</text>
+
+  <!-- Supporting detail panel -->
+  <rect x="90" y="748" width="900" height="184" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="806" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f" text-anchor="middle">No servers &#xb7; no telemetry &#xb7; audio never leaves your Mac</text>
+  <text x="540" y="848" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f" text-anchor="middle">Transcription runs on the Apple Neural Engine.</text>
+  <text x="540" y="890" font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f" text-anchor="middle">The code is on GitHub &#x2014; go look.</text>
+  <text x="540" y="920" font-family="Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#CE231D" text-anchor="middle">Free. Forever.</text>
+
+  <!-- Footer -->
+  <circle cx="412" cy="1000" r="5" fill="#CE231D"/>
+  <text x="428" y="1005" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

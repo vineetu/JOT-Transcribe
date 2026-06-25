@@ -1,0 +1,22 @@
+<svg width="1080" height="1350" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Lesson label -->
+  <text x="90" y="130" font-family="Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#CE231D" letter-spacing="5">LESSON 1 / 5</text>
+
+  <!-- Headline -->
+  <text x="90" y="268" font-family="Helvetica, Arial, sans-serif" font-size="68" font-weight="700" fill="#f0f0f0">On-device</text>
+  <text x="90" y="352" font-family="Helvetica, Arial, sans-serif" font-size="68" font-weight="700" fill="#f0f0f0">isn&#x2019;t just</text>
+  <text x="90" y="436" font-family="Helvetica, Arial, sans-serif" font-size="68" font-weight="700" fill="#f0f0f0">about privacy.</text>
+
+  <!-- Body panel -->
+  <rect x="90" y="490" width="900" height="220" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="136" y="544" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#9a9a9f">Cloud dictation has a server round-trip.</text>
+  <text x="136" y="578" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#9a9a9f">Jot doesn&#x2019;t. Text appears in under a second.</text>
+  <text x="136" y="630" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#f0f0f0">Privacy and speed turn out to be</text>
+  <text x="136" y="664" font-family="Helvetica, Arial, sans-serif" font-size="23" fill="#f0f0f0">the same argument.</text>
+
+  <!-- Footer -->
+  <circle cx="412" cy="1290" r="5" fill="#CE231D"/>
+  <text x="428" y="1295" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
