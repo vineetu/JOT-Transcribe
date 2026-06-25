@@ -1,0 +1,20 @@
+<svg width="1080" height="1350" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Top label -->
+  <text x="540" y="130" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#3a3a3e" text-anchor="middle" letter-spacing="7">BUILDING JOT</text>
+
+  <!-- Hook — giant type -->
+  <text x="540" y="520" font-family="Helvetica, Arial, sans-serif" font-size="104" font-weight="700" fill="#CE231D" text-anchor="middle">30 releases.</text>
+  <text x="540" y="640" font-family="Helvetica, Arial, sans-serif" font-size="104" font-weight="700" fill="#f0f0f0" text-anchor="middle">70 days.</text>
+
+  <!-- Sub-headline -->
+  <text x="540" y="760" font-family="Helvetica, Arial, sans-serif" font-size="40" fill="#9a9a9f" text-anchor="middle">Here&#x2019;s what I learned.</text>
+
+  <!-- Swipe hint -->
+  <text x="540" y="860" font-family="Helvetica, Arial, sans-serif" font-size="18" fill="#3a3a3e" text-anchor="middle">swipe &#x2192;</text>
+
+  <!-- Footer -->
+  <circle cx="412" cy="1290" r="5" fill="#CE231D"/>
+  <text x="428" y="1295" font-family="Helvetica, Arial, sans-serif" font-size="19" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
