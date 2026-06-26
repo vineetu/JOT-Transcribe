@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+  <rect x="60" y="60" width="960" height="960" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="128" font-size="25" fill="#9a9a9f" text-anchor="middle">Mac dictation: the comparison nobody publishes</text>
+  <rect x="308" y="155" width="224" height="493" rx="10" fill="#CE231D" fill-opacity="0.09"/>
+  <text x="420" y="205" font-size="32" fill="#f0f0f0" text-anchor="middle" font-weight="700">Jot</text>
+  <text x="650" y="200" font-size="20" fill="#6a6a6f" text-anchor="middle" font-weight="500">SuperWhisper</text>
+  <text x="878" y="200" font-size="20" fill="#6a6a6f" text-anchor="middle" font-weight="500">Wispr Flow</text>
+  <line x1="80" y1="230" x2="1000" y2="230" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="190" y="270" font-size="19" fill="#9a9a9f" text-anchor="middle">Price</text>
+  <text x="420" y="277" font-size="42" fill="#CE231D" text-anchor="middle" font-weight="800">$0</text>
+  <text x="650" y="270" font-size="23" fill="#6a6a6f" text-anchor="middle">$249/yr</text>
+  <text x="878" y="270" font-size="23" fill="#6a6a6f" text-anchor="middle">$180/yr</text>
+  <line x1="80" y1="306" x2="1000" y2="306" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="190" y="347" font-size="18" fill="#9a9a9f" text-anchor="middle">Audio leaves Mac</text>
+  <text x="420" y="354" font-size="25" fill="#f0f0f0" text-anchor="middle" font-weight="600">never</text>
+  <text x="650" y="350" font-size="20" fill="#6a6a6f" text-anchor="middle">optional</text>
+  <text x="878" y="350" font-size="20" fill="#CE231D" text-anchor="middle" font-weight="600">always</text>
+  <line x1="80" y1="383" x2="1000" y2="383" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="190" y="424" font-size="18" fill="#9a9a9f" text-anchor="middle">Account required</text>
+  <text x="420" y="430" font-size="25" fill="#f0f0f0" text-anchor="middle" font-weight="600">no</text>
+  <text x="650" y="427" font-size="22" fill="#6a6a6f" text-anchor="middle">no</text>
+  <text x="878" y="427" font-size="22" fill="#CE231D" text-anchor="middle" font-weight="600">yes</text>
+  <line x1="80" y1="460" x2="1000" y2="460" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="190" y="502" font-size="18" fill="#9a9a9f" text-anchor="middle">Works offline</text>
+  <text x="420" y="508" font-size="25" fill="#f0f0f0" text-anchor="middle" font-weight="600">always</text>
+  <text x="650" y="505" font-size="22" fill="#6a6a6f" text-anchor="middle">always</text>
+  <text x="878" y="505" font-size="22" fill="#CE231D" text-anchor="middle" font-weight="600">never</text>
+  <line x1="80" y1="538" x2="1000" y2="538" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="190" y="580" font-size="18" fill="#9a9a9f" text-anchor="middle">Open source</text>
+  <text x="420" y="586" font-size="25" fill="#f0f0f0" text-anchor="middle" font-weight="600">yes</text>
+  <text x="650" y="583" font-size="22" fill="#CE231D" text-anchor="middle" font-weight="600">no</text>
+  <text x="878" y="583" font-size="22" fill="#CE231D" text-anchor="middle" font-weight="600">no</text>
+  <text x="540" y="720" font-size="48" fill="#f0f0f0" text-anchor="middle" font-weight="700">The free one is the</text>
+  <text x="540" y="782" font-size="48" fill="#CE231D" text-anchor="middle" font-weight="700">most private one.</text>
+  <line x1="80" y1="870" x2="1000" y2="870" stroke="#2a2a2e" stroke-width="1"/>
+  <circle cx="364" cy="940" r="5" fill="#CE231D"/>
+  <text x="380" y="946" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
