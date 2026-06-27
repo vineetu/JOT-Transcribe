@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Main panel -->
+  <rect x="56" y="56" width="968" height="968" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1.5"/>
+
+  <!-- BIG scroll-stopper -->
+  <text x="540" y="310" font-family="Helvetica, Arial, sans-serif" font-size="240" font-weight="900" fill="#CE231D" text-anchor="middle" dominant-baseline="alphabetic">3×</text>
+
+  <!-- Descriptor -->
+  <text x="540" y="382" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="400" fill="#9a9a9f" text-anchor="middle">more words spoken than typed — every single day</text>
+
+  <!-- Divider top -->
+  <line x1="120" y1="424" x2="960" y2="424" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Stat row: Speaking -->
+  <text x="148" y="484" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" dominant-baseline="alphabetic">Speaking</text>
+  <text x="932" y="484" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="600" fill="#f0f0f0" text-anchor="end" dominant-baseline="alphabetic">~16,000 words / day</text>
+
+  <!-- Stat row: Typing -->
+  <text x="148" y="540" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" dominant-baseline="alphabetic">Typing</text>
+  <text x="932" y="540" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="600" fill="#f0f0f0" text-anchor="end" dominant-baseline="alphabetic">~5,000 words / day</text>
+
+  <!-- Divider mid -->
+  <line x1="120" y1="574" x2="960" y2="574" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Stat row: Lost (red accent) -->
+  <text x="148" y="626" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="600" fill="#9a9a9f" dominant-baseline="alphabetic">Lost</text>
+  <text x="932" y="626" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700" fill="#CE231D" text-anchor="end" dominant-baseline="alphabetic">~11,000 words / day</text>
+
+  <!-- Punchline -->
+  <text x="540" y="728" font-family="Helvetica, Arial, sans-serif" font-size="36" font-weight="700" fill="#f0f0f0" text-anchor="middle" dominant-baseline="alphabetic">11,000 words that never get written.</text>
+
+  <!-- CTA -->
+  <text x="540" y="796" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle" dominant-baseline="alphabetic">Dictate the gap — hotkey, speak, text at cursor.</text>
+
+  <!-- Second CTA line -->
+  <text x="540" y="840" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f" text-anchor="middle" dominant-baseline="alphabetic">Free. On-device. Open source.</text>
+
+  <!-- Footer -->
+  <circle cx="432" cy="944" r="5" fill="#CE231D"/>
+  <text x="447" y="944" font-family="Helvetica, Arial, sans-serif" font-size="20" fill="#5a5a5f" text-anchor="start" dominant-baseline="middle">jot-transcribe.com</text>
+</svg>
