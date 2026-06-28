@@ -1,50 +1,45 @@
 {
-  "date": "2026-06-27",
+  "date": "2026-06-28",
   "downloads": {
-    "total": 231,
-    "delta": 0,
-    "avg7": 11,
+    "total": 237,
+    "delta": 6,
+    "avg7": 7,
     "goal": 100
   },
   "creative": {
-    "concept": "The 3× gap — stat card revealing how much more people speak than type every day, and the ~11,000 words that vanish. First use of an external universal-behavior stat (vs. Jot's own builder numbers). Targets the Saturday lifestyle + productivity crowd; red '3×' is the scroll-stopper.",
+    "concept": "Use-case tip: 'Your journal writes itself.' — 3-step how-it-works card for a personal journaling angle. Pivots the week away from developer-heavy content (commits, PRs, standups, stat cards) toward a broader lifestyle audience on Sunday. Red circle on step 1 is the only color pop; format last used 15 days ago (Jun 13).",
     "cards": [
       {
-        "file": "marketing/data/creative/2026-06-27/3x-stat-gap.svg",
-        "title": "3× — more words spoken than typed every day",
-        "use": "Primary visual for LinkedIn, X, and Instagram today. The red '3×' stops the scroll; '~11,000 words / day Lost' in red is the punchline. Export as 1080×1080 PNG."
+        "file": "marketing/data/creative/2026-06-28/morning-journal-tip.svg",
+        "title": "Use-case tip: Your journal writes itself",
+        "use": "Primary visual for LinkedIn and X. Export as 1080×1080 PNG. The headline is the hook; numbered steps make the workflow immediately legible to someone who has never heard of Jot."
       }
     ],
     "carousel": [],
     "storyboard": {
-      "title": "Saturday to-do list — spoken in 12 seconds",
-      "duration_s": 18,
-      "use": "Instagram Reel / X video / GIF — weekend personal use case; fresh after a week of developer-focused clips; relatable for a broader Saturday audience",
+      "title": "Morning journaling — spoken in 2 minutes",
+      "duration_s": 16,
+      "use": "Instagram Reel / X video / GIF — personal writing hook; pivots from developer clips toward a broader Sunday lifestyle audience; pairs naturally with today's journaling card",
       "shots": [
         {
-          "t": "0–3s",
-          "visual": "Reminders app open on Mac, empty list under 'Saturday' header, cursor blinking — blank page anxiety",
-          "overlay": "Saturday to-do list."
+          "t": "0–2s",
+          "visual": "Apple Notes open, blank page, cursor blinking after a date stamp — the usual blank-stare moment",
+          "overlay": "Every morning."
         },
         {
-          "t": "3–6s",
+          "t": "2–5s",
           "visual": "Hand presses ⌥ Space; Dynamic Island-style pill appears pulsing under Mac notch",
           "overlay": "One hotkey."
         },
         {
-          "t": "6–14s",
-          "visual": "Pill shows pulsing audio waveform; user speaks five tasks aloud at a natural pace",
+          "t": "5–13s",
+          "visual": "Pill shows pulsing audio waveform; user speaks a morning reflection — thoughts, plans, gratitude; words fill Notes in real time",
           "overlay": "Speak."
         },
         {
-          "t": "14–17s",
-          "visual": "All five tasks appear in Reminders list; pill vanishes; list complete",
-          "overlay": "Done. In 12 seconds."
-        },
-        {
-          "t": "17–18s",
-          "visual": "Wide Mac desktop; completed Reminders list visible; jot-transcribe.com watermark lower-right",
-          "overlay": "Free. On-device."
+          "t": "13–16s",
+          "visual": "Full paragraph fills Notes; pill vanishes; jot-transcribe.com watermark lower-right",
+          "overlay": "Done. 2 minutes. Free."
         }
       ]
     }
@@ -52,58 +47,58 @@
   "drafts": [
     {
       "channel": "linkedin",
-      "text": "You speak ~16,000 words a day. You type ~5,000.\n\nThat's 11,000 words that vanish — never emailed, never written down.\n\nI built Jot to capture them. Press a hotkey, speak, the words land wherever your cursor is. On-device, nothing leaves your Mac.\n\n72 days. 231 downloads. The gap is real.\n\nWhat would you write if typing wasn't the bottleneck?\n\n#macOS #productivity #indiedev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-27",
+      "text": "Most people journal for 5 minutes then quit — because typing is slow and kills the momentum.\n\nI press ⌥ Space and speak instead. My thoughts flow at conversation speed, land in Notes or Pages, and I'm done in 2 minutes.\n\nJot: free, on-device Mac dictation. Any app, any text field, nothing leaves your Mac.\n\nWhat's one habit you'd do more of if the friction was gone?\n\n#macOS #productivity #indiedev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-28",
       "publish_window_pt": "7:00–8:30am PT",
       "recommended": true,
-      "note": "Attach 3x-stat-gap.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. Closing question is the engagement trigger — answer every reply."
+      "note": "Attach morning-journal-tip.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. Closing question is the engagement trigger — answer every reply. Note: Sunday is LinkedIn's weakest day; if impressions matter more than consistency, hold this for Monday 7am PT instead."
     },
     {
       "channel": "x",
-      "text": "You speak ~16,000 words/day. You type ~5,000. That's 11,000 words that never get written.\n\nJot: hotkey → speak → text at cursor. On-device. Free.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-27",
+      "text": "Typing kills journaling momentum. Jot: press ⌥ Space, speak your morning thoughts, done in 2 minutes. Free, on-device Mac dictation — nothing leaves your Mac.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-28",
       "publish_window_pt": "6:30–9:00am PT",
       "recommended": true,
-      "note": "Attach 3x-stat-gap.svg (export as PNG). No link in post body — post the utm_url as the first reply immediately after posting. ~148 characters, within the 200-char limit."
+      "note": "Attach morning-journal-tip.svg (export as PNG). No link in post — post the utm_url as the first reply immediately after posting. ~159 characters, within the 200-char limit."
     },
     {
       "channel": "reddit",
-      "text": "I tracked how many words I speak vs. type on a typical workday — and built a free dictation app to close the gap (I made this)\n\nThe average knowledge worker speaks around 16,000 words a day but types only ~5,000. That's 3× more spoken — roughly 11,000 words per day that just don't get written down.\n\nSo I built Jot. Press a hotkey, speak, and the transcript pastes wherever your cursor is in any app — email, Slack, terminal, your code editor. No window switching.\n\nTranscription runs entirely on-device on the Apple Neural Engine (Parakeet TDT model). No audio ever leaves the Mac. Works offline. No account, no subscription, no telemetry.\n\nSome patterns after 72 days of using it myself:\n- Morning Slack standup: 90 seconds of typing → 20 seconds spoken\n- Commit messages: I actually describe what I changed now instead of writing \"fix bug\"\n- PR descriptions: 30-second verbal explanation beats 10 minutes of typed bullets\n- Email backlog on a busy afternoon: batch and speak — 5 replies in 3 minutes\n\nThe thing I didn't expect: dictating feels more natural for explanations. When I type, I compress. When I speak, I give context. Reviewers and teammates have noticed.\n\nApple Silicon only, macOS 15+. Free and open source.\n\n(I built this — disclosure)\n\nLink in comments.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-27",
+      "text": "I started speaking my journal instead of typing it — here's what changed after 30 days\n\nI'd tried journaling dozens of times. The sticking point was always the same: typing out thoughts slowly felt like editing while thinking, and by sentence two I'd lose the thread.\n\nSo I started dictating instead with Jot — press a hotkey, speak, and the transcript pastes wherever your cursor is.\n\nWhat actually changed:\n- My entries are 3× longer. I write the way I talk — complete thoughts, not compressed bullets.\n- The habit actually stuck. Friction was the real block, not motivation.\n- I'm surprised by what comes out. When I type, I self-censor. When I speak, I say what I mean.\n\nJot pastes directly into any app — Notes, Obsidian, Pages, Day One, anywhere. Transcription runs entirely on the Apple Neural Engine — no cloud, no account, no audio leaves your Mac.\n\nApple Silicon, macOS 15+. Free, open source.\n\n(I built this — disclosure)\n\nLink in comments.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-28",
       "publish_window_pt": "6:00–8:00am PT",
-      "recommended": true,
-      "note": "Post to r/macapps (rotation: macapps Jun 23, MacOS Jun 24, productivity Jun 25, MacOS Jun 26, macapps Jun 27). First line is the post title. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:true — last recommended:true reddit was June 23 (4 days ago); threshold met. Answer every comment in the first hour. ALTERNATIVE READY: the comparison-table Reddit draft from the June 26 brief is also eligible today (r/MacOS version) — post one now and save the other for a few days out."
+      "recommended": false,
+      "note": "Post to r/MacOS (rotation: macapps Jun 23, MacOS Jun 24, productivity Jun 25, MacOS Jun 26, macapps Jun 27, MacOS Jun 28). First line is the post title. Replace 'Link in comments' with the actual utm_url as the first comment. recommended:false — last recommended:true reddit was June 27 (1 day ago); needs 4+ days — earliest is July 1. Answer every comment in the first hour."
     },
     {
       "channel": "instagram",
-      "text": "16,000 words spoken. 5,000 typed. 11,000 lost — every day.\n\nPress a hotkey. Speak. Text lands at your cursor.\n\nJot: free, on-device, open source. Link in bio.\n\n#macOS #productivity #dictation #voicetotext #speechtotext #opensource #macapps #indiedev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-27",
+      "text": "Typing kills journaling momentum. Speak instead.\n\nHotkey → speak your thoughts → text in Notes. 2 minutes. Free. On-device. Nothing leaves your Mac.\n\nLink in bio.\n\n#macOS #journaling #productivity #dictation #voicetotext #speechtotext #opensource #indiedev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-28",
       "publish_window_pt": "11am–1pm PT",
       "recommended": false,
-      "visual": "marketing/data/creative/2026-06-27/3x-stat-gap.svg",
-      "note": "recommended:false — last recommended:true instagram was June 26 (1 day ago); needs 3+ days — earliest is June 29. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
+      "visual": "marketing/data/creative/2026-06-28/morning-journal-tip.svg",
+      "note": "recommended:false — last recommended:true instagram was June 26 (2 days ago); needs 3+ days — earliest is June 29. Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
     }
   ],
   "opportunities": [
     {
-      "url": "https://www.getvoibe.com/blog/superwhisper-alternatives/",
-      "title": "11 Best Superwhisper Alternatives in 2026 — Voibe",
-      "why": "High-SEO roundup that excludes Jot — the only fully free, open-source on-device option. Previously flagged; if the comment hasn't been posted yet, this is a live opportunity with high-intent readers.",
-      "suggested_reply": "Great list. One worth adding: Jot (jot-transcribe.com) — the only fully free, open-source, on-device option. Press a hotkey, speak, text lands at your cursor in any app. Runs on the Apple Neural Engine — no cloud, no subscription, no audio leaves your Mac. 11 languages as of v1.16. I built it. (Disclosure: developer.)"
+      "url": "https://usevoicy.com/blog/best-dictation-apps-mac-macbook",
+      "title": "Best Dictation Apps for Mac and MacBook (2026) — UseVoicy",
+      "why": "New roundup not previously seen in search history. High-SEO page comparing dictation apps; Jot almost certainly absent as the only fully-free open-source on-device option. Check if comments are enabled — if so, a single disclosure comment would reach high-intent shoppers.",
+      "suggested_reply": "One worth adding to this list: Jot (jot-transcribe.com) — free, open-source, on-device on the Apple Neural Engine. Hotkey → speak → text at cursor in any Mac app. No subscription, no account, no audio leaves your Mac. 11 languages as of v1.16. I built it. (Disclosure: developer.)"
     },
     {
-      "url": "https://www.onresonant.com/resources/best-speech-to-text-mac-reddit",
-      "title": "Best Speech-to-Text Tools for Mac in 2026 (What Reddit Actually Recommends) — Resonant",
-      "why": "Competitor article aggregating Reddit voice-rec recommendations. Jot almost certainly absent. High-SEO page that shapes what comparison-shoppers find. Site returned 403 on fetch — verify reachability before outreach Jul 1.",
-      "suggested_reply": null
+      "url": "https://toolfinder.com/alternatives/wispr-flow",
+      "title": "Best Wispr Flow Alternatives for 2026 — ToolFinder",
+      "why": "New alternatives page surfaced today not previously flagged. Jot almost certainly absent. ToolFinder has interactive listing pages — submitting Jot here would surface it to users actively switching away from Wispr Flow.",
+      "suggested_reply": "Don't overlook Jot (jot-transcribe.com) — free, open-source Mac dictation that never sends audio off your Mac. Hotkey → speak → text at cursor in any app. Apple Neural Engine, 11 languages, no subscription. I built it. (Disclosure: developer.)"
     },
     {
-      "url": "https://spokenly.app/blog/wispr-flow-vs-superwhisper-vs-macwhisper",
-      "title": "Wispr Flow vs Superwhisper vs MacWhisper (2026) — Spokenly",
-      "why": "Three-way paid comparison ($180/yr vs $249/yr vs €59 one-time) that omits the $0 open-source option entirely. Reaches users already frustrated by dictation pricing. Not comment-enabled — flag for outreach July 1.",
-      "suggested_reply": null
+      "url": "https://www.getvoibe.com/resources/apple-dictation-review/",
+      "title": "Apple Dictation Review 2026: Is the Free Built-In Enough? — Voibe",
+      "why": "Article specifically calls out Apple Dictation's 30-second timeout and vocabulary limits — the exact pain points Jot solves. Voibe's blog likely has comments; a single honest note reaches users already frustrated with Apple Dictation who assume they must pay to upgrade.",
+      "suggested_reply": "If the 30-second timeout and vocabulary gaps are the frustration, Jot is worth trying — free, open-source Mac dictation on the Neural Engine with no timeout and custom vocab boosting. Works in any app. I built it. (Disclosure: developer.) jot-transcribe.com"
     }
   ],
   "outreach": [],
-  "notes": "Downloads held at 231 today (delta 0) — typical Saturday pattern, consistent with prior weekend plateaus (Jun 20–21). avg7 = 11/day. The 250-download milestone is 19 downloads away (~2 days at current pace). iTunes API returned 403 for the 15th consecutive day; appstore.json date updated to 2026-06-27, all values preserved including installs: 0 from App Store Connect. Outreach window remains closed (last outreach June 24; window reopens July 1 — priority targets: machow2.com, speakmac.app, Resonant's 'What Reddit Recommends' page, Voibe comment). Reddit recommended:true today (last true June 23, 4 days ago) — r/macapps. Instagram recommended:false (last true June 26, 1 day ago; earliest June 29). Today's stat card breaks new ground: previous stat cards used Jot's own builder numbers (downloads, releases, days); this uses a universal human-behavior fact that works as a standalone insight regardless of whether the reader knows Jot. Format 'surprising stat' last used Jun 17 (10 days ago). No carousel today (last ran June 25 = 2 days ago; next eligible June 29+). Jot confirmed absent from all Mac dictation roundups surfaced by search: Voibe, Resonant, Spokenly, Ryan Shrott Medium, machow2.com, speakmac.app, Blazing Fast Transcription roundup, Granola transcription guide — none mention Jot. The comparison-table Reddit draft from June 26 is eligible to post today and is an alternative to today's stat-angle post."
+  "notes": "Downloads reached 237 today (+6 from June 27's 231; avg7=7/day). The 250-download milestone is 13 downloads away — likely Tuesday or Wednesday at current pace. iTunes API returned an error for the 16th consecutive day; appstore.json date updated to 2026-06-28, all other values preserved (ratingCount:4, avgRating:5, installs:0). Outreach window remains closed (last outreach June 24; reopens July 1 — priority: machow2.com, speakmac.app, Resonant 'What Reddit Recommends' page, and a first comment on the Voibe Superwhisper alternatives page if not yet done). Three new roundup pages surfaced today where Jot is absent: UseVoicy, ToolFinder Wispr Flow alternatives, and Voibe's Apple Dictation Review. Resonant continues to appear as the de-facto free/local recommendation in all roundups; no third-party page mentions Jot. Today's journaling card is the first personal/lifestyle angle after a seven-day developer run — it tests breadth of audience. Suggestion: hold the LinkedIn post for Monday 7am PT for maximum reach; use Sunday for comment opportunities on the three new pages above instead."
 }

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Main panel -->
+  <rect x="48" y="48" width="984" height="984" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Label: USE-CASE TIP -->
+  <text x="540" y="148" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif" font-size="21" letter-spacing="5"
+        fill="#9a9a9f">USE-CASE TIP</text>
+
+  <!-- Headline line 1 -->
+  <text x="540" y="278" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif" font-size="92" font-weight="700"
+        fill="#f0f0f0">Your journal</text>
+
+  <!-- Headline line 2 -->
+  <text x="540" y="384" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif" font-size="92" font-weight="700"
+        fill="#f0f0f0">writes itself.</text>
+
+  <!-- Divider -->
+  <rect x="120" y="426" width="840" height="1" fill="#2a2a2e"/>
+
+  <!-- Step 1 -->
+  <circle cx="175" cy="530" r="32" fill="#CE231D"/>
+  <text x="175" y="539" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700"
+        fill="#f0f0f0">1</text>
+  <text x="228" y="521" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#f0f0f0">Open any app</text>
+  <text x="228" y="556" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f">Notes, Pages, Obsidian — anywhere</text>
+
+  <!-- Step 2 -->
+  <circle cx="175" cy="648" r="32" fill="#161618" stroke="#9a9a9f" stroke-width="1.5"/>
+  <text x="175" y="657" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700"
+        fill="#f0f0f0">2</text>
+  <text x="228" y="639" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#f0f0f0">Press ⌥ Space</text>
+  <text x="228" y="674" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f">The pill appears. It&#39;s listening.</text>
+
+  <!-- Step 3 -->
+  <circle cx="175" cy="766" r="32" fill="#161618" stroke="#9a9a9f" stroke-width="1.5"/>
+  <text x="175" y="775" text-anchor="middle"
+        font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="700"
+        fill="#f0f0f0">3</text>
+  <text x="228" y="757" font-family="Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#f0f0f0">Speak</text>
+  <text x="228" y="792" font-family="Helvetica, Arial, sans-serif" font-size="24" fill="#9a9a9f">Your words land at the cursor. Done.</text>
+
+  <!-- Divider -->
+  <rect x="120" y="846" width="840" height="1" fill="#2a2a2e"/>
+
+  <!-- Footer: red dot + domain + tagline -->
+  <circle cx="186" cy="934" r="7" fill="#CE231D"/>
+  <text x="204" y="940" font-family="Helvetica, Arial, sans-serif" font-size="26" fill="#9a9a9f">jot-transcribe.com</text>
+  <text x="960" y="940" text-anchor="end"
+        font-family="Helvetica, Arial, sans-serif" font-size="22" fill="#9a9a9f">Free · On-device · Open source</text>
+</svg>
