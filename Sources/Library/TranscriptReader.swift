@@ -287,8 +287,20 @@ struct VocabMappingEditor: View {
     /// sanitization. (The `heard` side is an arbitrary phrase — not word-capped.)
     private var canAdd: Bool {
         let term = VocabularyStore.sanitizeTerm(termText)
-        guard !term.isEmpty else { return false }
-        return term.split(whereSeparator: { $0 == " " }).count <= VocabularyStore.maxTermWords
+        guard !term.isEmpty, VocabularyStore.wordCount(term) <= VocabularyStore.maxTermWords else {
+            return false
+        }
+        let heard = VocabularyStore.sanitizeTerm(heardText)
+        let aliasMeaningful = !heard.isEmpty && heard.lowercased() != term.lowercased()
+        return !aliasMeaningful || VocabularyStore.isAcceptableAlias(heard)
+    }
+
+    /// The prefilled "heard" selection ran past the alias word cap — almost
+    /// always a mis-drag that grabbed a whole line/paragraph. Drives an inline
+    /// hint so the disabled Add button isn't a silent dead end.
+    private var heardTooLong: Bool {
+        let heard = VocabularyStore.sanitizeTerm(heardText)
+        return !heard.isEmpty && VocabularyStore.wordCount(heard) > VocabularyStore.maxTermWords
     }
 
     private func add() {
@@ -327,7 +339,11 @@ struct VocabMappingEditor: View {
                     .onSubmit { if canAdd { add() } }
             }
 
-            if let errorText {
+            if heardTooLong {
+                Text("That sounds-like is too long — select just the word(s), max \(VocabularyStore.maxTermWords).")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red)
+            } else if let errorText {
                 Text(errorText)
                     .font(.system(size: 10))
                     .foregroundStyle(.red)

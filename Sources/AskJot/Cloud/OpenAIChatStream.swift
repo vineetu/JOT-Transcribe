@@ -12,7 +12,7 @@ struct OpenAIChatStream: CloudChatStream {
     func streamChat(
         messages: [CloudChatMessage],
         systemInstructions: String,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -50,7 +50,7 @@ struct OpenAIChatStream: CloudChatStream {
     private func runConversationLoop(
         seedMessages: [RequestMessage],
         systemInstructions: String,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -64,6 +64,7 @@ struct OpenAIChatStream: CloudChatStream {
             let request = try makeRequest(
                 conversation: conversation,
                 systemInstructions: systemInstructions,
+                includeTools: showFeatureTool != nil,
                 apiKey: apiKey,
                 baseURL: baseURL,
                 model: model,
@@ -73,6 +74,9 @@ struct OpenAIChatStream: CloudChatStream {
             let turn = try await streamTurn(request: request, continuation: continuation)
             switch turn.finishReason {
             case .toolCalls:
+                // Without the tool advertised the model can't reach this
+                // branch, but guard defensively for the tool-less path.
+                guard let showFeatureTool else { return }
                 let toolCalls = try finalizedToolCalls(from: turn.toolCallBuilders)
                 guard !toolCalls.isEmpty else {
                     throw OpenAIChatStreamError.invalidResponse("finish_reason=tool_calls without any tool calls")
@@ -106,6 +110,7 @@ struct OpenAIChatStream: CloudChatStream {
     private func makeRequest(
         conversation: [RequestMessage],
         systemInstructions: String,
+        includeTools: Bool,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -119,13 +124,15 @@ struct OpenAIChatStream: CloudChatStream {
             .appendingPathComponent("chat")
             .appendingPathComponent("completions")
 
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "model": model,
             "messages": ([RequestMessage.system(content: systemInstructions)] + conversation).map(\.jsonObject),
-            "tools": [Self.showFeatureToolDefinition],
             "max_tokens": maxTokens,
             "stream": true
         ]
+        if includeTools {
+            payload["tools"] = [Self.showFeatureToolDefinition]
+        }
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"

@@ -19,6 +19,12 @@ struct RecordingDetailView: View {
     @State private var isRetranscribing = false
     @State private var retranscribeError: String?
     @State private var showRawTranscript = false
+    /// Edit mode for the canonical transcript. The view is REUSED across
+    /// sidebar navigation, so this is reset in `.task(id:)` when the bound
+    /// recording changes. Editing binds the `TextEditor` directly to
+    /// `$recording.transcript` (no draft buffer) — the model stays the source
+    /// of truth, so navigating away or quitting can't drop an in-flight draft.
+    @State private var isEditing = false
     /// Briefly flips to `true` right after a successful Copy click so
     /// the toolbar Copy button can swap its glyph to a checkmark — gives
     /// the user the same "did anything happen?" feedback the inline
@@ -46,6 +52,7 @@ struct RecordingDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: DetailMetrics.blockSpacing) {
                 header
+                TagChipsEditor(recording: recording) { try? context.save() }
                 playbackBlock
                 transcriptBlock
                 if let reviewModel, !reviewModel.records.isEmpty {
@@ -65,6 +72,12 @@ struct RecordingDetailView: View {
         .frame(maxWidth: .infinity, alignment: .top)
         .toolbar { toolbarContent }
         .task(id: recording.id) {
+            // The detail view is REUSED across sidebar navigation; reset edit
+            // mode so a different recording never opens already-in-edit (and
+            // never inherits the prior row's edit session). Edits to the prior
+            // recording were already written live via the @Bindable binding +
+            // autosave, so nothing is lost here.
+            isEditing = false
             // Seed the review model with the live recording + env context, then
             // reconcile its anchors against the current transcript. Re-runs when
             // the bound recording changes (sidebar navigation), so the section
@@ -74,7 +87,23 @@ struct RecordingDetailView: View {
             await model.reload()
         }
         .onAppear { player.load(url: RecordingStore.audioURL(for: recording)) }
-        .onDisappear { player.stop() }
+        .onDisappear {
+            player.stop()
+            // Durability flush: if the view goes away mid-edit (window close,
+            // app quit), persist explicitly — autosave alone isn't a guarantee.
+            if isEditing {
+                try? context.save()
+                isEditing = false
+            }
+        }
+        .onChange(of: recording.transcript) { _, _ in
+            // Mark as edited on the FIRST hand-edit (gated on `editedAt == nil`
+            // so it's a one-time stamp, not a per-keystroke model write). Survives
+            // every exit path (Done, nav-away, quit). Re-transcribe runs in read
+            // mode (isEditing == false) and clears `editedAt`, so it never trips
+            // this — and a later hand-edit re-stamps cleanly.
+            if isEditing, recording.editedAt == nil { recording.editedAt = .now }
+        }
         .alert(
             "Delete this recording?",
             isPresented: $pendingDelete
@@ -217,19 +246,31 @@ struct RecordingDetailView: View {
         let colorMap = segments.map { Self.colorMap(for: $0) }
         let useLabeledView = segments != nil && !showRawTranscript
 
+        // Editing applies only to the canonical plain transcript — never the
+        // raw view or the (feature-gated) speaker-labeled view.
+        let canEdit = !useLabeledView && !showRawTranscript
         return VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 10) {
                 Text(useLabeledView ? "Transcript · labeled" : "Transcript")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                     .tracking(0.6)
-                if hasTransformedTranscript || segments != nil {
-                    Spacer()
+                if recording.editedAt != nil && !isEditing {
+                    Text("· edited")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                if (hasTransformedTranscript || segments != nil) && !isEditing {
                     Toggle(segments != nil ? "Show plain" : "Show original", isOn: $showRawTranscript)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .font(.system(size: 11))
+                }
+                if canEdit || isEditing {
+                    Button(isEditing ? "Done" : "Edit") { toggleEdit() }
+                        .controlSize(.small)
                 }
             }
             transcriptBody(segments: segments, colorMap: colorMap, useLabeledView: useLabeledView)
@@ -243,7 +284,13 @@ struct RecordingDetailView: View {
         colorMap: [String: Color]?,
         useLabeledView: Bool
     ) -> some View {
-        if useLabeledView, let segments {
+        if isEditing {
+            // Distinct editable surface (design B2): the read-only
+            // `TranscriptReader`/`VocabSelectableTextView` is hard-wired
+            // non-editable with one-way data flow, so we never retrofit editing
+            // onto it. Bind straight to the model so there's no draft to lose.
+            TranscriptEditor(text: $recording.transcript)
+        } else if useLabeledView, let segments {
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                     VStack(alignment: .leading, spacing: 4) {
@@ -295,6 +342,29 @@ struct RecordingDetailView: View {
         try? context.save()
     }
 
+    // MARK: - Edit mode
+
+    private func toggleEdit() {
+        if isEditing {
+            commitEdit()
+        } else {
+            // Editing operates on the canonical transcript; force the raw view
+            // off so we always edit `recording.transcript`.
+            showRawTranscript = false
+            isEditing = true
+        }
+    }
+
+    private func commitEdit() {
+        isEditing = false
+        // Explicit save (not just autosave) so the edit is durable immediately.
+        try? context.save()
+        // Re-anchor the live correction-review section against the edited text.
+        // `CorrectionProvenance.reconciledPayload` is state-based and already
+        // accounts for a hand-edit; reload() recomputes the anchors (design B1).
+        Task { await reviewModel?.reload() }
+    }
+
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
@@ -315,7 +385,11 @@ struct RecordingDetailView: View {
             } label: {
                 Label("Re-transcribe", systemImage: "arrow.clockwise")
             }
-            .disabled(isRetranscribing)
+            // Disabled mid-edit: re-transcribe overwrites `transcript`, which
+            // would silently clobber the user's in-flight hand edit (and trip
+            // the edit-stamp). Editing happens in read→edit mode; re-transcribe
+            // is a read-mode action.
+            .disabled(isRetranscribing || isEditing)
 
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([RecordingStore.audioURL(for: recording)])
@@ -355,6 +429,8 @@ struct RecordingDetailView: View {
                 await MainActor.run {
                     recording.rawTranscript = result.rawText
                     recording.transcript = result.text
+                    // Fresh machine output — no longer a hand-edited transcript.
+                    recording.editedAt = nil
                     // Best-effort re-diarization. Diarizer is non-Sendable,
                     // so the call has to live entirely on the main actor —
                     // we grabbed `samples` and `result.text` from off-actor
@@ -496,6 +572,33 @@ struct RecordingDetailView: View {
         guard t.isFinite, t >= 0 else { return "0:00" }
         let total = Int(t)
         return String(format: "%d:%02d", total / 60, total % 60)
+    }
+}
+
+/// Editable transcript surface, shown only in edit mode. A DISTINCT view from
+/// the read-only `TranscriptReader` (design B2): we don't retrofit editing onto
+/// the reader's one-way NSTextView. Serif font + line spacing approximate the
+/// reader for visual continuity; minor styling drift in edit mode is accepted
+/// (design open-Q4). The boxed background also signals "you're editing now."
+private struct TranscriptEditor: View {
+    @Binding var text: String
+
+    var body: some View {
+        TextEditor(text: $text)
+            .font(.system(size: DetailMetrics.serifSize, design: .serif))
+            .lineSpacing(6)
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: 240)
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.25))
+            )
+            .accessibilityLabel("Edit transcript")
     }
 }
 

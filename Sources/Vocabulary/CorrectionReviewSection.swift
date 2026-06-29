@@ -56,6 +56,15 @@ struct CorrectionReviewSection: View {
             }
             Spacer(minLength: 0)
         }
+        // Let a click anywhere on the summary row toggle the accordion, not just
+        // the disclosure chevron. `contentShape` makes the whole row (including
+        // the trailing spacer) hit-testable.
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                model.accordionExpanded.toggle()
+            }
+        }
     }
 
     // MARK: - Review body

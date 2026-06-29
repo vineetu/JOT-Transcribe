@@ -96,8 +96,8 @@ enum AskJotPalette {
 /// Editorial typography scale. Everything Ask Jot renders lives here.
 /// Body prose is New York serif; UI chrome stays in SF Pro.
 enum AskJotType {
-    static let bodySize: CGFloat = 18.5
-    static let monoSize: CGFloat = 15.5
+    static let bodySize: CGFloat = 15
+    static let monoSize: CGFloat = 13.5
     static let bodyLineSpacing: CGFloat = 3
     static let bodyParagraphSpacing: CGFloat = 2
 

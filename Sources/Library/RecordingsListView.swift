@@ -55,6 +55,15 @@ struct RecordingsListView: View {
 private struct PagedRecordingsList: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
+    /// Cross-pane navigation for the AI-search button (→ Ask Jot) and for
+    /// consuming a citation-chip tap that wants to open a specific recording.
+    @Environment(\.helpNavigator) private var navigator
+    @Environment(\.setSidebarSelection) private var setSidebarSelection
+
+    /// Mirrors the sidebar gate: the AI/Ask Jot affordance only appears when
+    /// Advanced is on. With Advanced off, Ask Jot is hidden from the sidebar,
+    /// so the search sparkle (which routes there) must be hidden too.
+    @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
     /// Per-kind queries fetch the top `visibleLimit` rows of each kind sorted
     /// by `createdAt` descending. The merge-and-cap below sorts the (≤2N) row
     /// window globally and trims to N. Top-N per kind is sufficient to compute
@@ -67,6 +76,11 @@ private struct PagedRecordingsList: View {
     private let onLoadMore: () -> Void
 
     @State private var searchText: String = ""
+    /// Active tag filter (exact match, recordings only). Independent of
+    /// `searchText`; when set, the result set routes through the UNLIMITED fetch
+    /// (design M4) so older tagged recordings aren't hidden behind the paging
+    /// window. `nil` = no tag filter.
+    @State private var selectedTag: String?
     /// AI-search Stage B: semantic-search controller. Lazily created on first
     /// appear from the environment's `ModelContainer` (a `@State` can't read the
     /// environment at init time). Publishes `semanticMatches`; nil until appear.
@@ -111,14 +125,19 @@ private struct PagedRecordingsList: View {
     /// acceptable. Falls back to the limited sets if the unlimited fetch
     /// throws.
     private var filteredItems: [LibraryItem] {
+        let tag = selectedTag
+        // A search OR a tag filter routes through the unlimited fetch + bypasses
+        // the paging cap, so older matches/tagged rows still surface (design M4).
+        let filtersActive = !searchText.isEmpty || tag != nil
+
         let recordingsPool: [Recording]
         let rewritesPool: [RewriteSession]
-        if searchText.isEmpty {
-            recordingsPool = recordings
-            rewritesPool = rewrites
-        } else {
+        if filtersActive {
             recordingsPool = unlimitedRecordings() ?? recordings
             rewritesPool = unlimitedRewrites() ?? rewrites
+        } else {
+            recordingsPool = recordings
+            rewritesPool = rewrites
         }
 
         let needle = searchText.lowercased()
@@ -131,38 +150,70 @@ private struct PagedRecordingsList: View {
         let semanticMatches = semanticController?.semanticMatches ?? []
 
         let recordingItems: [LibraryItem] = recordingsPool.compactMap { r in
+            // Tag filter (exact, recordings only) — a row must carry the tag.
+            if let tag, !r.tags.contains(tag) { return nil }
             if needle.isEmpty { return .recording(r) }
-            // Substring ∪ semantic: a row surfaces if its title/transcript
-            // contains the needle OR its id is in the semantic match set.
+            // Substring ∪ semantic: a row surfaces if its title/transcript/tags
+            // contain the needle OR its id is in the semantic match set. Tags are
+            // substring-matched only (not semantically indexed — design M4).
             if r.title.lowercased().contains(needle)
                 || r.transcript.lowercased().contains(needle)
+                || r.tags.contains(where: { $0.contains(needle) })
                 || semanticMatches.contains(r.id) {
                 return .recording(r)
             }
             return nil
         }
 
-        let rewriteItems: [LibraryItem] = rewritesPool.compactMap { s in
-            if needle.isEmpty { return .rewrite(s) }
-            if s.title.lowercased().contains(needle)
-                || s.selectionText.lowercased().contains(needle)
-                || s.instructionText.lowercased().contains(needle)
-                || s.output.lowercased().contains(needle)
-                || (s.modelUsed?.lowercased().contains(needle) ?? false) {
-                return .rewrite(s)
+        // A tag filter is recording-specific; rewrites carry no tags, so they're
+        // excluded entirely whenever a tag is selected.
+        let rewriteItems: [LibraryItem]
+        if tag != nil {
+            rewriteItems = []
+        } else {
+            rewriteItems = rewritesPool.compactMap { s in
+                if needle.isEmpty { return .rewrite(s) }
+                if s.title.lowercased().contains(needle)
+                    || s.selectionText.lowercased().contains(needle)
+                    || s.instructionText.lowercased().contains(needle)
+                    || s.output.lowercased().contains(needle)
+                    || (s.modelUsed?.lowercased().contains(needle) ?? false) {
+                    return .rewrite(s)
+                }
+                return nil
             }
-            return nil
         }
 
         let merged = (recordingItems + rewriteItems)
             .sorted { $0.createdAt > $1.createdAt }
-        // Truncate AFTER the global sort so a fresh recording can't be
-        // hidden behind a stale rewrite (or vice versa). Search results
-        // bypass the cap so older matches still surface.
-        if searchText.isEmpty {
-            return Array(merged.prefix(visibleLimit))
+        // Truncate AFTER the global sort so a fresh recording can't be hidden
+        // behind a stale rewrite (or vice versa). Active filters bypass the cap
+        // so older matches still surface.
+        if filtersActive {
+            return merged
         }
-        return merged
+        return Array(merged.prefix(visibleLimit))
+    }
+
+    /// In-use tags for the filter bar, derived from the currently-loaded
+    /// (windowed) recordings — cheap, and recent recordings cover almost all
+    /// tags. The selected tag is always included even if it's not in the window.
+    /// (The FILTER itself still routes through the unlimited fetch, so selecting
+    /// a tag finds every matching recording regardless of this list.)
+    private var inUseTags: [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for r in recordings {
+            for t in r.tags where !seen.contains(t) {
+                seen.insert(t)
+                ordered.append(t)
+            }
+        }
+        var result = ordered.sorted()
+        if let sel = selectedTag, !result.contains(sel) {
+            result.insert(sel, at: 0)
+        }
+        return result
     }
 
     private func unlimitedRecordings() -> [Recording]? {
@@ -222,6 +273,11 @@ private struct PagedRecordingsList: View {
                         path.append(row)
                     }
                 }
+                // Ask Jot citation-chip tap → open that recording's detail.
+                .onChange(of: navigator.pendingOpenRecording) { _, newValue in
+                    openPendingRecordingIfNeeded(newValue)
+                }
+                .onAppear { openPendingRecordingIfNeeded(navigator.pendingOpenRecording) }
                 .navigationDestination(for: Recording.self) { r in
                     RecordingDetailView(recording: r)
                 }
@@ -291,6 +347,15 @@ private struct PagedRecordingsList: View {
             // list filter.
             auxiliaryRow {
                 inlineSearch
+            }
+
+            // Tag filter chips — only when some recording carries a tag. Tapping
+            // toggles an exact tag filter (which routes through the unlimited
+            // fetch via `filteredItems`).
+            if !inUseTags.isEmpty {
+                auxiliaryRow {
+                    tagFilterBar
+                }
             }
 
             let items = filteredItems
@@ -384,6 +449,22 @@ private struct PagedRecordingsList: View {
                 }
                 .buttonStyle(.plain)
             }
+            // AI search → open Ask Jot and (if there's a query) run it there.
+            // Gated to Advanced: when Advanced is off, Ask Jot is hidden from
+            // the sidebar, so this entry point is hidden too.
+            if advancedEnabled {
+                Button {
+                    let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !q.isEmpty { navigator.pendingAsk = q }
+                    setSidebarSelection(.askJot)
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.tint)
+                }
+                .buttonStyle(.plain)
+                .help("Ask AI about your recordings")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -395,6 +476,27 @@ private struct PagedRecordingsList: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
         )
+    }
+
+    /// Horizontally-scrolling bar of in-use tags. Tapping a chip toggles the
+    /// exact-match tag filter; the active chip is highlighted.
+    private var tagFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(inUseTags, id: \.self) { tag in
+                    Button {
+                        selectedTag = (selectedTag == tag) ? nil : tag
+                    } label: {
+                        TagChip(tag: tag, selected: selectedTag == tag)
+                            .opacity(selectedTag == nil || selectedTag == tag ? 1 : 0.5)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(selectedTag == tag ? "Remove filter: tag \(tag)" : "Filter by tag \(tag)")
+                }
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 1)
+        }
     }
 
     /// Per-item trailing widgets (Copy + ellipsis Menu) rendered as a
@@ -489,15 +591,18 @@ private struct PagedRecordingsList: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: searchText.isEmpty ? "waveform" : "magnifyingglass")
+        let filtering = !searchText.isEmpty || selectedTag != nil
+        return VStack(spacing: 8) {
+            Image(systemName: filtering ? "magnifyingglass" : "waveform")
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
-            Text(searchText.isEmpty ? "No library items yet" : "No matches")
+            Text(filtering ? "No matches" : "No library items yet")
                 .font(.system(size: 13, weight: .semibold))
-            Text(searchText.isEmpty
-                 ? "Your dictations and rewrites will appear here."
-                 : "Try a different search term.")
+            Text(filtering
+                 ? (selectedTag != nil && searchText.isEmpty
+                    ? "No recordings with this tag."
+                    : "Try a different search term.")
+                 : "Your dictations and rewrites will appear here.")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
         }
@@ -521,9 +626,24 @@ private struct PagedRecordingsList: View {
     /// current window was filled — once the rendered count plateaus below the
     /// ever-growing limit, the disk is exhausted and this stops bumping.
     private func maybeLoadMore(renderedCount: Int) {
-        guard searchText.isEmpty else { return }
+        // Search and tag filters both bypass the paging window (unlimited fetch),
+        // so paging must not bump while either is active.
+        guard searchText.isEmpty, selectedTag == nil else { return }
         guard renderedCount >= visibleLimit else { return }
         onLoadMore()
+    }
+
+    /// Consume a pending "open this recording" request from an Ask Jot citation
+    /// tap: fetch by id and push its detail. Clears the navigator field so the
+    /// same target re-fires cleanly next time.
+    private func openPendingRecordingIfNeeded(_ id: UUID?) {
+        guard let id else { return }
+        navigator.pendingOpenRecording = nil
+        var descriptor = FetchDescriptor<Recording>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        if let row = try? context.fetch(descriptor).first {
+            path.append(row)
+        }
     }
 
     private func retranscribe(_ r: Recording) {
@@ -537,6 +657,8 @@ private struct PagedRecordingsList: View {
                 await MainActor.run {
                     r.rawTranscript = result.rawText
                     r.transcript = result.text
+                    // Fresh machine output — clear any hand-edited marker.
+                    r.editedAt = nil
                     try? context.save()
                 }
             } catch {
