@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" font-family="Helvetica, Arial, sans-serif">
+  <!-- Background -->
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Top rule -->
+  <line x1="80" y1="120" x2="1000" y2="120" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="108" text-anchor="middle" font-size="21" fill="#9a9a9f" letter-spacing="5">A DAY WITH JOT  ·  3 / 5</text>
+
+  <!-- Time badge -->
+  <rect x="80" y="155" width="220" height="54" rx="27" fill="#CE231D"/>
+  <text x="190" y="190" text-anchor="middle" font-size="26" font-weight="700" fill="#f0f0f0">9:30 AM</text>
+
+  <!-- Use-case headline -->
+  <text x="80" y="278" font-size="72" font-weight="800" fill="#f0f0f0">Daily</text>
+  <text x="80" y="360" font-size="72" font-weight="800" fill="#f0f0f0">standup.</text>
+
+  <!-- Content panel -->
+  <rect x="80" y="405" width="920" height="380" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Slack-style standup block -->
+  <text x="120" y="464" font-size="21" fill="#9a9a9f" font-weight="500">Click in Slack compose field. Press ⌥ Space. Say:</text>
+
+  <rect x="120" y="480" width="840" height="240" rx="10" fill="#0d0d0e"/>
+  <text x="144" y="524" font-size="24" fill="#f0f0f0">Yesterday: finished the auth refactor and</text>
+  <text x="144" y="556" font-size="24" fill="#f0f0f0">merged the PR. Today: picking up the</text>
+  <text x="144" y="588" font-size="24" fill="#f0f0f0">notification pipeline. No blockers.</text>
+  <text x="144" y="636" font-size="21" fill="#9a9a9f" font-style="italic">— spoken in 12 seconds</text>
+  <text x="144" y="668" font-size="21" fill="#9a9a9f" font-style="italic">vs. ~60 seconds of typing the same words</text>
+  <text x="144" y="700" font-size="21" fill="#9a9a9f" font-style="italic">every single morning</text>
+
+  <!-- Stat -->
+  <rect x="80" y="820" width="920" height="118" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="866" text-anchor="middle" font-size="28" fill="#9a9a9f">Standup time:</text>
+  <text x="350" y="916" text-anchor="middle" font-size="44" font-weight="800" fill="#9a9a9f">60 sec typed</text>
+  <text x="580" y="916" text-anchor="middle" font-size="36" fill="#CE231D">→</text>
+  <text x="800" y="916" text-anchor="middle" font-size="44" font-weight="800" fill="#f0f0f0">12 sec spoken</text>
+
+  <!-- Bottom rule -->
+  <line x1="80" y1="1230" x2="1000" y2="1230" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Footer -->
+  <circle cx="214" cy="1296" r="5" fill="#CE231D"/>
+  <text x="230" y="1302" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

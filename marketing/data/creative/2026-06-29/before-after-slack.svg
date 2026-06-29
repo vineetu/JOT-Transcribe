@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080" font-family="Helvetica, Arial, sans-serif">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Eyebrow -->
+  <text x="540" y="75" text-anchor="middle" font-size="22" font-weight="500" fill="#9a9a9f" letter-spacing="6">B E F O R E  /  A F T E R</text>
+
+  <!-- Headline -->
+  <text x="540" y="152" text-anchor="middle" font-size="62" font-weight="800" fill="#f0f0f0">Typing compresses.</text>
+  <text x="540" y="228" text-anchor="middle" font-size="62" font-weight="800" fill="#f0f0f0">Speaking <tspan fill="#CE231D">explains.</tspan></text>
+
+  <!-- ── Left panel: TYPED ── -->
+  <rect x="55" y="265" width="458" height="622" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Label -->
+  <text x="284" y="315" text-anchor="middle" font-size="19" font-weight="600" fill="#9a9a9f" letter-spacing="5">TYPED</text>
+
+  <!-- Message bubble -->
+  <rect x="84" y="333" width="400" height="98" rx="10" fill="#0d0d0e"/>
+  <text x="104" y="371" font-size="26" fill="#9a9a9f">"sounds good,</text>
+  <text x="104" y="409" font-size="26" fill="#9a9a9f">will do"</text>
+
+  <!-- Panel divider -->
+  <line x1="84" y1="452" x2="484" y2="452" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Big count -->
+  <text x="284" y="620" text-anchor="middle" font-size="148" font-weight="800" fill="#9a9a9f">5</text>
+  <text x="284" y="666" text-anchor="middle" font-size="26" fill="#9a9a9f">words</text>
+
+  <!-- Description -->
+  <text x="284" y="733" text-anchor="middle" font-size="21" fill="#9a9a9f">Typing friction compressed</text>
+  <text x="284" y="761" text-anchor="middle" font-size="21" fill="#9a9a9f">your whole thought into</text>
+  <text x="284" y="789" text-anchor="middle" font-size="21" fill="#9a9a9f">a non-answer.</text>
+
+  <!-- ── Right panel: SPOKEN ── -->
+  <rect x="567" y="265" width="458" height="622" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Label -->
+  <text x="796" y="315" text-anchor="middle" font-size="19" font-weight="600" fill="#f0f0f0" letter-spacing="5">SPOKEN</text>
+
+  <!-- Message bubble -->
+  <rect x="596" y="333" width="400" height="158" rx="10" fill="#0d0d0e"/>
+  <text x="616" y="371" font-size="22" fill="#f0f0f0">"Sounds good! I'll start the</text>
+  <text x="616" y="403" font-size="22" fill="#f0f0f0">API integration this afternoon</text>
+  <text x="616" y="435" font-size="22" fill="#f0f0f0">and have a PR up by 4pm."</text>
+
+  <!-- Panel divider -->
+  <line x1="596" y1="512" x2="996" y2="512" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Big count -->
+  <text x="796" y="620" text-anchor="middle" font-size="148" font-weight="800" fill="#f0f0f0">22</text>
+  <text x="796" y="666" text-anchor="middle" font-size="26" fill="#9a9a9f">words</text>
+
+  <!-- Description -->
+  <text x="796" y="733" text-anchor="middle" font-size="21" fill="#f0f0f0">Context. Timeline. Intent.</text>
+  <text x="796" y="761" text-anchor="middle" font-size="21" fill="#f0f0f0">Everything the other person</text>
+  <text x="796" y="789" text-anchor="middle" font-size="21" fill="#f0f0f0">actually needed to know.</text>
+
+  <!-- Bottom rule -->
+  <line x1="55" y1="918" x2="1025" y2="918" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Instruction -->
+  <text x="540" y="964" text-anchor="middle" font-size="25" fill="#9a9a9f">⌥ Space  →  speak  →  text at cursor  ·  free  ·  on-device</text>
+
+  <!-- Footer -->
+  <circle cx="214" cy="1024" r="5" fill="#CE231D"/>
+  <text x="230" y="1030" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

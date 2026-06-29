@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" font-family="Helvetica, Arial, sans-serif">
+  <!-- Background -->
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Top rule -->
+  <line x1="80" y1="120" x2="1000" y2="120" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="108" text-anchor="middle" font-size="21" fill="#9a9a9f" letter-spacing="5">A DAY WITH JOT  ·  4 / 5</text>
+
+  <!-- Time badge -->
+  <rect x="80" y="155" width="220" height="54" rx="27" fill="#CE231D"/>
+  <text x="190" y="190" text-anchor="middle" font-size="26" font-weight="700" fill="#f0f0f0">2:00 PM</text>
+
+  <!-- Use-case headline -->
+  <text x="80" y="278" font-size="72" font-weight="800" fill="#f0f0f0">Email</text>
+  <text x="80" y="360" font-size="72" font-weight="800" fill="#f0f0f0">backlog.</text>
+
+  <!-- Before/after mini-panels -->
+  <rect x="80" y="405" width="430" height="440" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="295" y="452" text-anchor="middle" font-size="18" fill="#9a9a9f" letter-spacing="4">TYPED REPLY</text>
+  <rect x="110" y="468" width="370" height="60" rx="8" fill="#0d0d0e"/>
+  <text x="128" y="507" font-size="24" fill="#9a9a9f">"Sounds good"</text>
+  <text x="295" y="596" text-anchor="middle" font-size="72" font-weight="800" fill="#9a9a9f">2</text>
+  <text x="295" y="640" text-anchor="middle" font-size="22" fill="#9a9a9f">words</text>
+  <text x="295" y="704" text-anchor="middle" font-size="20" fill="#9a9a9f">A non-answer that</text>
+  <text x="295" y="730" text-anchor="middle" font-size="20" fill="#9a9a9f">creates a follow-up.</text>
+  <text x="295" y="756" text-anchor="middle" font-size="20" fill="#9a9a9f">Every. Time.</text>
+  <text x="295" y="816" text-anchor="middle" font-size="22" fill="#9a9a9f" font-style="italic">~8 seconds of typing</text>
+
+  <rect x="570" y="405" width="430" height="440" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="785" y="452" text-anchor="middle" font-size="18" fill="#f0f0f0" letter-spacing="4">SPOKEN REPLY</text>
+  <rect x="600" y="468" width="370" height="130" rx="8" fill="#0d0d0e"/>
+  <text x="618" y="507" font-size="21" fill="#f0f0f0">"Sounds good — I'll handle</text>
+  <text x="618" y="534" font-size="21" fill="#f0f0f0">the migration piece and</text>
+  <text x="618" y="561" font-size="21" fill="#f0f0f0">follow up by Friday."</text>
+  <text x="785" y="640" text-anchor="middle" font-size="72" font-weight="800" fill="#f0f0f0">18</text>
+  <text x="785" y="684" text-anchor="middle" font-size="22" fill="#9a9a9f">words</text>
+  <text x="785" y="748" text-anchor="middle" font-size="20" fill="#f0f0f0">Clear. Committed.</text>
+  <text x="785" y="774" text-anchor="middle" font-size="20" fill="#f0f0f0">No follow-up needed.</text>
+  <text x="785" y="816" text-anchor="middle" font-size="22" fill="#f0f0f0" font-style="italic">~8 seconds of speaking</text>
+
+  <!-- Arrow between panels -->
+  <text x="510" y="640" text-anchor="middle" font-size="44" fill="#CE231D">→</text>
+
+  <!-- Bottom rule -->
+  <line x1="80" y1="1230" x2="1000" y2="1230" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Footer -->
+  <circle cx="214" cy="1296" r="5" fill="#CE231D"/>
+  <text x="230" y="1302" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
