@@ -12,7 +12,7 @@ struct OllamaChatStream: CloudChatStream {
     func streamChat(
         messages: [CloudChatMessage],
         systemInstructions: String,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -45,7 +45,7 @@ struct OllamaChatStream: CloudChatStream {
     private func streamConversation(
         messages: [CloudChatMessage],
         systemInstructions: String,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -83,7 +83,7 @@ struct OllamaChatStream: CloudChatStream {
     private func runPass(
         messages: [OllamaRequestMessage],
         remainingToolInvocations: Int,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -92,6 +92,7 @@ struct OllamaChatStream: CloudChatStream {
     ) async throws -> PassResult {
         let request = try makeRequest(
             messages: messages,
+            includeTools: showFeatureTool != nil,
             apiKey: apiKey,
             baseURL: baseURL,
             model: model,
@@ -154,13 +155,15 @@ struct OllamaChatStream: CloudChatStream {
             try parseLine(lineBuffer)
         }
 
-        if toolCalls.isEmpty {
+        // Tool-less path: no tools advertised, so any tool_calls are
+        // ignored and we finish on the streamed text alone.
+        if toolCalls.isEmpty || showFeatureTool == nil {
             if !sawDone && assistantContent.isEmpty {
                 throw LLMError.emptyResponse
             }
             return .init(emittedText: !assistantContent.isEmpty, assistantMessage: nil, toolMessages: [], shouldContinue: false)
         }
-        guard remainingToolInvocations > 0 else {
+        guard let showFeatureTool, remainingToolInvocations > 0 else {
             return .init(emittedText: !assistantContent.isEmpty, assistantMessage: nil, toolMessages: [], shouldContinue: false)
         }
 
@@ -202,6 +205,7 @@ struct OllamaChatStream: CloudChatStream {
 
     private func makeRequest(
         messages: [OllamaRequestMessage],
+        includeTools: Bool,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -221,7 +225,7 @@ struct OllamaChatStream: CloudChatStream {
         let body = OllamaChatRequest(
             model: model,
             messages: messages,
-            tools: [.showFeature],
+            tools: includeTools ? [.showFeature] : nil,
             stream: true,
             options: .init(numPredict: maxTokens)
         )
@@ -273,7 +277,9 @@ struct OllamaChatStream: CloudChatStream {
 }
 
 private struct PassResult { let emittedText: Bool; let assistantMessage: OllamaRequestMessage?; let toolMessages: [OllamaRequestMessage]; let shouldContinue: Bool }
-private struct OllamaChatRequest: Encodable { let model: String; let messages: [OllamaRequestMessage]; let tools: [OllamaToolDefinition]; let stream: Bool; let options: OllamaChatOptions }
+// `tools` is nil on the tool-less path — JSONEncoder omits the key so no
+// tool definitions reach the request body.
+private struct OllamaChatRequest: Encodable { let model: String; let messages: [OllamaRequestMessage]; let tools: [OllamaToolDefinition]?; let stream: Bool; let options: OllamaChatOptions }
 
 private struct OllamaChatOptions: Encodable {
     let numPredict: Int

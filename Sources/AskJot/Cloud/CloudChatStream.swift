@@ -3,10 +3,16 @@
 import Foundation
 
 protocol CloudChatStream {
+    /// Streams a chat completion. When `showFeatureTool` is `nil`, the
+    /// conformer MUST omit the `tools` array from the request body
+    /// entirely and skip the tool-call loop (text-only streaming) — the
+    /// path used by transcript Q&A, which has no help-navigation tool.
+    /// When non-nil, behavior is unchanged: the `showFeature` tool is
+    /// advertised and the tool-call loop runs (the Help-bot path).
     func streamChat(
         messages: [CloudChatMessage],
         systemInstructions: String,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,

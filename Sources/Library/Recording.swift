@@ -27,6 +27,20 @@ final class Recording {
     /// pre-feature recordings).
     var speakerTimeline: Data?
 
+    /// User-curated tags (chips), independent of the transcript text. Stored
+    /// canonicalized (trimmed, leading `#` stripped, lowercased, single-token)
+    /// so dedupe is exact — see `TagChipsEditor.normalize`. Default `[]` makes
+    /// this an additive SwiftData lightweight migration (no `VersionedSchema` —
+    /// an explicit migration plan would BREAK additive-default migration on a
+    /// never-versioned store; see docs/transcript-editing-tags/design.md).
+    var tags: [String] = []
+
+    /// Set when the user hand-edits the transcript in the detail view. Purely
+    /// informational (drives a subtle "edited" affordance); the immutable
+    /// `rawTranscript` + the "Show original" toggle remain the recovery path.
+    /// Optional default `nil` = unconditionally-safe additive migration.
+    var editedAt: Date?
+
     init(
         id: UUID = UUID(),
         createdAt: Date = .now,
@@ -36,7 +50,9 @@ final class Recording {
         rawTranscript: String,
         audioFileName: String,
         modelIdentifier: String,
-        speakerTimeline: Data? = nil
+        speakerTimeline: Data? = nil,
+        tags: [String] = [],
+        editedAt: Date? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -47,6 +63,8 @@ final class Recording {
         self.audioFileName = audioFileName
         self.modelIdentifier = modelIdentifier
         self.speakerTimeline = speakerTimeline
+        self.tags = tags
+        self.editedAt = editedAt
     }
 }
 

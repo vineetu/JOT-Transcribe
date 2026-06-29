@@ -32,14 +32,15 @@ struct Flavor1ChatStream: CloudChatStream {
     func streamChat(
         messages: [CloudChatMessage],
         systemInstructions: String,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
         maxTokens: Int
     ) -> AsyncThrowingStream<String, Error> {
-        // v1 omits the showFeature tool-call path entirely — slug post-processing
-        // in HelpChatStore handles citations provider-agnostically.
+        // v1 omits the showFeature tool-call path entirely (with or without a
+        // tool supplied) — slug post-processing in HelpChatStore handles
+        // citations provider-agnostically.
         _ = showFeatureTool
         // Auth comes from Flavor1Session, not the apiKey parameter.
         _ = apiKey

@@ -12,7 +12,7 @@ struct GeminiChatStream: CloudChatStream {
     func streamChat(
         messages: [CloudChatMessage],
         systemInstructions: String,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -49,7 +49,7 @@ struct GeminiChatStream: CloudChatStream {
         baseURL: String,
         model: String,
         maxTokens: Int,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
         var contents = history.map(\.geminiContent)
@@ -61,6 +61,7 @@ struct GeminiChatStream: CloudChatStream {
             let request = try buildRequest(
                 contents: contents,
                 systemInstructions: systemInstructions,
+                includeTools: showFeatureTool != nil,
                 apiKey: apiKey,
                 baseURL: baseURL,
                 model: model,
@@ -68,6 +69,9 @@ struct GeminiChatStream: CloudChatStream {
             )
             let pass = try await streamResponse(for: request, continuation: continuation)
 
+            // Tool-less path never advertises functionDeclarations, so the
+            // model can't return functionCalls — but guard defensively.
+            guard let showFeatureTool else { return }
             guard !pass.functionCalls.isEmpty else { return }
 
             let remainingBudget = maxToolCallsPerTurn - executedToolCalls
@@ -92,6 +96,7 @@ struct GeminiChatStream: CloudChatStream {
     private func buildRequest(
         contents: [GeminiContent],
         systemInstructions: String,
+        includeTools: Bool,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -113,7 +118,7 @@ struct GeminiChatStream: CloudChatStream {
         let body = GeminiRequest(
             contents: contents,
             systemInstruction: .init(parts: [.text(systemInstructions)]),
-            tools: [.showFeature],
+            tools: includeTools ? [.showFeature] : nil,
             generationConfig: .init(maxOutputTokens: maxTokens, thinkingConfig: .init(thinkingBudget: 0))
         )
 
@@ -272,7 +277,9 @@ private struct GeminiFunctionCallPart {
     var deduplicationKey: String { "\(call.name)|\(call.id ?? "")|\(call.args.jsonString)|\(part.thoughtSignature ?? "")" }
 }
 
-private struct GeminiRequest: Encodable { let contents: [GeminiContent]; let systemInstruction: GeminiSystemInstruction; let tools: [GeminiTool]; let generationConfig: GeminiGenerationConfig }
+// `tools` is nil on the tool-less path — JSONEncoder omits the key so no
+// functionDeclarations reach the request body.
+private struct GeminiRequest: Encodable { let contents: [GeminiContent]; let systemInstruction: GeminiSystemInstruction; let tools: [GeminiTool]?; let generationConfig: GeminiGenerationConfig }
 private struct GeminiSystemInstruction: Encodable { let parts: [GeminiPart] }
 private struct GeminiGenerationConfig: Encodable { let maxOutputTokens: Int; let thinkingConfig: GeminiThinkingConfig }
 // Gemini 3.x models think by default, and thinking tokens count against

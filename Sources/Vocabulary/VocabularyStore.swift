@@ -141,6 +141,20 @@ final class VocabularyStore: ObservableObject {
     /// selection is almost certainly a mis-drag, not a term.
     static let maxTermWords = 4
 
+    /// Whitespace-token count of an already-sanitized string. Single source of
+    /// truth for the term/alias word cap so both sides agree.
+    static func wordCount(_ cleaned: String) -> Int {
+        cleaned.split(whereSeparator: { $0 == " " }).count
+    }
+
+    /// Whether a sanitized alias / "sounds-like" spelling is short enough to
+    /// store. An alias is a phonetic re-spelling of the term, so it can't
+    /// legitimately be longer than the term itself — the same `maxTermWords`
+    /// ceiling applies. Guards against a mis-drag selecting a whole paragraph.
+    static func isAcceptableAlias(_ cleaned: String) -> Bool {
+        !cleaned.isEmpty && wordCount(cleaned) <= maxTermWords
+    }
+
     /// Add a single term harvested from a free-text selection (the
     /// recording-detail "Add to Vocabulary" recourse for names the gate
     /// never proposed). Sanitizes to the file-safe simple format
@@ -171,7 +185,9 @@ final class VocabularyStore: ObservableObject {
     /// becomes an ALIAS of the canonical `term`, so the gate treats the pair as
     /// a user-confirmed plausible match and FUTURE dictations boost it
     /// (e.g. select "We need" → spell as "Vineet"). Behavior:
-    ///   - sanitizes both sides; the `term` is the thing stored/capped.
+    ///   - sanitizes both sides; both the `term` and a meaningful alias are
+    ///     capped at `maxTermWords` (an alias is a re-spelling of the term, so
+    ///     it can't be longer) — an overlong alias is rejected, not stored.
     ///   - if a term with the same text already exists, the alias is appended
     ///     (deduped) rather than creating a duplicate term.
     ///   - when `heard` is empty or equals `term`, this degrades to a plain
@@ -187,6 +203,9 @@ final class VocabularyStore: ObservableObject {
         }
 
         let aliasIsMeaningful = !heard.isEmpty && heard.lowercased() != term.lowercased()
+        // A meaningful alias is capped at the same word ceiling as the term —
+        // reject a paragraph-length mis-drag rather than store it as an alias.
+        guard !aliasIsMeaningful || Self.isAcceptableAlias(heard) else { return .rejected }
         let lowerTerm = term.lowercased()
 
         if let idx = terms.firstIndex(where: {

@@ -83,6 +83,20 @@ public final class HelpNavigator {
     /// (which doesn't — context-free entry).
     public var focusChatInput: Bool = false
 
+    // MARK: - Ask-your-recordings (transcript Q&A) integration
+
+    /// When non-nil, the new transcript-Q&A Ask Jot surface should run
+    /// this question immediately (prefill + AUTO-SEND). Set by the AI
+    /// button next to the recordings search; consumed + cleared by the
+    /// Ask Jot pane wrapper. Distinct from `pendingPrefill`, which only
+    /// fills the help-bot composer without sending.
+    public var pendingAsk: String?
+
+    /// When non-nil, the recordings list should open this recording's
+    /// detail. Set by a citation chip tap in the Ask Jot answer (after
+    /// routing to Home/Recents); consumed + cleared by `RecordingsListView`.
+    public var pendingOpenRecording: UUID?
+
     public init() {}
 
     // MARK: - Deep-link API

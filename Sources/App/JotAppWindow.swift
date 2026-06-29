@@ -54,6 +54,13 @@ struct JotAppWindow: View {
     /// live the whole time the window is up.
     @State private var voiceInput: ChatbotVoiceInput
 
+    /// Transcript-Q&A Ask Jot store. Owned at the root so the conversation
+    /// SURVIVES sidebar navigation (the old per-pane store was torn down on
+    /// exit, wiping the chat). Built lazily once the env `ModelContainer` is
+    /// available — a `@State` initializer can't read `@Environment`.
+    @State private var askStore: AskRecordingsStore?
+    @Environment(\.modelContext) private var modelContext
+
     /// Phase 3 #29: per-graph `LLMConfiguration` injected as an
     /// `@EnvironmentObject` for SwiftUI panes (`RewritePane`,
     /// `AboutPane`) and threaded into `HelpChatStore` via constructor.
@@ -150,11 +157,42 @@ struct JotAppWindow: View {
         ))
     }
 
+    /// Build the root-owned Ask Jot store once the env `ModelContainer` is
+    /// available. Idempotent.
+    private func buildAskStoreIfNeeded() {
+        guard askStore == nil else { return }
+        askStore = AskRecordingsStore(
+            urlSession: urlSession,
+            appleClient: appleIntelligence,
+            llmConfiguration: llmConfiguration,
+            modelContainer: modelContext.container
+        )
+    }
+
+    /// Run a pending question from the AI-search button (`pendingAsk`) or the
+    /// legacy Help/About → Ask Jot deep-link (`pendingPrefill`). The unified Ask
+    /// Jot answers app/feature questions too, so we run it rather than strand it.
+    private func consumeAskPending() {
+        buildAskStoreIfNeeded()
+        guard let askStore else { return }
+        let raw = helpNavigator.pendingAsk ?? helpNavigator.pendingPrefill
+        guard let question = raw,
+              !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        helpNavigator.pendingAsk = nil
+        helpNavigator.pendingPrefill = nil
+        helpNavigator.focusChatInput = false
+        askStore.ask(question)
+    }
+
     var body: some View {
         NavigationSplitView {
             AppSidebar(
                 selection: $selection,
-                askJotAvailable: !chatStore.isUnavailable
+                // v1.17: transcript-Q&A Ask Jot works with any provider and
+                // handles its own readiness/consent states, so it's no longer
+                // gated on Apple-Intelligence availability.
+                askJotAvailable: true
             )
         } detail: {
             detail
@@ -200,6 +238,11 @@ struct JotAppWindow: View {
             selection = JotAppWindow.sanitize(newValue, advancedEnabled: advancedEnabled)
             helpNavigator.sidebarSelection = nil
         }
+        // Build the root-owned Ask Jot store once (so the conversation persists),
+        // and run questions pushed from the AI-search button / Help deep-links.
+        .task { buildAskStoreIfNeeded() }
+        .onChange(of: helpNavigator.pendingAsk) { _, _ in consumeAskPending() }
+        .onChange(of: helpNavigator.pendingPrefill) { _, _ in consumeAskPending() }
         // v1.13: when the user flips Advanced off mid-session, redirect
         // any selection pointing at a now-hidden pane, cancel any
         // in-flight Ask Jot stream, and scrub stale back/forward history.
@@ -355,7 +398,17 @@ struct JotAppWindow: View {
         case .home:
             HomePane(recorder: recorder)
         case .askJot:
-            AskJotView(store: chatStore, voiceInput: voiceInput)
+            // v1.17: transcript-Q&A Ask Jot (answers over the user's recordings
+            // + the app help doc). Store is root-owned so the conversation
+            // survives navigation; built in `.task` once the container is ready.
+            if let askStore {
+                AskRecordingsView(store: askStore) { recordingID in
+                    helpNavigator.pendingOpenRecording = recordingID
+                    selection = JotAppWindow.sanitize(.home, advancedEnabled: advancedEnabled)
+                }
+            } else {
+                Color.clear
+            }
         case .settings(let sub):
             switch sub {
             case .general:       GeneralPane(
@@ -381,3 +434,4 @@ struct JotAppWindow: View {
         }
     }
 }
+

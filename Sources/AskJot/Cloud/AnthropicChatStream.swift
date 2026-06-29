@@ -10,7 +10,7 @@ struct AnthropicChatStream: CloudChatStream {
     func streamChat(
         messages: [CloudChatMessage],
         systemInstructions: String,
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -43,7 +43,7 @@ struct AnthropicChatStream: CloudChatStream {
     private func runConversation(
         systemInstructions: String,
         messages: [CloudChatMessage],
-        showFeatureTool: @escaping (String) async -> String,
+        showFeatureTool: ((String) async -> String)?,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -57,12 +57,16 @@ struct AnthropicChatStream: CloudChatStream {
             let turn = try await sendTurn(
                 systemInstructions: systemInstructions,
                 messages: history,
+                includeTools: showFeatureTool != nil,
                 apiKey: apiKey,
                 baseURL: baseURL,
                 model: model,
                 maxTokens: maxTokens,
                 continuation: continuation
             )
+            // Tool-less path (showFeatureTool == nil) never advertises the
+            // tool, so the model can't return tool_use — but guard anyway.
+            guard let showFeatureTool else { return }
             guard turn.stopReason == "tool_use", !turn.toolCalls.isEmpty else { return }
             guard toolCallsUsed + turn.toolCalls.count <= 2 else { throw StreamError.toolInvocationLimitReached }
 
@@ -76,6 +80,7 @@ struct AnthropicChatStream: CloudChatStream {
     private func sendTurn(
         systemInstructions: String,
         messages: [AnthropicRequestMessage],
+        includeTools: Bool,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -85,6 +90,7 @@ struct AnthropicChatStream: CloudChatStream {
         let request = try makeRequest(
             systemInstructions: systemInstructions,
             messages: messages,
+            includeTools: includeTools,
             apiKey: apiKey,
             baseURL: baseURL,
             model: model,
@@ -157,6 +163,7 @@ struct AnthropicChatStream: CloudChatStream {
     private func makeRequest(
         systemInstructions: String,
         messages: [AnthropicRequestMessage],
+        includeTools: Bool,
         apiKey: String,
         baseURL: String,
         model: String,
@@ -174,7 +181,7 @@ struct AnthropicChatStream: CloudChatStream {
             maxTokens: maxTokens,
             system: systemInstructions,
             messages: messages,
-            tools: [.showFeature],
+            tools: includeTools ? [.showFeature] : nil,
             stream: true
         )
         request.httpBody = try JSONEncoder().encode(body)
@@ -244,7 +251,9 @@ private struct RequestBody: Encodable {
     let maxTokens: Int
     let system: String
     let messages: [AnthropicRequestMessage]
-    let tools: [ToolDefinition]
+    // nil on the tool-less path — JSONEncoder omits the key entirely so no
+    // `tools` array reaches the request body.
+    let tools: [ToolDefinition]?
     let stream: Bool
 
     enum CodingKeys: String, CodingKey { case model, system, messages, tools, stream; case maxTokens = "max_tokens" }

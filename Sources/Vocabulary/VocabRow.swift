@@ -138,7 +138,7 @@ struct VocabRow: View {
     /// present (case-insensitive) on this term.
     private var canAddAlias: Bool {
         let candidate = cleanedNewAlias
-        guard !candidate.isEmpty else { return false }
+        guard VocabularyStore.isAcceptableAlias(candidate) else { return false }
         return !term.aliases.contains { $0.lowercased() == candidate.lowercased() }
     }
 

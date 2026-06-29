@@ -99,7 +99,13 @@ struct AIChatRequest: Sendable {
     /// thread this into `CloudChatStream.streamChat`. The Apple
     /// conformer ignores this hook — `HelpChatStore`'s post-processing
     /// pass handles slug extraction for the on-device path.
-    let showFeatureTool: @Sendable (String) async -> String
+    ///
+    /// `nil` selects the tool-less path: cloud conformers omit the
+    /// `tools` array from the request body and skip the tool-call loop
+    /// (text-only streaming). Used by transcript Q&A, which has no
+    /// help-navigation tool. The Help bot passes a non-nil callback and
+    /// is unchanged.
+    let showFeatureTool: (@Sendable (String) async -> String)?
 
     /// Reusable on-device session handle. `HelpChatStore` mints once
     /// and feeds the same instance back across turns to keep the
@@ -132,7 +138,7 @@ struct AIChatRequest: Sendable {
         messages: [AIChatMessage],
         systemInstructions: String,
         maxTokens: Int,
-        showFeatureTool: @escaping @Sendable (String) async -> String,
+        showFeatureTool: (@Sendable (String) async -> String)? = nil,
         session: AIChatSession?,
         providerOverride: ProviderSnapshot? = nil
     ) {
