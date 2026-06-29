@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" font-family="Helvetica, Arial, sans-serif">
+  <!-- Background -->
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Top rule -->
+  <line x1="80" y1="120" x2="1000" y2="120" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="108" text-anchor="middle" font-size="21" fill="#9a9a9f" letter-spacing="5">A DAY WITH JOT  ·  2 / 5</text>
+
+  <!-- Time badge -->
+  <rect x="80" y="155" width="200" height="54" rx="27" fill="#CE231D"/>
+  <text x="180" y="190" text-anchor="middle" font-size="26" font-weight="700" fill="#f0f0f0">8:00 AM</text>
+
+  <!-- Use-case headline -->
+  <text x="80" y="278" font-size="72" font-weight="800" fill="#f0f0f0">Morning</text>
+  <text x="80" y="360" font-size="72" font-weight="800" fill="#f0f0f0">journal.</text>
+
+  <!-- Content panel -->
+  <rect x="80" y="405" width="920" height="420" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Step 1 -->
+  <circle cx="130" cy="481" r="22" fill="#CE231D"/>
+  <text x="130" y="489" text-anchor="middle" font-size="20" font-weight="700" fill="#f0f0f0">1</text>
+  <text x="174" y="489" font-size="26" fill="#f0f0f0">Open Notes. Blank page. Cursor ready.</text>
+
+  <!-- Step 2 -->
+  <circle cx="130" cy="561" r="22" fill="#2a2a2e"/>
+  <text x="130" y="569" text-anchor="middle" font-size="20" font-weight="700" fill="#9a9a9f">2</text>
+  <text x="174" y="569" font-size="26" fill="#f0f0f0">Press ⌥ Space. Pill appears. Speak.</text>
+
+  <!-- Step 3 -->
+  <circle cx="130" cy="641" r="22" fill="#2a2a2e"/>
+  <text x="130" y="649" text-anchor="middle" font-size="20" font-weight="700" fill="#9a9a9f">3</text>
+  <text x="174" y="649" font-size="26" fill="#f0f0f0">Your first thought, at full conversation</text>
+  <text x="174" y="681" font-size="26" fill="#f0f0f0">speed — in Notes before coffee cools.</text>
+
+  <!-- Stat callout -->
+  <rect x="80" y="858" width="920" height="118" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="904" text-anchor="middle" font-size="28" fill="#9a9a9f">Average morning entry:</text>
+  <text x="420" y="952" text-anchor="middle" font-size="48" font-weight="800" fill="#9a9a9f">2 min typing</text>
+  <text x="596" y="952" text-anchor="middle" font-size="36" fill="#CE231D">→</text>
+  <text x="780" y="952" text-anchor="middle" font-size="48" font-weight="800" fill="#f0f0f0">30 sec spoken</text>
+
+  <!-- Bottom rule -->
+  <line x1="80" y1="1230" x2="1000" y2="1230" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Footer -->
+  <circle cx="214" cy="1296" r="5" fill="#CE231D"/>
+  <text x="230" y="1302" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

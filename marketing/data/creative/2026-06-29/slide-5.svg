@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" font-family="Helvetica, Arial, sans-serif">
+  <!-- Background -->
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Top rule -->
+  <line x1="80" y1="120" x2="1000" y2="120" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="108" text-anchor="middle" font-size="21" fill="#9a9a9f" letter-spacing="5">A DAY WITH JOT  ·  5 / 5</text>
+
+  <!-- Main claim -->
+  <text x="540" y="320" text-anchor="middle" font-size="76" font-weight="800" fill="#f0f0f0">Free.</text>
+  <text x="540" y="416" text-anchor="middle" font-size="76" font-weight="800" fill="#f0f0f0">On-device.</text>
+  <text x="540" y="512" text-anchor="middle" font-size="50" font-weight="600" fill="#9a9a9f">Nothing leaves your Mac.</text>
+
+  <!-- Feature chips -->
+  <rect x="100" y="575" width="252" height="56" rx="28" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="226" y="611" text-anchor="middle" font-size="22" fill="#9a9a9f">11 languages</text>
+
+  <rect x="372" y="575" width="198" height="56" rx="28" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="471" y="611" text-anchor="middle" font-size="22" fill="#9a9a9f">$0 forever</text>
+
+  <rect x="590" y="575" width="222" height="56" rx="28" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="701" y="611" text-anchor="middle" font-size="22" fill="#9a9a9f">open source</text>
+
+  <rect x="832" y="575" width="158" height="56" rx="28" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="911" y="611" text-anchor="middle" font-size="22" fill="#9a9a9f">macOS 15</text>
+
+  <!-- CTA panel -->
+  <rect x="80" y="680" width="920" height="200" rx="18" fill="#161618" stroke="#2a2a2e" stroke-width="1"/>
+  <text x="540" y="748" text-anchor="middle" font-size="34" fill="#9a9a9f">Press a hotkey. Speak. Done.</text>
+  <text x="540" y="808" text-anchor="middle" font-size="48" font-weight="800" fill="#f0f0f0">jot-transcribe.com</text>
+  <text x="540" y="850" text-anchor="middle" font-size="24" fill="#9a9a9f">free download · Apple Silicon · macOS 15+</text>
+
+  <!-- Big red CTA button visual -->
+  <rect x="280" y="920" width="520" height="80" rx="40" fill="#CE231D"/>
+  <text x="540" y="970" text-anchor="middle" font-size="32" font-weight="700" fill="#f0f0f0">Download Jot — it's free</text>
+
+  <!-- Tagline -->
+  <text x="540" y="1060" text-anchor="middle" font-size="26" fill="#9a9a9f">One hotkey. Your cursor. Any app.</text>
+  <text x="540" y="1096" text-anchor="middle" font-size="26" fill="#9a9a9f">No cloud. No account. No subscription.</text>
+
+  <!-- Bottom rule -->
+  <line x1="80" y1="1230" x2="1000" y2="1230" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Footer -->
+  <circle cx="214" cy="1296" r="5" fill="#CE231D"/>
+  <text x="230" y="1302" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

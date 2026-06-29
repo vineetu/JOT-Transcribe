@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350" font-family="Helvetica, Arial, sans-serif">
+  <!-- Background -->
+  <rect width="1080" height="1350" fill="#0d0d0e"/>
+
+  <!-- Top rule -->
+  <line x1="80" y1="120" x2="1000" y2="120" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Series label -->
+  <text x="540" y="108" text-anchor="middle" font-size="21" fill="#9a9a9f" letter-spacing="5">A DAY WITH JOT  ·  1 / 5</text>
+
+  <!-- Hook — huge centered text -->
+  <text x="540" y="480" text-anchor="middle" font-size="82" font-weight="800" fill="#f0f0f0">What if you</text>
+  <text x="540" y="580" text-anchor="middle" font-size="82" font-weight="800" fill="#f0f0f0">spoke instead</text>
+  <text x="540" y="680" text-anchor="middle" font-size="82" font-weight="800" fill="#f0f0f0">of typed</text>
+  <text x="540" y="780" text-anchor="middle" font-size="82" font-weight="800" fill="#CE231D">today?</text>
+
+  <!-- Subline -->
+  <text x="540" y="888" text-anchor="middle" font-size="32" fill="#9a9a9f">4 moments. One hotkey.</text>
+
+  <!-- Bottom rule -->
+  <line x1="80" y1="1230" x2="1000" y2="1230" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Footer -->
+  <circle cx="214" cy="1296" r="5" fill="#CE231D"/>
+  <text x="230" y="1302" font-size="22" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>
