@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">
+  <!-- Background -->
+  <rect width="1080" height="1080" fill="#0d0d0e"/>
+
+  <!-- Main panel -->
+  <rect x="56" y="56" width="968" height="968" fill="#161618" stroke="#2a2a2e" stroke-width="1.5" rx="18"/>
+
+  <!-- Q2 label -->
+  <text x="540" y="158" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="500" fill="#9a9a9f" text-anchor="middle" letter-spacing="5">Q2 2026  ·  APRIL 16 – JUNE 30</text>
+
+  <!-- Big hero number -->
+  <text x="540" y="410" font-family="Helvetica, Arial, sans-serif" font-size="210" font-weight="800" fill="#CE231D" text-anchor="middle">242</text>
+
+  <!-- Downloads label -->
+  <text x="540" y="462" font-family="Helvetica, Arial, sans-serif" font-size="26" font-weight="300" fill="#9a9a9f" text-anchor="middle" letter-spacing="3">downloads</text>
+
+  <!-- Top divider -->
+  <line x1="120" y1="500" x2="960" y2="500" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Stat 1: 75 days -->
+  <text x="225" y="575" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#f0f0f0" text-anchor="middle">75</text>
+  <text x="225" y="613" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="400" fill="#9a9a9f" text-anchor="middle">days</text>
+
+  <!-- Divider 1 -->
+  <line x1="330" y1="516" x2="330" y2="632" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Stat 2: 30 releases -->
+  <text x="435" y="575" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#f0f0f0" text-anchor="middle">30</text>
+  <text x="435" y="613" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="400" fill="#9a9a9f" text-anchor="middle">releases</text>
+
+  <!-- Divider 2 -->
+  <line x1="540" y1="516" x2="540" y2="632" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Stat 3: $0 raised -->
+  <text x="645" y="575" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#f0f0f0" text-anchor="middle">$0</text>
+  <text x="645" y="613" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="400" fill="#9a9a9f" text-anchor="middle">raised</text>
+
+  <!-- Divider 3 -->
+  <line x1="750" y1="516" x2="750" y2="632" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Stat 4: 1 builder -->
+  <text x="855" y="575" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#f0f0f0" text-anchor="middle">1</text>
+  <text x="855" y="613" font-family="Helvetica, Arial, sans-serif" font-size="18" font-weight="400" fill="#9a9a9f" text-anchor="middle">builder</text>
+
+  <!-- Bottom divider -->
+  <line x1="120" y1="648" x2="960" y2="648" stroke="#2a2a2e" stroke-width="1"/>
+
+  <!-- Description -->
+  <text x="540" y="730" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="600" fill="#f0f0f0" text-anchor="middle">No ads. No App Store. No press.</text>
+  <text x="540" y="786" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="300" fill="#9a9a9f" text-anchor="middle">Free, on-device Mac dictation. Press a hotkey,</text>
+  <text x="540" y="820" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="300" fill="#9a9a9f" text-anchor="middle">speak, text lands wherever your cursor is.</text>
+
+  <!-- Footer -->
+  <circle cx="420" cy="950" r="6" fill="#CE231D"/>
+  <text x="440" y="956" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="400" fill="#9a9a9f">jot-transcribe.com</text>
+</svg>

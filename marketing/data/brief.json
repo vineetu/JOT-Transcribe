@@ -1,88 +1,83 @@
 {
-  "date": "2026-06-29",
+  "date": "2026-06-30",
   "downloads": {
-    "total": 240,
-    "delta": 3,
-    "avg7": 7,
+    "total": 242,
+    "delta": 2,
+    "avg7": 5,
     "goal": 100
   },
   "creative": {
-    "concept": "Before/After: typing compresses, speaking explains — two-panel card contrasting a 5-word typed Slack reply vs. a 22-word spoken version; paired with a 5-slide 'A day with Jot' carousel (morning journal → standup → email backlog → CTA). Before/after format last used June 15 (14 days ago); first carousel of new week.",
+    "concept": "Q2 close — builder transparency card: '242 downloads. 75 days. 30 releases. $0 raised. 1 builder.' The red 242 is the scroll-stopper on a Monday morning; the sparse secondary stats tell a complete builder story in one scan.",
     "cards": [
       {
-        "file": "marketing/data/creative/2026-06-29/before-after-slack.svg",
-        "title": "Before / After: Typing vs. speaking a Slack reply",
-        "use": "Primary visual for LinkedIn, X, and Instagram today. Two-column panel: 5 words typed vs. 22 words spoken. Export as 1080×1080 PNG."
+        "file": "marketing/data/creative/2026-06-30/q2-builder-stats.svg",
+        "title": "Q2 in numbers: 242 downloads, 75 days, 30 releases, $0 raised",
+        "use": "Primary visual for all channels today. Export as 1080×1080 PNG."
       }
     ],
-    "carousel": [
-      "marketing/data/creative/2026-06-29/slide-1.svg",
-      "marketing/data/creative/2026-06-29/slide-2.svg",
-      "marketing/data/creative/2026-06-29/slide-3.svg",
-      "marketing/data/creative/2026-06-29/slide-4.svg",
-      "marketing/data/creative/2026-06-29/slide-5.svg"
-    ],
+    "carousel": [],
     "storyboard": {
-      "title": "Meeting notes in real-time — speak a bullet while listening",
-      "duration_s": 17,
-      "use": "Instagram Reel / X video / GIF — capturing meeting notes during a Zoom call; fresh context never done before; strong hook for a Monday audience about to enter their first meeting of the week",
+      "title": "Planning Q3 — dictate your goals into Notion on a Monday",
+      "duration_s": 16,
+      "use": "Instagram Reel / X video / GIF — Q3 planning hook; timely Monday morning angle on last day of Q2",
       "shots": [
-        {"t": "0–3s", "visual": "Zoom call on screen, presenter talking, Notes in split view — cursor blinking in empty doc", "overlay": "In a meeting?"},
-        {"t": "3–6s", "visual": "Hand presses ⌥ Space without breaking eye contact with screen; Dynamic Island pill appears pulsing under Mac notch", "overlay": "One hotkey."},
-        {"t": "6–14s", "visual": "Pill pulses with audio waveform; user speaks a bullet point aloud while presentation continues on screen", "overlay": "Speak a note."},
-        {"t": "14–17s", "visual": "Bullet appears in Notes; pill vanishes; call continues; jot-transcribe.com watermark lower-right", "overlay": "Still listening. Free."}
+        {"t": "0–2s", "visual": "Notion open, Q3 Goals page blank, cursor blinking", "overlay": "New quarter."},
+        {"t": "2–5s", "visual": "⌥ Space pressed; pill appears pulsing", "overlay": "One hotkey."},
+        {"t": "5–13s", "visual": "User speaks 3 Q3 goals; text fills Notion", "overlay": "Speak."},
+        {"t": "13–15s", "visual": "Clean goals list in Notion; pill vanished", "overlay": "Q3 locked in."},
+        {"t": "15–16s", "visual": "Wide Mac desktop; jot-transcribe.com watermark", "overlay": "Free. On-device."}
       ]
     }
   },
   "drafts": [
     {
       "channel": "linkedin",
-      "text": "Typing compresses. Speaking explains.\n\nWhen you type a Slack reply: 'sounds good, will do' — 5 words.\nWhen you speak the same thought: timeline, context, intent — 22 words.\n\nFriction doesn't make you lazy. It compresses replies into non-answers.\n\nI built Jot to fix this. Press a hotkey, speak, text at cursor — free, on-device Mac dictation.\n\nHave you noticed your messages getting shorter over time?\n\n#macOS #productivity #indiedev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-29",
+      "text": "Q2 closes today.\n\n75 days. 30 releases. 242 downloads. $0 raised. 1 builder.\n\nI shipped Jot — free, on-device Mac dictation — from zero with no funding, no App Store, no press. Press a hotkey, speak, text at your cursor. On the Neural Engine. Nothing leaves your Mac.\n\nHow did your Q2 ship?\n\n#macOS #indiedev #buildinpublic",
+      "utm_url": "https://jot-transcribe.com/?utm_source=linkedin&utm_medium=social&utm_campaign=daily-2026-06-30",
       "publish_window_pt": "7:00–8:30am PT",
       "recommended": true,
-      "note": "Attach before-after-slack.svg (export as 1080×1080 PNG). Do NOT put the link in the post body — LinkedIn downranks posts with external links. Paste the utm_url as the FIRST COMMENT immediately after posting. Monday morning is the strongest LinkedIn window — post at 7am PT. Optional: post the 5-slide carousel as a LinkedIn document post for higher reach this week. Closing question is the engagement trigger."
+      "note": "Attach q2-builder-stats.svg (export as 1080×1080 PNG). Link in FIRST COMMENT — not post body. Monday + last day of Q2 is strongest moment in campaign — post at 7am PT."
     },
     {
       "channel": "x",
-      "text": "Typing: 'sounds good' — 5 words.\nSpeaking the same thought: 22 words of actual context.\n\nFriction compresses replies into non-answers.\n\nJot: ⌥ Space → speak → text at cursor. Free. On-device.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-29",
+      "text": "Q2 closes today. 75 days. 30 releases. 242 downloads. $0 raised. 1 builder.\n\nJot: press a hotkey, speak, text at cursor. Free. On-device. Open source.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=x&utm_medium=social&utm_campaign=daily-2026-06-30",
       "publish_window_pt": "6:30–9:00am PT",
       "recommended": true,
-      "note": "Attach before-after-slack.svg (export as PNG). No link in post — post the utm_url as the first reply immediately after posting. ~159 characters, within the 200-char limit."
+      "note": "Attach q2-builder-stats.svg. No link in post — utm in first reply. ~153 chars."
     },
     {
       "channel": "reddit",
-      "text": "The hidden reason your Slack messages are getting shorter (and what I did about it)\n\nHave you noticed your replies getting less useful over time?\n\nMine did. I'd go to respond to a teammate's question and end up typing 'sounds good' instead of what I actually meant — not because I was lazy, but because typing mid-thought added just enough friction to compress everything into the shortest thing that technically answered the question.\n\nI built Jot to fix this (disclosure: I made it). Press a hotkey anywhere on Mac, speak what you mean, and it pastes exactly where your cursor is — Slack, email, your code editor, anywhere. No window-switching, no separate step.\n\nWhat I noticed after 30 days:\n- My replies started including context ('since we moved to the new auth model...') instead of just answering the thing\n- Threads got shorter — not because I wrote less, but because my first reply actually answered the thing\n- I caught my own ambiguity mid-sentence, which you can't do when you're compressing to type fast\n\nThe less-obvious use case isn't writing documents. It's replacing all the small-text friction: the standup, the PR description, the Slack message where 'sounds good' is covering for 'I need 15 more seconds to explain what I mean.'\n\nJot is free, on-device on the Apple Neural Engine (no audio leaves your Mac), open source, Apple Silicon + macOS 15+.\n\n(I built this — disclosure)\n\nLink in comments.",
-      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-29",
+      "text": "Q2 is done: 75 days, 30 releases, 242 downloads building a free on-device Mac dictation app (I built it)\n\nToday is the last day of Q2 2026. Here's what happened:\n\n75 days since v1.0 launched (April 16). 30 releases — roughly one every 2.5 days. 242 downloads. $0 raised. 1 builder.\n\nJot is free, open-source Mac dictation that transcribes entirely on-device on the Apple Neural Engine. Press a hotkey, speak, and the text lands wherever your cursor is — Slack, email, your IDE, anywhere. No window-switching. No cloud. No subscription. Nothing leaves your Mac.\n\nI shipped it with no funding, no App Store listing, no press coverage. Just direct downloads and word of mouth.\n\nWhat went into 30 releases: AI rewrite with voice instruction, 11-language support, custom vocabulary with acoustic rescoring, Apple Intelligence as the default AI provider on macOS 26, Ask Jot in-app chatbot, Sparkle auto-update, Sony flavor (corporate distribution).\n\nNext quarter: I'm opening it to the App Store and focusing on reducing the setup friction for non-technical users.\n\nIf you've tried it — I'd love to know what you think. Disclosure: I built this.\n\nLink in comments.",
+      "utm_url": "https://jot-transcribe.com/?utm_source=reddit&utm_medium=social&utm_campaign=daily-2026-06-30",
       "publish_window_pt": "6:00–8:00am PT",
       "recommended": false,
-      "note": "Post to r/productivity. recommended:false — last recommended:true reddit was June 27 (2 days ago); needs 4+ days — earliest is July 1. Replace 'Link in comments' with the actual utm_url as the first comment. Answer every comment in the first hour."
+      "note": "Post to r/macapps. recommended:false — last true June 27 (3 days ago); earliest July 1. SUGGESTION: Hold for July 1 and reframe as 'Q2 wrapped up yesterday'."
     },
     {
       "channel": "instagram",
-      "text": "Typing friction turns your full reply into 'sounds good.'\n\nHotkey → speak → 22 words of actual context. In any Mac app. Free. On-device.\n\nLink in bio.\n\n#macOS #productivity #dictation #voicetotext #speechtotext #opensource #macapps #indiedev",
-      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-29",
+      "text": "Q2 closes today.\n\n75 days. 30 releases. 242 downloads. $0 raised.\n\nFree Mac dictation: hotkey → speak → text at cursor. On-device. Open source.\n\nLink in bio.\n\n#macOS #indiedev #buildinpublic #dictation #voicetotext #speechtotext #macapps #solodev",
+      "utm_url": "https://jot-transcribe.com/?utm_source=instagram&utm_medium=social&utm_campaign=daily-2026-06-30",
       "publish_window_pt": "11am–1pm PT",
-      "recommended": true,
-      "visual": "marketing/data/creative/2026-06-29/before-after-slack.svg as a static 1080×1080 PNG post. Alternative: post the 5-slide carousel (slide-1 through slide-5) as a multi-image carousel for higher reach.",
-      "note": "recommended:true — last recommended:true instagram was June 26 (3 days ago); threshold of 3+ days met today (June 29). Caption links aren't clickable on Instagram — keep the utm_url (utm_source=instagram) in your bio permanently."
+      "recommended": false,
+      "visual": "marketing/data/creative/2026-06-30/q2-builder-stats.svg",
+      "note": "recommended:false — last true June 29 (1 day ago); earliest July 2."
     }
   ],
   "opportunities": [
     {
-      "url": "https://blog.buildbetter.ai/best-superwhisper-alternatives-in-2026-top-local-ai-dictation-tools-for-mac/",
-      "title": "Best Superwhisper Alternatives in 2026: Top Local AI Dictation Tools for Mac — BuildBetter",
-      "why": "New roundup not previously seen in search history. Targets users already open to local AI dictation — the exact Jot audience. Jot absent as the only fully-free open-source option. Check if comments are enabled.",
-      "suggested_reply": "One worth adding: Jot (jot-transcribe.com) — free, open-source, on-device on the Apple Neural Engine. Hotkey → speak → text at cursor in any Mac app. No subscription, no account, no audio leaves your Mac. 11 languages as of v1.16. I built it. (Disclosure: developer.)"
+      "url": "https://medium.com/@ryanshrott/best-mac-dictation-apps-in-2026-dictaflow-wispr-flow-superwhisper-and-apple-dictation-compared-11911c671817",
+      "title": "Best Mac Dictation Apps in 2026 — Ryan Shrott (Medium)",
+      "why": "Resurfaced today; Jot absent; Medium comments rank well",
+      "suggested_reply": "Great breakdown. One worth adding: Jot (jot-transcribe.com) — free, open-source, fully on-device on the Apple Neural Engine. Hotkey → speak → text at cursor. 11 languages, custom vocabulary, AI rewrite. Just wrapped Q2 with 242 downloads and 0 paid ads. I built it. (Disclosure: developer.)"
     },
     {
-      "url": "https://spokenly.app/blog/wispr-flow-review",
-      "title": "Wispr Flow Review 2026: Is It Worth $15/mo? — Spokenly",
-      "why": "Readers of a $15/month pricing review are the exact audience for a $0 alternative. Pricing frustration makes Jot's zero-cost model directly relevant. Check if comments are enabled.",
-      "suggested_reply": "If the $15/month is the sticking point, Jot is worth trying — free, open-source Mac dictation that transcribes entirely on-device on the Apple Neural Engine. No subscription, no account. I built it. (Disclosure: developer.) jot-transcribe.com"
+      "url": "https://spokenly.app/blog/speech-to-text-mac",
+      "title": "Speech to Text on Mac: 9 Best Apps Tested in 2026 — Spokenly",
+      "why": "Competitor blog, Jot absent, if comments enabled",
+      "suggested_reply": "One worth adding: Jot (jot-transcribe.com) — free, open-source Mac dictation on the Apple Neural Engine. Hotkey → speak → text at cursor. No subscription, no cloud. 11 languages. I built it. (Disclosure: developer.)"
     }
   ],
   "outreach": [],
-  "notes": "Downloads reached 240 today (+3 from June 28's 237; avg7=7/day). The 250-download milestone is 10 downloads away — on track for Tuesday or Wednesday at current pace. iTunes API returned 403 for the 17th consecutive day; appstore.json date updated to June 29, all values preserved (ratingCount:4, avgRating:5, installs:0). No outreach today (last June 24; window reopens July 1 — priority targets: machow2.com, speakmac.app, Resonant 'What Reddit Recommends' page, Voibe Superwhisper alternatives comment). Two new roundup pages surfaced: BuildBetter AI 'Best Superwhisper Alternatives 2026' and Spokenly 'Wispr Flow Review 2026' — both exclude Jot and are priority comment targets. Reddit recommended:false (last true June 27; earliest July 1). Instagram recommended:true today (June 26 + 3 days threshold met). Before/after is the format today — last used June 15 (14 days ago). 'A day with Jot' carousel is a fresh new theme for the start of the new week; last carousel was June 25 (4 days ago). Monday morning is the strongest LinkedIn window — post the before/after card at 7am PT and consider uploading the carousel as a LinkedIn document post for extra reach."
+  "notes": "Total downloads 242 (+2 from June 29's 240; avg7=5/day). Today is last day of Q2 2026 — 75 days since v1.0 April 16. iTunes API 403 (18th consecutive day); appstore.json date updated, values preserved. Outreach window opens July 1 — priority: machow2.com, speakmac.app, Resonant, BuildBetter AI. Reddit recommended:false (earliest July 1 — hold Q2 post for then). Instagram recommended:false (earliest July 2). New competitor: FreeFlow (github.com/zachlatta/freeflow) appeared in searches for first time. Jot absent from all roundups."
 }
