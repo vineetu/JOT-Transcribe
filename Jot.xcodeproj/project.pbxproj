@@ -718,8 +718,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/FluidInference/FluidAudio";
 			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 0.1.0;
+				kind = exactVersion;
+				version = 0.15.4;
 			};
 		};
 		A000000000000000000000C2 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {

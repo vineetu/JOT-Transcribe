@@ -55,6 +55,24 @@ public enum HardwareTier {
         isAppleSilicon && hasTwentyFourGBOrMore && chipClearsNemotronTier(chipBrandString)
     }
 
+    /// Whether this Mac is allowed to run the **Nemotron 3.5 Multilingual**
+    /// model — a *capability* gate, deliberately distinct from
+    /// `autoUpgradeToNemotronEligible` (an auto-*swap policy* gate) even though
+    /// both currently resolve to ≥ 24 GB + ≥ M2 Pro. They mean different things:
+    /// this answers "can the hardware run the 640 MB multilingual model?", the
+    /// other answers "should we silently swap an unsuspecting English user?".
+    /// Routing/migration/picker code MUST consult this one — not the auto-swap
+    /// gate — so a future change to auto-swap headroom never silently moves the
+    /// capability wall.
+    ///
+    /// ⚠️ The 24 GB floor is a **conservative ship bar, not a measured one**:
+    /// it was chosen for unsolicited-auto-swap headroom on the *English*
+    /// Nemotron, and we have no real-time-throughput eval of the heavier
+    /// multilingual model on a 16–24 GB Mac. A later RTF probe can lower it.
+    public static var nemotronMultilingualEligible: Bool {
+        isAppleSilicon && hasTwentyFourGBOrMore && chipClearsNemotronTier(chipBrandString)
+    }
+
     // MARK: - Raw detected facts (also useful for diagnostics / logging)
 
     /// `machdep.cpu.brand_string`, e.g. `"Apple M2 Pro"`. Constant per boot, so

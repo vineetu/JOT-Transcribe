@@ -13,11 +13,11 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
 
     private enum FinalEngine: Sendable {
         case batch(Transcriber)
-        case nemotron(NemotronStreamingTranscriber)
+        case nemotron(any NemotronStreamingEngine)
     }
 
     private enum StreamingEngine: Sendable {
-        case nemotron(NemotronStreamingTranscriber)
+        case nemotron(any NemotronStreamingEngine)
         /// Batch pseudo-streaming preview (`PreviewScheduler` re-runs the batch
         /// model over a trailing window). The live preview path for v2 / v3 /
         /// JA (design §4.2).
@@ -49,6 +49,23 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     init(nemotron: NemotronStreamingTranscriber) {
         self.finalEngine = .nemotron(nemotron)
         self.streamingEngine = .nemotron(nemotron)
+    }
+
+    /// Nemotron-multilingual-only path: identical control flow to the English
+    /// Nemotron path, behind the shared `NemotronStreamingEngine` protocol.
+    init(nemotronMultilingual: NemotronMultilingualStreamingTranscriber) {
+        self.finalEngine = .nemotron(nemotronMultilingual)
+        self.streamingEngine = .nemotron(nemotronMultilingual)
+    }
+
+    /// True when the final transcript runs the Nemotron CTC-gate vocabulary path
+    /// (`nemotronResult` → spot + `gateDetections`). Batch models (v3 / v2 / JA)
+    /// use the rescorer path instead, so the streaming CTC spotter only applies
+    /// here. The recording pipeline reads this to decide whether to tee audio to
+    /// a `StreamingCtcSpotter`.
+    var usesNemotronVocabGate: Bool {
+        if case .nemotron = finalEngine { return true }
+        return false
     }
 
     // MARK: - Transcribing
@@ -304,7 +321,17 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         var text = raw
         var corrections: [VocabularyRescorerHolder.UXCorrection] = []
         do {
-            if let payload = try await holder.spotDetections(audioSamples: samples) {
+            // Prefer the payload the streaming spotter accumulated DURING
+            // recording (no post-stop wait). Falls back to the one-shot spot
+            // when streaming didn't run (no vocab, non-recorder path, or a
+            // streaming failure) — identical result, just slower.
+            let payload: VocabularyRescorerHolder.SpotPayload?
+            if let streamed = await holder.takePendingStreamedPayload() {
+                payload = streamed
+            } else {
+                payload = try await holder.spotDetections(audioSamples: samples)
+            }
+            if let payload {
                 let gated = await holder.gateDetections(
                     transcript: raw,
                     payload: payload,

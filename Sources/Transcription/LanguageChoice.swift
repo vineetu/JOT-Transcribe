@@ -171,24 +171,37 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     public func modelID(tier: HardwareTier.Type = HardwareTier.self) -> ParakeetModelID {
         switch self {
         case .english:
-            // Best English model the hardware can run: Nemotron on capable
-            // Macs (≥ M2 Pro AND ≥ 16 GB — premium true-streaming), else the
-            // English-optimized v2 batch model. v3 is never the English pick.
+            // ≥24 GB folds English into the Nemotron multilingual "latin" ship
+            // (one model across en + Latin Europe). 16–24 GB keeps the English
+            // Nemotron; <16 GB the English-optimized v2 batch. v3 is never the
+            // English pick.
+            if tier.nemotronMultilingualEligible { return .nemotron_multilingual_latin }
             return tier.nemotronEligible ? .nemotron_en : .tdt_0_6b_v2_en_streaming
         case .japanese:
             return .tdt_0_6b_ja
-        case .mandarin, .cantonese, .vietnamese,
-             .arabic, .persian, .korean, .thai, .turkish, .hindi,
-             .indonesian, .malay, .filipino, .macedonian:
-            // The experimental Qwen3-ASR languages share one on-disk
-            // bundle; the language is a per-call prompt hint, not a separate
-            // model. Tier-independent (runs on every Apple Silicon Mac with
-            // macOS 15+).
-            return .qwen3_multilingual
-        case .spanish, .french, .german, .italian, .portuguese, .romanian,
-             .polish, .czech, .slovak, .slovenian, .croatian, .bosnian,
+        case .spanish, .french, .german, .italian, .portuguese:
+            // Latin-script Nemotron languages → the "latin" ship on ≥24 GB,
+            // else today's Parakeet v3 (no regression below the bar).
+            return tier.nemotronMultilingualEligible
+                ? .nemotron_multilingual_latin : .tdt_0_6b_v3_eou_streaming
+        case .mandarin, .arabic, .korean, .hindi, .vietnamese, .turkish:
+            // Surviving Qwen languages → the full "multilingual" ship on ≥24 GB.
+            // Below the bar they have NO backend (Qwen retired): the picker hides
+            // them and the Qwen-retirement migration moves existing users to
+            // English, so the v3 fallback here is defensive only (loads without
+            // crashing; never the intended path).
+            return tier.nemotronMultilingualEligible
+                ? .nemotron_multilingual : .tdt_0_6b_v3_eou_streaming
+        case .cantonese, .persian, .thai, .indonesian, .malay, .filipino, .macedonian:
+            // Dropped with Qwen (not in the Nemotron set). Defensive fallback;
+            // the retirement migration moves existing users off these to
+            // English (Phase 5) and the enum cases are removed in Phase 6.
+            return .tdt_0_6b_v3_eou_streaming
+        case .romanian, .polish, .czech, .slovak, .slovenian, .croatian, .bosnian,
              .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
              .danish, .dutch, .finnish, .greek, .hungarian, .swedish:
+            // Stay on Parakeet v3 — either Nemotron regressed on the eval
+            // (cs/sk/sl/da/nb) or they're untested; v3 is the proven backend.
             return .tdt_0_6b_v3_eou_streaming
         }
     }
@@ -229,6 +242,55 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         // v3-supported but no FluidAudio hint case → auto-detect.
         case .danish, .dutch, .finnish, .greek, .hungarian, .swedish:
             return nil
+        }
+    }
+
+    /// BCP-47-ish language code handed to the Nemotron multilingual model:
+    /// it both selects the `latin` vs `multilingual` on-disk variant (the
+    /// prefix must match FluidAudio's `languageDirectory(for:)` — en/es/fr/it/
+    /// pt/de → latin, else multilingual) and is the `setLanguage(_:)` prompt
+    /// hint. Only languages routed to Nemotron (Phase 4, ≥24 GB) are exercised
+    /// at runtime; the rest return a best-effort code.
+    public var nemotronLanguageCode: String {
+        switch self {
+        case .english:    return "en-US"
+        case .spanish:    return "es-ES"
+        case .french:     return "fr-FR"
+        case .italian:    return "it-IT"
+        case .portuguese: return "pt-PT"
+        case .german:     return "de-DE"
+        case .mandarin:   return "zh-CN"
+        case .cantonese:  return "yue"
+        case .vietnamese: return "vi-VN"
+        case .arabic:     return "ar"
+        case .persian:    return "fa"
+        case .korean:     return "ko-KR"
+        case .thai:       return "th"
+        case .turkish:    return "tr-TR"
+        case .hindi:      return "hi-IN"
+        case .indonesian: return "id"
+        case .malay:      return "ms"
+        case .filipino:   return "fil"
+        case .macedonian: return "mk"
+        case .japanese:   return "ja"
+        case .romanian:   return "ro"
+        case .polish:     return "pl"
+        case .czech:      return "cs"
+        case .slovak:     return "sk"
+        case .slovenian:  return "sl"
+        case .croatian:   return "hr"
+        case .bosnian:    return "bs"
+        case .russian:    return "ru"
+        case .ukrainian:  return "uk"
+        case .belarusian: return "be"
+        case .bulgarian:  return "bg"
+        case .serbian:    return "sr"
+        case .danish:     return "da"
+        case .dutch:      return "nl"
+        case .finnish:    return "fi"
+        case .greek:      return "el"
+        case .hungarian:  return "hu"
+        case .swedish:    return "sv"
         }
     }
 
@@ -304,8 +366,42 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     /// to jump). Experimental languages are interleaved alphabetically and
     /// marked with a badge, not segregated.
     public static var presentationOrder: [LanguageChoice] {
-        LanguageChoice.allCases.sorted {
-            $0.englishName.localizedCaseInsensitiveCompare($1.englishName) == .orderedAscending
+        let multilingualEligible = HardwareTier.nemotronMultilingualEligible
+        return LanguageChoice.allCases
+            .filter { lang in
+                // Retired with Qwen — no backend at all.
+                if lang.isRetired { return false }
+                // Nemotron-only languages have no backend below 24 GB; hide them
+                // there rather than offer a language that can't transcribe.
+                if lang.requiresNemotronMultilingual && !multilingualEligible { return false }
+                return true
+            }
+            .sorted {
+                $0.englishName.localizedCaseInsensitiveCompare($1.englishName) == .orderedAscending
+            }
+    }
+
+    /// Languages retired alongside the Qwen3 engine (no Nemotron backend). Never
+    /// shown in the picker; existing users are moved to English by
+    /// `QwenRetirementMigration`. (Kept as enum cases until a later cleanup so
+    /// stored prefs still decode; the migration reclassifies via raw strings.)
+    public var isRetired: Bool {
+        switch self {
+        case .cantonese, .persian, .thai, .indonesian, .malay, .filipino, .macedonian:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Languages that ONLY the Nemotron multilingual ship can transcribe (no
+    /// Parakeet fallback) — so they require ≥24 GB hardware.
+    public var requiresNemotronMultilingual: Bool {
+        switch self {
+        case .mandarin, .arabic, .korean, .hindi, .vietnamese, .turkish:
+            return true
+        default:
+            return false
         }
     }
 
@@ -388,7 +484,13 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
              .tdt_0_6b_v3,
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_v3_nemotron_streaming,
-             .tdt_0_6b_v3_eou_streaming:
+             .tdt_0_6b_v3_eou_streaming,
+             // Nemotron multilingual ships back many languages; the model id
+             // alone can't disambiguate, so seed English (the stored language
+             // key is authoritative when present — see TranscriberHolder
+             // precedence). The latin ship in particular IS English's home.
+             .nemotron_multilingual,
+             .nemotron_multilingual_latin:
             // A stored v3 (multilingual) user is grandfathered onto English at
             // the language level while keeping their v3 model (design §6.4
             // case (b)); the precedence rule in TranscriberHolder keeps the

@@ -59,7 +59,12 @@ public struct ModelCache: Sendable {
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
              .nemotron_en,
-             .qwen3_multilingual:
+             .qwen3_multilingual,
+             .nemotron_multilingual_latin,
+             // Base "nemotron-multilingual" dir; the language-aware variant
+             // subdir (`latin|multilingual/<tier>ms`) is resolved by
+             // `nemotronMultilingualVariantURL(forLanguageCode:)`.
+             .nemotron_multilingual:
             return base
         }
     }
@@ -75,6 +80,10 @@ public struct ModelCache: Sendable {
         switch id {
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             return root.appendingPathComponent("nemotron-streaming-en-1120ms", isDirectory: true)
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
+            // The id bakes in the variant + tier, so the bundle dir is just
+            // `cacheURL(id)` (= `<root>/nemotron-multilingual/<variant>/<tier>ms`).
+            return cacheURL(for: id)
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
@@ -98,7 +107,11 @@ public struct ModelCache: Sendable {
              .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .qwen3_multilingual:
+             .qwen3_multilingual,
+             // Multilingual downloads via `downloadVariant` (its own cache
+             // dir + idempotent skip), not Jot's staging-move flow.
+             .nemotron_multilingual,
+             .nemotron_multilingual_latin:
             return nil
         }
     }
@@ -120,7 +133,7 @@ public struct ModelCache: Sendable {
     /// query returns the streaming presence too (matching `isCached`'s
     /// single-side passthrough).
     func stillPresent(_ id: ParakeetModelID, side: ModelSide) -> Bool {
-        if id == .nemotron_en {
+        if id == .nemotron_en || id == .nemotron_multilingual || id == .nemotron_multilingual_latin {
             // Nemotron has no separate batch bundle; the streaming bundle
             // backs both preview and final. Treat either side query as the
             // streaming presence so the self-heal's per-side purge/verify
@@ -149,7 +162,10 @@ public struct ModelCache: Sendable {
     /// present". Nemotron checks FluidAudio's `ModelNames.NemotronStreaming`
     /// file list, including its own `encoder/encoder_int8.mlmodelc`.
     public func isCached(_ id: ParakeetModelID) -> Bool {
-        if id == .nemotron_en {
+        if id == .nemotron_en
+            || id == .nemotron_multilingual || id == .nemotron_multilingual_latin {
+            // Single streaming bundle (the variant dir), like .nemotron_en — no
+            // separate batch side.
             return streamingPartialBundleExists(for: id)
         }
 
@@ -169,9 +185,16 @@ public struct ModelCache: Sendable {
         return streamingPartialBundleExists(for: id)
     }
 
+    // MARK: - Nemotron multilingual
+
+    /// Chunk-size tier Jot pins for the Nemotron multilingual ships. 1120 ms is
+    /// the design choice: short dictations shorter than the chunk return empty
+    /// on larger tiers, and 1120 ms balances latency vs accuracy.
+    static let nemotronMultilingualChunkMs = 1120
+
     func batchBundleExists(for id: ParakeetModelID) -> Bool {
         switch id {
-        case .nemotron_en:
+        case .nemotron_en, .nemotron_multilingual, .nemotron_multilingual_latin:
             return false
         case .qwen3_multilingual:
             // Qwen3 is not an `AsrModels` bundle — check its own 2-model
@@ -200,10 +223,27 @@ public struct ModelCache: Sendable {
 
     private static func streamingBundleExists(at directory: URL, for id: ParakeetModelID) -> Bool {
         let fm = FileManager.default
-        let requiredModels: Set<String>
+        func has(_ name: String) -> Bool {
+            fm.fileExists(atPath: directory.appendingPathComponent(name).path)
+        }
         switch id {
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
-            requiredModels = ModelNames.NemotronStreaming.requiredModels
+            return ModelNames.NemotronStreaming.requiredModels.allSatisfy { has($0) }
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Match FluidAudio's loader contract (preloadShared): preprocessor +
+            // encoder + metadata + tokenizer are mandatory; bare decoder/joint
+            // are OPTIONAL — a "lean B1 ship" omits them and ships a fused
+            // decode bundle instead. A valid bundle needs ONE usable decode
+            // path: any fused decoder_joint*, OR the bare decoder+joint pair.
+            let core = ["preprocessor.mlmodelc", "encoder.mlmodelc",
+                        "metadata.json", "tokenizer.json"]
+            guard core.allSatisfy({ has($0) }) else { return false }
+            let hasDecodePath =
+                has("decoder_joint.mlmodelc")
+                || has("decoder_joint_noencproj.mlmodelc")
+                || has("decoder_joint_argmax.mlmodelc")
+                || (has("decoder.mlmodelc") && has("joint.mlmodelc"))
+            return hasDecodePath
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
@@ -211,9 +251,6 @@ public struct ModelCache: Sendable {
              .tdt_0_6b_v3_eou_streaming,
              .qwen3_multilingual:
             return false
-        }
-        return requiredModels.allSatisfy { name in
-            fm.fileExists(atPath: directory.appendingPathComponent(name).path)
         }
     }
 
@@ -313,7 +350,8 @@ private extension ParakeetModelID {
              .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_v2_en_streaming:
             return repoFolderName.replacingOccurrences(of: "-coreml", with: "")
-        case .tdt_0_6b_ja, .nemotron_en, .qwen3_multilingual:
+        case .tdt_0_6b_ja, .nemotron_en, .qwen3_multilingual,
+             .nemotron_multilingual, .nemotron_multilingual_latin:
             return repoFolderName
         }
     }

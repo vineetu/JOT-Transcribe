@@ -230,7 +230,9 @@ public actor ModelDownloader: ModelDownloading {
         }
 
         let downloader = ModelDownloader(cache: cache)
-        if id == .nemotron_en {
+        if id == .nemotron_multilingual || id == .nemotron_multilingual_latin {
+            try await downloader.downloadNemotronMultilingual(id, progress: progress)
+        } else if id == .nemotron_en {
             try await downloader.downloadStreamingOnly(id, progress: progress)
         } else if id == .qwen3_multilingual {
             try await downloader.downloadQwen3(id, progress: progress)
@@ -322,55 +324,14 @@ public actor ModelDownloader: ModelDownloading {
         _ id: ParakeetModelID,
         progress: @Sendable @escaping (Double) -> Void
     ) async throws {
-        let targetDir = cache.cacheURL(for: id)
-        let stagingRoot = cache.root.appendingPathComponent(
-            "qwen3-asr-0.6b-int8-staging", isDirectory: true
-        )
-        // `downloadRepo(.qwen3AsrInt8, to:)` writes to
-        // `<stagingRoot>/<repo.folderName>` (folderName == "qwen3-asr-0.6b/int8"
-        // — the SDK strips the "-coreml" suffix in `Repo.folderName`'s default
-        // case) and saves each file with the `int8` subPath stripped, so the
-        // model files (audio encoder, stateful decoder, embeddings.bin,
-        // vocab.json) land directly in that directory.
-        let produced = stagingRoot.appendingPathComponent(
-            Repo.qwen3AsrInt8.folderName, isDirectory: true
-        )
-
-        let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
-            progress(Self.repoDownloadFraction(snapshot.fractionCompleted))
-        }
-
-        do {
-            try? FileManager.default.removeItem(at: stagingRoot)
-            try await DownloadUtils.downloadRepo(
-                .qwen3AsrInt8,
-                to: stagingRoot,
-                variant: nil,
-                progressHandler: progressHandler
-            )
-
-            let fm = FileManager.default
-            try fm.createDirectory(
-                at: targetDir.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            if fm.fileExists(atPath: targetDir.path) {
-                try fm.removeItem(at: targetDir)
-            }
-            try fm.moveItem(at: produced, to: targetDir)
-            try? fm.removeItem(at: stagingRoot)
-        } catch {
-            try? FileManager.default.removeItem(at: stagingRoot)
-            cache.removeCache(for: id)
-            throw ModelDownloadError.classify(error)
-        }
-
-        guard cache.isCached(id) else {
-            cache.removeCache(for: id)
-            throw ModelDownloadError.corrupted
-        }
-
-        progress(1.0)
+        // Qwen3 was removed from FluidAudio in 0.15.x (the `Repo.qwen3AsrInt8`
+        // staging path no longer exists). The Qwen retirement migration moves
+        // every Qwen-language user off `.qwen3_multilingual` before any download
+        // can be requested, so this path is unreachable at runtime; it remains
+        // only as a defensive guard and is deleted in the Qwen-removal phase.
+        _ = id
+        progress(0)
+        throw ModelDownloadError.corrupted
     }
 
     // MARK: - Streaming options
@@ -455,9 +416,48 @@ public actor ModelDownloader: ModelDownloading {
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3_eou_streaming,
              .nemotron_en,
-             .qwen3_multilingual:
+             .qwen3_multilingual,
+             // Streaming-only (no batch side) — like .nemotron_en.
+             .nemotron_multilingual,
+             .nemotron_multilingual_latin:
             return 1.0
         }
+    }
+
+    /// Download a Nemotron multilingual ship (`latin` or full `multilingual`)
+    /// via FluidAudio's idempotent `downloadVariant` (a no-op when already
+    /// cached). The variant is baked into `id`, so this is fully id-keyed: the
+    /// `languageCode` passed to `downloadVariant` is just a representative code
+    /// for the ship (any latin code selects the latin dir; "auto" selects the
+    /// multilingual dir — the bundle serves every language in that variant).
+    /// `downloadVariant(to: cache.root)` produces exactly `cacheURL(for: id)`.
+    func downloadNemotronMultilingual(
+        _ id: ParakeetModelID,
+        progress: @Sendable @escaping (Double) -> Void
+    ) async throws {
+        let representativeCode: String
+        switch id {
+        case .nemotron_multilingual_latin: representativeCode = "en-US"
+        case .nemotron_multilingual: representativeCode = "auto"
+        default: throw ModelDownloadError.corrupted
+        }
+        do {
+            _ = try await StreamingNemotronMultilingualAsrManager.downloadVariant(
+                languageCode: representativeCode,
+                chunkMs: ModelCache.nemotronMultilingualChunkMs,
+                to: cache.root,
+                progressHandler: { snapshot in
+                    progress(max(0.0, min(1.0, snapshot.fractionCompleted)))
+                }
+            )
+        } catch {
+            throw ModelDownloadError.classify(error)
+        }
+        guard cache.isCached(id) else {
+            cache.removeCache(for: id)
+            throw ModelDownloadError.corrupted
+        }
+        progress(1.0)
     }
 
     private func downloadBatchSide(
@@ -496,7 +496,11 @@ public actor ModelDownloader: ModelDownloading {
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3_eou_streaming,
-             .qwen3_multilingual:
+             .qwen3_multilingual,
+             // Multilingual ships download via `downloadVariant` (handled in
+             // `performDownload`), never this batch+streaming staging flow.
+             .nemotron_multilingual,
+             .nemotron_multilingual_latin:
             // No separate streaming bundle — these fetch only their batch /
             // single bundle (Qwen3 via `downloadQwen3`). Reaching here would
             // be a routing bug.

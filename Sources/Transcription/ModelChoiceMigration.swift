@@ -95,6 +95,11 @@ enum ModelChoiceMigration {
             // Experimental Qwen3 languages post-date this migration; preserve
             // the stored choice (no-op rewrite below).
             target = .qwen3_multilingual
+        case .nemotron_multilingual:
+            // Post-dates this migration; preserve the stored choice.
+            target = .nemotron_multilingual
+        case .nemotron_multilingual_latin:
+            target = .nemotron_multilingual_latin
         }
 
         if stored == target {

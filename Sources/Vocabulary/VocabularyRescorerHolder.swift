@@ -332,9 +332,19 @@ public actor VocabularyRescorerHolder {
             customVocabulary: vocabulary,
             minScore: nil
         )
-        // Map FluidAudio detections → gate detections, attaching the SAME
-        // enriched aliases the spotter/rescorer used so the plausibility metric
-        // measures against the merged-form alias too.
+        return Self.makeSpotPayload(
+            spotResult: spotResult, vocabulary: vocabulary, totalSamples: audioSamples.count)
+    }
+
+    /// Map FluidAudio spot detections → gate detections (attaching the SAME
+    /// enriched aliases the spotter/rescorer used). `nonisolated static` so the
+    /// streaming spotter — which finalizes off-actor — produces a byte-identical
+    /// `SpotPayload` to the one-shot path above.
+    nonisolated static func makeSpotPayload(
+        spotResult: CtcKeywordSpotter.SpotKeywordsResult,
+        vocabulary: CustomVocabularyContext,
+        totalSamples: Int
+    ) -> SpotPayload {
         var termAliasMap: [String: [String]] = [:]
         for t in vocabulary.terms {
             termAliasMap[t.text.lowercased(), default: []] += (t.aliases ?? [])
@@ -348,8 +358,35 @@ public actor VocabularyRescorerHolder {
                 endTime: d.endTime
             )
         }
-        let totalAudioDuration = TimeInterval(audioSamples.count) / AudioFormat.sampleRate
-        return SpotPayload(detections: detections, totalAudioDuration: totalAudioDuration)
+        return SpotPayload(
+            detections: detections,
+            totalAudioDuration: TimeInterval(totalSamples) / AudioFormat.sampleRate)
+    }
+
+    // MARK: - Streaming CTC (run the spotter DURING recording, not after stop)
+
+    /// Vend a streaming spotter for the current vocabulary, or `nil` when the
+    /// spotter / vocabulary isn't ready (caller then skips streaming and the
+    /// Nemotron path runs the one-shot `spotDetections` as before).
+    func makeStreamingSpotter() -> StreamingCtcSpotter? {
+        guard let spotter, let vocabulary, !vocabulary.terms.isEmpty else { return nil }
+        return StreamingCtcSpotter(spotter: spotter, vocabulary: vocabulary)
+    }
+
+    /// Hand-off slot for a streamed `SpotPayload`: the recording pipeline sets it
+    /// at stop (after the streaming spotter finalizes), and the Nemotron transcribe
+    /// path consumes it (consume-once) instead of running the one-shot spot.
+    /// `nil` means "no streamed payload" → the Nemotron path falls back to the
+    /// one-shot `spotDetections`.
+    private var pendingStreamedPayload: SpotPayload?
+
+    public func setPendingStreamedPayload(_ payload: SpotPayload?) {
+        pendingStreamedPayload = payload
+    }
+
+    public func takePendingStreamedPayload() -> SpotPayload? {
+        defer { pendingStreamedPayload = nil }
+        return pendingStreamedPayload
     }
 
     /// **Phase 2 (placement + gate).** Place the phase-1 detections onto the
