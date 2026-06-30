@@ -121,6 +121,10 @@ final class VoiceInputPipeline {
     /// §6.3 / §11 for the wider in-flight gate work; this is the
     /// minimum-viable defense.)
     private var activeStreamingDual: DualPipelineTranscriber?
+    /// Per-session streaming CTC vocab spotter (Nemotron gate path only). Runs
+    /// the spotter's heavy log-prob passes DURING recording so the vocab spot
+    /// is ~done at stop instead of adding a 2–3 s post-stop wait.
+    private var activeStreamingCtc: StreamingCtcSpotter?
 
     init(
         capture: any AudioCapturing = AudioCapture(),
@@ -394,12 +398,23 @@ final class VoiceInputPipeline {
         // the consumer task simply exits without firing partials.
         await dual.startStreaming(generation: token.generation, onPartial: publish)
 
+        // Nemotron gate path only: spin up a streaming CTC vocab spotter and tee
+        // the same audio to it, so its heavy log-prob passes run while the user
+        // is still talking. `makeStreamingSpotter` returns nil when there's no
+        // vocabulary, in which case the Nemotron path keeps using the one-shot.
+        let ctc = dual.usesNemotronVocabGate
+            ? await VocabularyRescorerHolder.shared.makeStreamingSpotter()
+            : nil
+        ctc?.begin()
+        activeStreamingCtc = ctc
+
         // Wire sink BEFORE the caller starts capture so the very first
         // audio chunk flows through. `setStreamingSink` writes the
         // property synchronously; `configureAUHALWithTimeout` reads it
         // when AUHAL comes up.
         let sink: @Sendable ([Float]) -> Void = { samples in
             dual.enqueueStreaming(samples: samples)
+            ctc?.enqueue(samples: samples)
         }
         await capture.setStreamingSink(sink)
     }
@@ -424,10 +439,19 @@ final class VoiceInputPipeline {
         guard let dual = activeStreamingDual else { return }
         defer { activeStreamingDual = nil }
         await capture.setStreamingSink(nil)
+        let ctc = activeStreamingCtc
+        activeStreamingCtc = nil
         if graceful {
-            _ = await dual.finishStreaming()
+            // Finish the Nemotron stream + the streaming CTC concurrently, then
+            // hand the CTC payload to the Nemotron transcribe path (consumed in
+            // `nemotronResult`). On cancel we just drop the CTC work.
+            async let streamFinal = dual.finishStreaming()
+            let payload = await ctc?.finish() ?? nil
+            _ = await streamFinal
+            await VocabularyRescorerHolder.shared.setPendingStreamedPayload(payload)
         } else {
             await dual.cancelStreaming()
+            ctc?.cancel()
         }
         StreamingPartialStore.shared.endSession()
     }

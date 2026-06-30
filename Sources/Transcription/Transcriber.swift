@@ -75,11 +75,11 @@ public actor Transcriber: Transcribing {
             }
             return
 
-        case .qwen3_multilingual:
-            // Qwen3 is not an `AsrManager` model and is never loaded through
-            // this wrapper — `JotComposition.transcriberFactory` builds a
-            // dedicated `Qwen3Transcriber` for it. Reaching here is a routing
-            // bug.
+        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Neither is an `AsrManager` model; both load through a dedicated
+            // streaming transcriber built by `JotComposition.transcriberFactory`
+            // (DualPipelineTranscriber), never this wrapper. Reaching here is a
+            // routing bug.
             throw TranscriberError.modelMissing
 
         case .tdt_0_6b_v3,
@@ -191,9 +191,9 @@ public actor Transcriber: Transcribing {
                 recordsProvenance: recordsProvenance
             )
 
-        case .qwen3_multilingual:
-            // Never reached: Qwen3 routes through `Qwen3Transcriber`, not this
-            // `AsrManager` wrapper.
+        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Never reached: both route through their own streaming
+            // transcriber, not this `AsrManager` wrapper.
             throw TranscriberError.modelNotLoaded
         }
     }
@@ -373,8 +373,9 @@ public actor Transcriber: Transcribing {
             // batch PreviewScheduler.
             return nil
 
-        case .qwen3_multilingual:
-            // Qwen3 has no live preview and never routes through this wrapper.
+        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Qwen3 has no live preview; Nemotron multilingual drives its own
+            // streaming preview. Neither routes through this wrapper.
             return nil
         }
     }
@@ -518,8 +519,8 @@ public actor Transcriber: Transcribing {
         switch modelID {
         case .nemotron_en:
             return nemotronBatch != nil
-        case .qwen3_multilingual:
-            // Qwen3 never loads through this wrapper.
+        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Neither loads through this wrapper.
             return false
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_int4,

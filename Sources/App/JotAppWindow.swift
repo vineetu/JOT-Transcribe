@@ -218,6 +218,9 @@ struct JotAppWindow: View {
             // Nemotron auto-upgrade (download-first-then-flip). Reuses the
             // same `migrationDownloadBanner` above for progress/error UI.
             transcriberHolder.startPendingNemotronUpgradeIfNeeded()
+            // Qwen-retirement → Nemotron Multilingual (download-first-then-flip),
+            // same banner. Cross-language English fallback covers the gap.
+            transcriberHolder.startPendingNemotronMultilingualUpgradeIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: .jotWindowSetSidebarSelection)) { note in
             if let newSelection = note.userInfo?["selection"] as? AppSidebarSelection {

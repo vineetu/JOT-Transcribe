@@ -262,6 +262,13 @@ enum JotComposition {
             let contents = (try? systemServices.fileManager.contentsOfDirectory(atPath: recordingsDir.path)) ?? []
             return contents.isEmpty
         }()
+        // Qwen retirement (FluidAudio 0.15.x dropped Qwen). MUST run FIRST —
+        // before every other migration and before `TranscriberHolder` is
+        // constructed below — so it reclassifies the RAW `jot.transcriptionLanguage`
+        // string off the retired Qwen values while the `LanguageChoice` enum
+        // still can't coerce them to English silently. Reads/writes raw strings
+        // via a hardcoded literal map; see `QwenRetirementMigration`.
+        QwenRetirementMigration.runIfNeeded(defaults: systemServices.userDefaults)
         ModelChoiceMigration.runV17PinIfNeeded(
             defaults: systemServices.userDefaults,
             installedModelIDs: installedModelIDs,
@@ -300,6 +307,11 @@ enum JotComposition {
         // `TranscriberHolder.startPendingNemotronUpgradeIfNeeded()`, so
         // dictation keeps working on the current model while Nemotron fetches.
         NemotronAutoUpgradeMigration.runIfNeeded(defaults: systemServices.userDefaults)
+        // ≥24 GB English/Latin → Nemotron multilingual "latin" ship (supersedes
+        // the nemotron_en auto-upgrade above). Sets the same pending marker the
+        // Qwen-retirement migration uses; the holder trigger does the
+        // download-then-flip, resolving the ship from the active language.
+        NemotronMultilingualMigration.runIfNeeded(defaults: systemServices.userDefaults)
         // One-shot cleanup of the orphaned EOU streaming bundle. EOU was
         // removed in favour of batch-pseudo-streaming preview, so any
         // `parakeet-eou-streaming/` directory left from a prior version is dead
@@ -360,6 +372,19 @@ enum JotComposition {
                     return DualPipelineTranscriber(
                         nemotron: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
                     )
+                case .nemotron_multilingual, .nemotron_multilingual_latin:
+                    // One streaming manager powers preview + final, like
+                    // `.nemotron_en`. The bundle dir is id-keyed (the id bakes in
+                    // the latin/multilingual ship); the active language is pinned
+                    // as a `setLanguage` prompt hint within that ship.
+                    let variantURL = ModelCache.shared.streamingPartialCacheURL(for: modelID)
+                        ?? ModelCache.shared.cacheURL(for: modelID)
+                    return DualPipelineTranscriber(
+                        nemotronMultilingual: NemotronMultilingualStreamingTranscriber(
+                            bundleDirectory: variantURL,
+                            languageCode: language.nemotronLanguageCode
+                        )
+                    )
                 case .tdt_0_6b_ja:
                     // Japanese: batch final transcript + batch-pseudo-streaming
                     // live preview. JA has no paired streaming bundle
@@ -384,36 +409,15 @@ enum JotComposition {
                         )
                     )
                 case .qwen3_multilingual:
-                    // Experimental Qwen3-ASR languages (Mandarin / Cantonese /
-                    // Vietnamese / Arabic / Hindi / …). Wraps FluidAudio's
-                    // `Qwen3AsrManager` — NOT the `AsrManager` batch path. Single
-                    // on-disk bundle; the active language is a per-call ISO hint
-                    // (`zh`/`yue`/`hi`/…). No custom vocabulary (the CTC-110M
-                    // spotter is Latin/English-oriented).
-                    //
-                    // BATCH-ONLY — no live preview. Qwen3-ASR is autoregressive
-                    // and applies the language only as a SOFT chat-template prompt
-                    // hint (no hard language lock, unlike Parakeet v3's CTC script
-                    // filter). On the short, growing windows a re-transcribe
-                    // streamer uses, that soft hint doesn't hold and the preview
-                    // free-associates into other languages mid-recording. So we
-                    // return the bare `Qwen3Transcriber`: no streaming session
-                    // starts (VoiceInputPipeline only streams a
-                    // `DualPipelineTranscriber`), the recording pill shows the
-                    // standard "listening" indicator, and the authoritative
-                    // transcript is the single batch decode over the FULL audio at
-                    // stop — where the language hint reliably holds. Live preview
-                    // can return here if FluidAudio ever exposes a hard language
-                    // constraint for Qwen3.
-                    //
-                    // Gated `@available(macOS 15, *)`; the deployment target is
-                    // already macOS 15, so this is the compiler-required
-                    // annotation only.
-                    return Qwen3Transcriber(
-                        bundleDirectory: ModelCache.shared.cacheURL(for: modelID),
-                        languageHint: language.qwen3Language,
-                        spaceless: language.isSpaceless
-                    )
+                    // Qwen3 was retired in FluidAudio 0.15.x — `Qwen3AsrManager`
+                    // (and `Qwen3Transcriber`) no longer exist. INTERIM until the
+                    // Qwen-removal phase deletes this case: the Qwen retirement
+                    // migration moves every Qwen-language user off
+                    // `.qwen3_multilingual` before this factory runs, so this is
+                    // unreachable in production. Return a loadable English batch
+                    // transcriber (construction is lazy — no model load here) so
+                    // nothing crashes if it is somehow reached.
+                    return Transcriber(modelID: .tdt_0_6b_v3_eou_streaming, language: language)
                 case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
                     return Transcriber(modelID: modelID, language: language)
                 }

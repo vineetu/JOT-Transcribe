@@ -296,6 +296,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // deferral guard reads to avoid running a 3rd concurrent download.
         services.transcriberHolder.startPendingMigrationDownloadIfNeeded()
         services.transcriberHolder.startPendingNemotronUpgradeIfNeeded()
+        services.transcriberHolder.startPendingNemotronMultilingualUpgradeIfNeeded()
 
         // Vocabulary spotter: prepare the CTC bundle at LAUNCH when boosting is
         // on and the primary is CTC-capable (everything except JA, which uses

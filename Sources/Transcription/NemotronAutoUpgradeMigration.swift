@@ -74,6 +74,12 @@ enum NemotronAutoUpgradeMigration {
         // 1. Hardware gate (≥ M2 Pro AND ≥ 24 GB, Apple Silicon).
         guard autoUpgradeEligible else { return false }
 
+        // Superseded by `NemotronMultilingualMigration`: on ≥24 GB, English now
+        // folds into the Nemotron multilingual "latin" ship instead of
+        // `nemotron_en`. Since this gate and the multilingual gate are both
+        // ≥24 GB, this short-circuits the nemotron_en auto-upgrade entirely.
+        guard !HardwareTier.nemotronMultilingualEligible else { return false }
+
         // 2. Active language must be English. Read the seeded key directly;
         //    LanguageMigration runs before us, so a grandfathered English user
         //    already has `jot.transcriptionLanguage == "english"`.

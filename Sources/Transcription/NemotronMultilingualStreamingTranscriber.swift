@@ -3,22 +3,30 @@ import AVFoundation
 import FluidAudio
 import Foundation
 
-/// Actor wrapping FluidAudio's `StreamingNemotronAsrManager` (Nemotron
-/// 0.6B, 1120 ms chunks). This is the only remaining option backed by a
-/// separate streaming model bundle (v2 / v3 / JA drive their live preview
-/// from the batch weights via `PreviewScheduler`). It deliberately does not
-/// share a protocol abstraction with `PreviewScheduler` — the two have
-/// similar control flow but different SDK types and cache layouts.
-final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
+/// Actor wrapping FluidAudio's `StreamingNemotronMultilingualAsrManager`
+/// (Nemotron 3.5 Multilingual 0.6B). The multilingual sibling of
+/// `NemotronStreamingTranscriber`: same streaming control flow, but the
+/// manager takes a per-language prompt selected via `setLanguage(_:)` after
+/// load, and the on-disk bundle is a `latin/<chunkMs>ms` or
+/// `multilingual/<chunkMs>ms` variant (FluidAudio's `languageDirectory(for:)`
+/// routes en/es/fr/it/pt/de → "latin", everything else → "multilingual").
+///
+/// `bundleDirectory` is the resolved variant directory (the value
+/// `StreamingNemotronMultilingualAsrManager.downloadVariant(...)` returns and
+/// `ModelCache` mirrors). `languageCode` is the FluidAudio language hint
+/// (e.g. `"en-US"`, `"es-ES"`, `"ko-KR"`); `nil` lets the model auto-detect.
+final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
 
-    private var manager: StreamingNemotronAsrManager?
+    private var manager: StreamingNemotronMultilingualAsrManager?
     private let bundleDirectory: URL
+    private let languageCode: String?
     private var activeGeneration: UInt64?
-    private let continuationBox = NemotronContinuationBox()
+    private let continuationBox = NemotronMultilingualContinuationBox()
     private var consumerTask: Task<Void, Never>?
 
-    init(bundleDirectory: URL) {
+    init(bundleDirectory: URL, languageCode: String?) {
         self.bundleDirectory = bundleDirectory
+        self.languageCode = languageCode
     }
 
     var isReady: Bool { manager != nil }
@@ -27,11 +35,14 @@ final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
         if manager != nil { return }
         let config = MLModelConfiguration()
         config.computeUnits = .cpuAndNeuralEngine
-        let mgr = StreamingNemotronAsrManager(
-            configuration: config,
-            requestedChunkSize: .ms1120
-        )
+        let mgr = StreamingNemotronMultilingualAsrManager(configuration: config)
         try await mgr.loadModels(from: bundleDirectory)
+        // Pin the language prompt once at load; the model otherwise auto-detects
+        // per chunk, which the design avoids (a hard language hint keeps a short
+        // dictation from free-associating into another language mid-utterance).
+        if let languageCode {
+            await mgr.setLanguage(languageCode)
+        }
         manager = mgr
     }
 
@@ -53,7 +64,7 @@ final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
                 try await self.ensureLoaded()
             } catch {
                 await ErrorLog.shared.error(
-                    component: "NemotronStreamingTranscriber",
+                    component: "NemotronMultilingualStreamingTranscriber",
                     message: "ensureLoaded failed in consumer (skipping partials)",
                     context: ["error": ErrorLog.redactedAppleError(error)]
                 )
@@ -75,7 +86,7 @@ final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
                     _ = try await mgr.process(audioBuffer: buffer)
                 } catch {
                     await ErrorLog.shared.error(
-                        component: "NemotronStreamingTranscriber",
+                        component: "NemotronMultilingualStreamingTranscriber",
                         message: "process failed",
                         context: ["error": ErrorLog.redactedAppleError(error)]
                     )
@@ -84,7 +95,7 @@ final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
         }
     }
 
-    private func activeManager() -> StreamingNemotronAsrManager? { manager }
+    private func activeManager() -> StreamingNemotronMultilingualAsrManager? { manager }
 
     nonisolated func enqueue(samples: [Float]) {
         guard !samples.isEmpty else { return }
@@ -123,11 +134,9 @@ final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
         return try await manager.finish()
     }
 
-    /// One-shot fallback for paths that do not have a live recording session
-    /// already feeding this actor (for example Library re-transcribe). The
-    /// samples are passed through Nemotron in one buffer and flushed with
-    /// `finish()`, matching FluidAudio's streaming API without inventing a
-    /// separate batch abstraction.
+    /// One-shot fallback for paths without a live recording session feeding
+    /// this actor (e.g. Library re-transcribe). Mirrors the English Nemotron
+    /// path: one buffer through `process` + `finish`.
     func transcribeOneShot(_ samples: [Float]) async throws -> String {
         try await ensureLoaded()
         guard let manager else {
@@ -136,7 +145,7 @@ final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
         await manager.reset()
         guard let buffer = Self.makeBuffer(samples) else {
             throw TranscriberError.fluidAudio(
-                NSError(domain: "Jot.NemotronStreamingTranscriber", code: -1)
+                NSError(domain: "Jot.NemotronMultilingualStreamingTranscriber", code: -1)
             )
         }
         _ = try await manager.process(audioBuffer: buffer)
@@ -172,7 +181,7 @@ final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
     }
 }
 
-private final class NemotronContinuationBox: @unchecked Sendable {
+private final class NemotronMultilingualContinuationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: AsyncStream<[Float]>.Continuation?
 

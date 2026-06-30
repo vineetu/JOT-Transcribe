@@ -104,6 +104,7 @@ final class TranscriberHolder: ObservableObject {
     private let downloaderFactory: @MainActor (ModelCache) -> any ModelDownloading
     private var migrationDownloadStarted = false
     private var nemotronUpgradeStarted = false
+    private var nemotronMultilingualUpgradeStarted = false
 
     static let defaultsKey = "jot.defaultModelID"
 
@@ -403,6 +404,94 @@ final class TranscriberHolder: ObservableObject {
         }
     }
 
+    /// Download-then-flip for a surviving-Qwen user (≥24 GB) being migrated to
+    /// Nemotron Multilingual. Mirrors `startPendingNemotronUpgradeIfNeeded`, but
+    /// the download is language-aware (`latin` vs `multilingual` ship) and on
+    /// success it also clears the cross-language English fallback marker. The
+    /// active (dead Qwen) model never blocks dictation meanwhile —
+    /// `resolveSessionTranscriber` routes the session to English while
+    /// `crossLanguageFallbackKey` is set.
+    func startPendingNemotronMultilingualUpgradeIfNeeded() {
+        guard !nemotronMultilingualUpgradeStarted else { return }
+        guard defaults.bool(forKey: QwenRetirementMigration.multilingualUpgradePendingKey) else {
+            return
+        }
+        // Defer one launch if ANOTHER migration download is pending — they
+        // share the `migrationDownloadProgress` / `migrationDownloadError`
+        // banner, so they must not run concurrently. (Do NOT include this
+        // path's own `multilingualUpgradePendingKey` — it's necessarily set
+        // here, so guarding on it would make this function dead code.)
+        guard !defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey),
+              !defaults.bool(forKey: NemotronAutoUpgradeMigration.autoUpgradePendingKey) else {
+            return
+        }
+
+        nemotronMultilingualUpgradeStarted = true
+        migrationDownloadError = nil
+
+        // The active language resolves to a specific ship (latin vs full
+        // multilingual). If it no longer routes to a multilingual ship (e.g.
+        // hardware changed / fell back), there's nothing to upgrade — retire
+        // the markers.
+        let targetID = activeLanguage.modelID()
+        guard targetID == .nemotron_multilingual || targetID == .nemotron_multilingual_latin else {
+            clearMultilingualUpgradeMarkers()
+            migrationDownloadProgress = nil
+            return
+        }
+
+        // Already cached (or already flipped): flip + retire the markers now.
+        if cache.isCached(targetID) {
+            migrationDownloadProgress = nil
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.setPrimary(targetID)
+                self.clearMultilingualUpgradeMarkers()
+                self.refreshInstalled()
+            }
+            return
+        }
+
+        migrationDownloadProgress = 0
+        let cache = self.cache
+        let progressBinding: @Sendable (Double) -> Void = { [weak self] fraction in
+            Task { @MainActor in
+                self?.migrationDownloadProgress = fraction
+            }
+        }
+        Task { @MainActor [weak self] in
+            let downloader = ModelDownloader(cache: cache)
+            do {
+                try await downloader.downloadNemotronMultilingual(targetID, progress: progressBinding)
+                guard let self else { return }
+                // SUCCESS: only now flip the active model + drop the dead-Qwen
+                // cross-language fallback.
+                await self.setPrimary(targetID)
+                self.clearMultilingualUpgradeMarkers()
+                self.migrationDownloadProgress = nil
+                self.migrationDownloadError = nil
+                self.refreshInstalled()
+            } catch {
+                guard let self else { return }
+                // FAILURE: leave both markers set so the next launch retries and
+                // the session keeps falling back to English. Dictation unaffected.
+                self.migrationDownloadProgress = nil
+                self.migrationDownloadError = error.localizedDescription
+                self.refreshInstalled()
+                await ErrorLog.shared.error(
+                    component: "TranscriberHolder",
+                    message: "Nemotron multilingual upgrade download failed",
+                    context: ["model": targetID.rawValue, "error": ErrorLog.redactedAppleError(error)]
+                )
+            }
+        }
+    }
+
+    private func clearMultilingualUpgradeMarkers() {
+        defaults.set(false, forKey: QwenRetirementMigration.multilingualUpgradePendingKey)
+        defaults.set(false, forKey: QwenRetirementMigration.crossLanguageFallbackKey)
+    }
+
     // MARK: - Startup model-integrity self-heal (design §Phase 1–2, 5)
 
     /// Strict per-side integrity probe of the ACTIVE model on the single live
@@ -476,7 +565,8 @@ final class TranscriberHolder: ObservableObject {
         // download. The probe re-runs next launch; the heal then proceeds once
         // those markers have retired.
         guard !defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey),
-              !defaults.bool(forKey: NemotronAutoUpgradeMigration.autoUpgradePendingKey) else {
+              !defaults.bool(forKey: NemotronAutoUpgradeMigration.autoUpgradePendingKey),
+              !defaults.bool(forKey: QwenRetirementMigration.multilingualUpgradePendingKey) else {
             return
         }
 
@@ -633,6 +723,27 @@ final class TranscriberHolder: ObservableObject {
     }
 
     func resolveSessionTranscriber() async -> SessionResolution {
+        // Qwen-retirement → Nemotron Multilingual: while a surviving-Qwen user's
+        // multilingual download is still pending, the active model is the
+        // unloadable Qwen bundle and there is NO same-language Parakeet fallback.
+        // Route the session to English so the user can dictate meanwhile. Read
+        // BEFORE the repairState gate — self-heal is deferred while this download
+        // is pending (see `beginSelfHeal`), so `repairState` is never set here.
+        if defaults.bool(forKey: QwenRetirementMigration.crossLanguageFallbackKey) {
+            for english in [ParakeetModelID.tdt_0_6b_v2_en_streaming,
+                            ParakeetModelID.tdt_0_6b_v3_eou_streaming] where cache.isCached(english) {
+                let candidate = transcriberFactory(english, .english)
+                if (try? await candidate.ensureLoaded()) != nil, await candidate.isReady {
+                    return .transient(
+                        candidate,
+                        notice: "Transcribing in English while your language model finishes downloading")
+                }
+            }
+            // No English bundle on disk yet → block; the migration banner shows
+            // the download progress.
+            return .blocked
+        }
+
         // Steady state: no repair in flight → always the active transcriber.
         guard repairState != nil else { return .active }
 
