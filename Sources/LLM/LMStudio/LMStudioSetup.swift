@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import CryptoKit
 import Darwin
 
 /// Orchestrates the in-app, hardened, headless setup of LM Studio's
@@ -41,8 +40,17 @@ final class LMStudioSetup: ObservableObject {
         case installing(Double)
         /// `lms` present, recommended model absent (or not yet served).
         case readyNoModel
-        /// `lms get` in flight. Progress parsed from CLI output (0…1).
+        /// `lms get` in flight. Progress (0…1) is computed from the on-disk
+        /// size of the model folder ÷ the known total — NOT from `lms get`'s
+        /// per-shard CLI percentages, which reset 0→100 per shard and can't be
+        /// aggregated into a monotonic bar. Byte-on-disk progress is monotonic
+        /// and format-independent.
         case downloadingModel(Double)
+        /// `lms get` finished; loading + serving + resolving the served id.
+        /// Quick relative to the download, so it shows an indeterminate bar —
+        /// distinct from `.downloadingModel` so the card stops claiming a
+        /// (possibly cached, instant) "Downloading…" while it's really loading.
+        case loadingModel
         /// Model present, server serving it, model id persisted into config.
         case configured
         /// Setup hit a fatal error. The card surfaces the message + retry.
@@ -67,6 +75,18 @@ final class LMStudioSetup: ObservableObject {
     /// into config is the one `/v1/models` reports, not this alias (F3).
     static let modelAlias = "qwen/qwen3.5-9b"
 
+    /// On-disk repo subpath under `~/.lmstudio/models/` where `lms get` writes
+    /// the recommended model's shards. Used to size the download for the
+    /// progress bar.
+    static let modelRepoSubpath = "lmstudio-community/Qwen3.5-9B-MLX-4bit"
+
+    /// Approximate total on-disk bytes of the recommended model (the two MLX
+    /// shards ≈ 5.35 GB + 0.60 GB plus tokenizer/config ≈ 5.98 GB). Only the
+    /// denominator for the byte-based progress bar; the bar caps at 0.99 until
+    /// `lms get` returns, so a small over/under-estimate just shifts where the
+    /// bar sits at completion, never its monotonicity.
+    static let expectedModelBytes: Int64 = 5_980_000_000
+
     /// LM Studio's OpenAI-compatible server port.
     static let serverPort = 1234
 
@@ -80,15 +100,10 @@ final class LMStudioSetup: ObservableObject {
     /// Minimum free disk (GB) required before offering the ~6 GB model pull.
     static let diskFloorGB: Double = 7
 
-    /// `install.sh` (2026-06-23 pin). Run ONLY if the downloaded script's
-    /// sha512 matches this exactly. The script version-pins llmster
-    /// `0.0.15-2` and verifies the tarball's own sha512 internally.
-    static let pinnedInstallShSHA512 = "e4f4f566a71e3b0cfa3a56647109fa047b8a9bba4bf4b6932b94d3761edb52cbc355f3bc052402cf6aac70a12a333bbb2a6528c7237fba826ad698834292c49e"
-
+    /// Official LM Studio engine installer. Fetched over HTTPS and run as-is
+    /// (no Jot-side hash pin — see `install()` for the rationale). The script
+    /// self-pins its llmster version and verifies its own tarball's sha512.
     static let installShURL = "https://lmstudio.ai/install.sh"
-
-    /// Surfaced in the card so the pinned version is auditable at a glance.
-    static let pinnedLlmsterVersion = "0.0.15-2"
 
     // MARK: - Process tuning
 
@@ -117,6 +132,32 @@ final class LMStudioSetup: ObservableObject {
 
     private var modelsDirectory: URL {
         homeDirectory.appendingPathComponent(".lmstudio/models")
+    }
+
+    /// Folder `lms get` writes the recommended model into. Polled for its size
+    /// to drive the download progress bar.
+    private var modelDownloadDirectory: URL {
+        modelsDirectory.appendingPathComponent(Self.modelRepoSubpath)
+    }
+
+    /// Total bytes of all regular files under `directory` (0 if it doesn't
+    /// exist yet). `nonisolated` + `Sendable`-input so the progress poller can
+    /// call it off the main actor.
+    nonisolated static func directorySizeBytes(at directory: URL) -> Int64 {
+        let fm = FileManager.default
+        guard let en = fm.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in en {
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            if values?.isRegularFile == true, let size = values?.fileSize {
+                total += Int64(size)
+            }
+        }
+        return total
     }
 
     private var serverBaseURL: String {
@@ -209,8 +250,18 @@ final class LMStudioSetup: ObservableObject {
 
     // MARK: - install() — ONE user gesture
 
-    /// Downloads the pinned `install.sh`, verifies its sha512, and runs it
-    /// headlessly. THE ONLY install entry point — button-driven only.
+    /// Downloads the official `install.sh` over HTTPS and runs it headlessly.
+    /// THE ONLY install entry point — button-driven only.
+    ///
+    /// No Jot-side checksum pin. LM Studio reformats `install.sh` every few
+    /// releases; a pinned-hash check made the feature break for EVERY user on
+    /// each bump until an app update shipped — pinning a volatile artifact in a
+    /// rarely-updated app. Instead we trust HTTPS to the official host (TLS
+    /// cert-validated) plus the script's OWN internal sha512 verification of the
+    /// llmster tarball it fetches (`verify_checksum`, payload from
+    /// `llmster.lmstudio.ai/download`). Same trust model as `curl … | sh`, minus
+    /// the pipe: we still persist to a temp file and run it via /bin/sh rather
+    /// than streaming the download into a shell.
     func install() async {
         // Re-entrancy guard: ignore a second tap while an install is in
         // flight. Don't rely on the view swapping out the button.
@@ -219,32 +270,32 @@ final class LMStudioSetup: ObservableObject {
         state = .installing(0)
         do {
             let scriptData = try await downloadInstallScript()
-            let digest = SHA512.hash(data: scriptData)
-            let hex = digest.map { String(format: "%02x", $0) }.joined()
-            guard hex == Self.pinnedInstallShSHA512 else {
-                state = .error("Installer integrity check failed. The downloaded LM Studio installer didn't match Jot's pinned checksum, so it was not run.")
-                return
-            }
 
-            // Persist the verified script to a temp file and run it via
+            // Persist the downloaded script to a temp file and run it via
             // /bin/sh. We never pipe the download into a shell.
             let tmp = FileManager.default.temporaryDirectory
                 .appendingPathComponent("jot-lmstudio-install-\(UUID().uuidString).sh")
             try scriptData.write(to: tmp)
             defer { try? FileManager.default.removeItem(at: tmp) }
 
-            state = .installing(0.1)
+            state = .installing(0)
+            // NOTE: we deliberately do NOT set LMS_PRINT_QUIET here. Quiet mode
+            // makes install.sh run curl as `-s` (zero progress output), which is
+            // why the install bar had nothing to show and was indeterminate.
+            // Verbose mode emits curl's `--progress-bar` (a single ~580 MB file,
+            // so the percentage is monotonic) which we parse into a real bar.
+            // The extra console_log lines are harmless — `parseProgressFraction`
+            // ignores any line without a trailing percentage.
             let result = try await runProcess(
                 executable: "/bin/sh",
                 arguments: [tmp.path],
                 environment: [
                     "LMS_NO_MODIFY_PATH": "1",
-                    "LMS_PRINT_QUIET": "1",
                 ],
                 timeout: Self.installTimeoutSeconds,
                 onProgress: { [weak self] line in
                     guard let fraction = Self.parseProgressFraction(from: line) else { return }
-                    Task { @MainActor in self?.state = .installing(0.1 + 0.9 * fraction) }
+                    Task { @MainActor in self?.state = .installing(fraction) }
                 }
             )
             guard result.exitCode == 0 else {
@@ -293,22 +344,40 @@ final class LMStudioSetup: ObservableObject {
             return
         }
         state = .downloadingModel(0)
+        // Drive the bar from on-disk bytes (monotonic, format-independent)
+        // rather than `lms get`'s per-shard CLI percentages. A cached model
+        // makes `lms get` return ~instantly; the poller then reads the full
+        // size once and the bar jumps to ~0.99 before we move to `.loadingModel`.
+        let downloadDir = modelDownloadDirectory
+        let totalBytes = Self.expectedModelBytes
+        let progressPoller = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                // File I/O off the main actor; state mutation back on it.
+                let bytes = await Task.detached { Self.directorySizeBytes(at: downloadDir) }.value
+                let fraction = min(max(Double(bytes) / Double(totalBytes), 0), 0.99)
+                guard let self, case .downloadingModel = self.state else { return }
+                self.state = .downloadingModel(fraction)
+                try? await Task.sleep(for: .seconds(0.7))
+            }
+        }
+        defer { progressPoller.cancel() }
         do {
             let pull = try await runProcess(
                 executable: lmsPath.path,
                 arguments: ["get", Self.modelAlias, "--mlx", "-y"],
                 environment: ["LMS_PRINT_QUIET": "1"],
                 timeout: Self.downloadTimeoutSeconds,
-                onProgress: { [weak self] line in
-                    guard let fraction = Self.parseProgressFraction(from: line) else { return }
-                    Task { @MainActor in self?.state = .downloadingModel(fraction) }
-                }
+                onProgress: { _ in }
             )
+            progressPoller.cancel()
             guard pull.exitCode == 0 else {
                 state = .error("Model download failed (exit \(pull.exitCode)). Try again.")
                 return
             }
 
+            // Download done — the remaining load/serve/resolve work is quick and
+            // is NOT a download, so stop showing the "Downloading…" bar.
+            state = .loadingModel
             applyNoThinkPatch()
             try await ensureServerRunning()
 
@@ -516,14 +585,19 @@ final class LMStudioSetup: ObservableObject {
 
     // MARK: - Progress parsing
 
-    /// Best-effort extraction of a 0…1 progress fraction from a CLI output
-    /// line (e.g. `… 42% …`). Returns nil when no percentage is present.
+    /// Best-effort extraction of a 0…1 progress fraction from a CLI output line.
+    /// Handles BOTH integer (`42%`) and decimal (`42.8%`) percentages — curl's
+    /// `--progress-bar` prints decimals, and a naive `(\d{1,3})%` would match the
+    /// single digit before `%` (`42.8%` → `8%`). Returns nil when no percentage
+    /// is present.
     static func parseProgressFraction(from line: String) -> Double? {
-        guard let range = line.range(of: #"(\d{1,3})%"#, options: .regularExpression) else {
+        guard let range = line.range(
+            of: #"(\d{1,3}(?:\.\d+)?)%"#, options: .regularExpression
+        ) else {
             return nil
         }
-        let digits = line[range].dropLast()  // strip the '%'
-        guard let value = Double(digits) else { return nil }
+        let token = line[range].dropLast()  // strip the '%'
+        guard let value = Double(token) else { return nil }
         return min(max(value / 100.0, 0), 1)
     }
 
