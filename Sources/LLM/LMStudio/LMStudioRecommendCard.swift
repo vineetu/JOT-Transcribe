@@ -74,7 +74,7 @@ struct LMStudioRecommendCard: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Jot will download and install LM Studio's local engine (~580 MB, checksum-verified) on this Mac. Afterward you can download the Qwen 3.5 9B model (~6 GB) separately. Nothing runs until you confirm, and everything stays on-device.")
+            Text("Jot will download and install LM Studio's local engine (~580 MB) from LM Studio's official installer over HTTPS. Afterward you can download the Qwen 3.5 9B model (~6 GB) separately. Nothing runs until you confirm, and everything stays on-device.")
         }
     }
 
@@ -89,7 +89,7 @@ struct LMStudioRecommendCard: View {
                         .font(.system(size: 13, weight: .semibold))
                     badge
                 }
-                Text("Fast on-device AI for Cleanup and Rewrite — nothing leaves your Mac. Pinned to LM Studio \(LMStudioSetup.pinnedLlmsterVersion).")
+                Text("Fast on-device AI for Cleanup and Rewrite — nothing leaves your Mac.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -141,13 +141,16 @@ struct LMStudioRecommendCard: View {
             }
 
         case .installing(let progress):
-            progressRow(label: "Installing LM Studio (~580 MB)…", progress: progress)
+            determinateProgressRow(label: "Installing LM Studio (~580 MB)…", progress: progress)
 
         case .readyNoModel:
             modelDownloadSection
 
         case .downloadingModel(let progress):
-            progressRow(label: "Downloading Qwen 3.5 9B (~6 GB, a few minutes)…", progress: progress)
+            determinateProgressRow(label: "Downloading Qwen 3.5 9B (~6 GB)…", progress: progress)
+
+        case .loadingModel:
+            indeterminateProgressRow(label: "Loading model…")
 
         case .configured:
             advisory("Ready — Qwen 3.5 9B (local), thinking off.", color: .green, symbol: "checkmark.circle.fill")
@@ -192,12 +195,29 @@ struct LMStudioRecommendCard: View {
 
     // MARK: - Reusable bits
 
-    @ViewBuilder
-    // `progress` is intentionally ignored: `lms get` / `install.sh` print a
-    // fresh NN% per shard/file, so a value-driven bar fills, resets, and refills
-    // ("growing crazy"). We can't reliably aggregate multi-file percentages, so
-    // we show a calm INDETERMINATE bar instead of a misleading fake number.
-    private func progressRow(label: String, progress: Double) -> some View {
+    /// Determinate bar with a trailing percentage. Used for the model download,
+    /// whose `progress` comes from on-disk bytes ÷ known total (monotonic) —
+    /// NOT from `lms get`'s per-shard CLI percentages (which reset 0→100 per
+    /// shard and made a value bar "grow crazy"; that's why this used to be
+    /// indeterminate).
+    private func determinateProgressRow(label: String, progress: Double) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(label)
+                    .font(.system(size: 12))
+                Spacer(minLength: 8)
+                Text("\(Int((progress * 100).rounded()))%")
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
+        }
+    }
+
+    /// Indeterminate bar for the quick post-download model load phase, which has
+    /// no meaningful fraction to show.
+    private func indeterminateProgressRow(label: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(.system(size: 12))
