@@ -134,6 +134,15 @@ export default {
     ]
   },
 
+  // Real App Store reviews as testimonials — fetched at view time; reviewer names
+  // are stripped server-side and the maker's own reviews are excluded.
+  testimonials: {
+    endpoint: "https://talk-to-me.ideaflow.page/proxy/reviews?product=jot",
+    kicker: "from the app store",
+    h2: "What people are saying",
+    foot: "Real App Store reviews, quoted verbatim — shared without names."
+  },
+
   aso: {
     schemaCategory: "DeveloperApplication",
     title: "Jot: On-Device Dictation",

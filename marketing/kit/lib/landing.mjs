@@ -50,6 +50,17 @@ function footerEl(cfg) {
 </div></footer>`;
 }
 
+// A quiet note from the maker — renders on the home page only, when cfg.founder
+// is set. Trust through a real person, in the product's own voice.
+function founderEl(cfg) {
+  const f = cfg.founder; if (!f) return "";
+  return `<section class="maker"><div class="wrap">
+  <div class="kick">${f.kicker}</div>
+  <p class="note">${f.text}</p>
+  <div class="sig">${f.signature}</div>
+</div></section>`;
+}
+
 function closingEl(cfg, c) {
   return `<section class="closing" id="get"><div class="wrap">
   ${lockEl(cfg.brand.lockup, "span")}
@@ -96,12 +107,43 @@ ${head(cfg, page)}
 
 ${navEl(cfg)}
 ${bodyInner}
+${testimonialsEl(cfg)}
 ${signupEl(cfg)}
 ${footerEl(cfg)}
+${testimonialsScript(cfg)}
 ${signupScript(cfg)}
 ${scripts}
 </body>
 </html>`;
+}
+
+// App Store testimonials — real customer reviews, fetched at view time from the
+// reviews endpoint (which strips reviewer names server-side and excludes the
+// maker's own reviews). The section ships HIDDEN and reveals itself only when
+// real reviews exist — an app with no reviews shows nothing, never filler.
+function testimonialsEl(cfg) {
+  const t = cfg.testimonials; if (!t) return "";
+  return `<section class="ori-testimonials" id="loved" hidden><div class="tswrap">
+  <div class="kick">${t.kicker}</div>
+  <h2>${t.h2}</h2>
+  <div class="tsgrid" id="tsGrid"></div>
+  <div class="tsfoot">${t.foot}</div>
+</div></section>`;
+}
+function testimonialsScript(cfg) {
+  const t = cfg.testimonials; if (!t) return "";
+  return `<script>
+(function(){fetch('${t.endpoint}').then(function(r){return r.ok?r.json():null}).then(function(d){
+if(!d||!d.reviews||!d.reviews.length)return;
+var s=document.getElementById('loved'),g=document.getElementById('tsGrid');
+var esc=function(x){return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')};
+g.innerHTML=d.reviews.slice(0,6).map(function(r){
+return '<figure class="tscard"><div class="tstars">'+'★'.repeat(Math.max(1,Math.min(5,r.stars)))+'</div>'
++(r.title?'<div class="tstitle">'+esc(r.title)+'</div>':'')
++'<blockquote>'+esc(r.text)+'</blockquote>'
++'<figcaption>App Store review'+(r.version?' · v'+esc(r.version):'')+'</figcaption></figure>';
+}).join('');s.hidden=false;}).catch(function(){});})();
+</script>`;
 }
 
 // Opt-in email capture — posts to the feedback endpoint (version=waitlist).
@@ -199,6 +241,8 @@ ${pillars}
 </div></section>
 
 ${faqEl(cfg.faq)}
+
+${founderEl(cfg)}
 
 ${closingEl(cfg, cfg.closing)}`;
 
