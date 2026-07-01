@@ -285,17 +285,17 @@ actor LLMClient {
                 ["role": "user", "content": userPrompt],
             ],
         ]
-        // GPT-5 (the reasoning model — not "gpt-5-mini" or other
-        // variants) rejects any temperature value other than the
-        // default. Empirically: passing `temperature: 0.1` returns a
-        // 400 with `"Unsupported value: 'temperature' does not support
-        // 0.1 with this model. Only the default (1) value is
-        // supported."` (verified 2026-05-18 against the PFB gateway's
-        // `gpt-5` route, which is OpenAI-compatible). Scope intentionally
-        // narrow per design discussion: just `gpt-5`, not the broader
-        // o1/o3/o4 reasoning-model family — if those land later, extend
-        // explicitly with their own model-ID match here.
-        if model != "gpt-5" {
+        // Some OpenAI reasoning models reject a non-default `temperature` with a
+        // 400 ("Unsupported value: 'temperature' ... Only the default (1) value
+        // is supported."), and the accept/reject set is inconsistent across
+        // releases — verified empirically 2026-06-30: gpt-5 / gpt-5-mini /
+        // gpt-5-nano and the gpt-5.5 generation REJECT, while gpt-5.1–gpt-5.4
+        // ACCEPT. So there's no clean version rule. This first-try check skips
+        // temperature for the models known to reject it (so the default
+        // gpt-5.5 doesn't pay a wasted round-trip); `performLLMRequest` retries
+        // WITHOUT temperature on a 400, which is the actual correctness
+        // guarantee and self-heals for any model not listed here.
+        if !Self.openAIModelLikelyRejectsTemperature(model) {
             body["temperature"] = temperature
         }
         if stream {
@@ -303,6 +303,51 @@ actor LLMClient {
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
+    }
+
+    /// First-try guess at whether an OpenAI-compatible `model` rejects a custom
+    /// `temperature`. OpenAI's set is inconsistent release-to-release (empirical
+    /// 2026-06-30: gpt-5 / gpt-5-mini / gpt-5-nano and the gpt-5.5 generation
+    /// reject; gpt-5.1–gpt-5.4 accept), and the o1/o3/o4 reasoning models reject.
+    /// The `*-chat-latest` non-reasoning chat models accept. This is ONLY a
+    /// round-trip optimization — `performLLMRequest` retries without temperature
+    /// on a 400, so a stale entry self-heals at the cost of one extra call.
+    /// Non-OpenAI models served through `buildOpenAIRequest` (Ollama / LM Studio)
+    /// don't match these prefixes and keep temperature.
+    static func openAIModelLikelyRejectsTemperature(_ model: String) -> Bool {
+        let m = model.lowercased()
+        if m.contains("chat") { return false }            // gpt-5*-chat-latest
+        if m == "gpt-5" || m.hasPrefix("gpt-5-") { return true }   // gpt-5.0 generation
+        if m.hasPrefix("gpt-5.5") { return true }         // gpt-5.5 generation
+        if m.hasPrefix("o1") || m.hasPrefix("o3") || m.hasPrefix("o4") { return true }
+        return false                                      // gpt-5.1–5.4, gpt-4o, locals
+    }
+
+    /// True for the specific 400 OpenAI returns when a model only supports the
+    /// default temperature. Drives the retry-without-temperature in
+    /// `performLLMRequest`.
+    private func isUnsupportedTemperatureError(_ error: LLMError) -> Bool {
+        guard case .httpError(let status, let body) = error, status == 400 else { return false }
+        let b = body.lowercased()
+        return b.contains("temperature")
+            && (b.contains("unsupported") || b.contains("does not support")
+                || b.contains("only the default"))
+    }
+
+    /// Return a copy of `request` with the top-level `temperature` field removed
+    /// from its JSON body, or `nil` if the body has no such field (so the caller
+    /// won't pointlessly retry). Scoped to OpenAI-style flat bodies; Gemini nests
+    /// temperature under `generationConfig`, so it returns `nil` and is untouched.
+    private static func requestStrippingTemperature(_ request: URLRequest) -> URLRequest? {
+        guard let data = request.httpBody,
+              var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              json["temperature"] != nil
+        else { return nil }
+        json.removeValue(forKey: "temperature")
+        guard let newBody = try? JSONSerialization.data(withJSONObject: json) else { return nil }
+        var copy = request
+        copy.httpBody = newBody
+        return copy
     }
 
     private func buildAnthropicRequest(
@@ -387,18 +432,40 @@ actor LLMClient {
     private func performLLMRequest(provider: LLMProvider, request: URLRequest, stream: Bool? = nil) async throws -> String {
         let useStreaming = stream ?? shouldStream(provider: provider)
         do {
-            if useStreaming {
-                return try await streamResponse(provider: provider, request: request)
+            return try await sendLLMRequest(provider: provider, request: request, useStreaming: useStreaming)
+        } catch let error as LLMError where isUnsupportedTemperatureError(error) {
+            // The model only supports the default temperature (e.g. gpt-5.5 /
+            // gpt-5 reasoning models). OpenAI's accept/reject set is
+            // inconsistent across releases, so instead of tracking a model list
+            // we self-heal: strip `temperature` and retry once. If the body had
+            // no temperature to strip (already omitted, or a non-OpenAI body),
+            // `requestStrippingTemperature` returns nil and we surface the
+            // original error unchanged.
+            guard let retry = Self.requestStrippingTemperature(request) else {
+                logLLMError(error, provider: provider, request: request, streaming: useStreaming)
+                throw error
             }
-
-            let (data, response) = try await session.data(for: request)
-            try validateHTTPResponse(response, data: data)
-            return try parseResponse(provider: provider, data: data)
+            do {
+                return try await sendLLMRequest(provider: provider, request: retry, useStreaming: useStreaming)
+            } catch {
+                let mapped = mapError(error)
+                logLLMError(mapped, provider: provider, request: retry, streaming: useStreaming)
+                throw mapped
+            }
         } catch {
             let mapped = mapError(error)
             logLLMError(mapped, provider: provider, request: request, streaming: useStreaming)
             throw mapped
         }
+    }
+
+    private func sendLLMRequest(provider: LLMProvider, request: URLRequest, useStreaming: Bool) async throws -> String {
+        if useStreaming {
+            return try await streamResponse(provider: provider, request: request)
+        }
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        return try parseResponse(provider: provider, data: data)
     }
 
     private func logLLMError(_ error: LLMError, provider: LLMProvider, request: URLRequest?, streaming: Bool, op: String = "request") {
