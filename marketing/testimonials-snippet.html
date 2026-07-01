@@ -1,0 +1,44 @@
+<!--
+  Jot — App Store testimonials (paste-ready, self-contained)
+  ──────────────────────────────────────────────────────────
+  Paste this whole block into jot-transcribe.com's index.html, anywhere in <body>
+  (just above the footer works well). Nothing else to wire.
+
+  What it does: fetches real Jot customer reviews from
+  https://talk-to-me.ideaflow.page/proxy/reviews?product=jot — a cached proxy over
+  Apple's public reviews feed that STRIPS reviewer names server-side and excludes
+  the maker's own reviews. The section ships hidden and reveals itself only when
+  real reviews exist; new App Store reviews appear automatically (≤1h cache).
+  Honesty contract: verbatim quotes only, no names, no invented testimonials.
+-->
+<style>
+.jot-testimonials{background:#11151B;padding:72px 0;border-top:1px solid rgba(91,157,255,.16);}
+.jot-testimonials .tswrap{max-width:1080px;margin:0 auto;padding:0 24px;text-align:center;}
+.jot-testimonials .kick{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;text-transform:uppercase;letter-spacing:.14em;font-size:11px;color:#5B9DFF;}
+.jot-testimonials h2{font-family:ui-serif,'New York','Iowan Old Style',Georgia,serif;font-size:32px;color:#EDF1F6;margin:8px 0 28px;letter-spacing:-.01em;}
+.jot-testimonials .tsgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px;text-align:left;}
+.jot-testimonials .tscard{margin:0;background:#161B22;border:1px solid rgba(91,157,255,.16);border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:8px;}
+.jot-testimonials .tstars{color:#E0A23C;letter-spacing:2px;font-size:15px;}
+.jot-testimonials .tstitle{font-family:ui-serif,'New York',Georgia,serif;font-size:17px;color:#EDF1F6;}
+.jot-testimonials blockquote{margin:0;font-family:-apple-system,system-ui,sans-serif;font-size:14.5px;line-height:1.65;color:#B7C0CC;}
+.jot-testimonials figcaption{font-family:-apple-system,system-ui,sans-serif;font-size:12px;color:#6E7A88;margin-top:auto;padding-top:6px;}
+.jot-testimonials .tsfoot{font-family:-apple-system,system-ui,sans-serif;font-size:13px;color:#6E7A88;margin-top:22px;}
+</style>
+<section class="jot-testimonials" id="jotLoved" hidden><div class="tswrap">
+  <div class="kick">from the app store</div>
+  <h2>What people are saying</h2>
+  <div class="tsgrid" id="jotTsGrid"></div>
+  <div class="tsfoot">Real App Store reviews, quoted verbatim — shared without names.</div>
+</div></section>
+<script>
+(function(){fetch('https://talk-to-me.ideaflow.page/proxy/reviews?product=jot').then(function(r){return r.ok?r.json():null}).then(function(d){
+if(!d||!d.reviews||!d.reviews.length)return;
+var s=document.getElementById('jotLoved'),g=document.getElementById('jotTsGrid');
+var esc=function(x){return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')};
+g.innerHTML=d.reviews.slice(0,6).map(function(r){
+return '<figure class="tscard"><div class="tstars">'+'★'.repeat(Math.max(1,Math.min(5,r.stars)))+'</div>'
++(r.title?'<div class="tstitle">'+esc(r.title)+'</div>':'')
++'<blockquote>'+esc(r.text)+'</blockquote>'
++'<figcaption>App Store review'+(r.version?' · v'+esc(r.version):'')+'</figcaption></figure>';
+}).join('');s.hidden=false;}).catch(function(){});})();
+</script>
