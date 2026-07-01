@@ -408,16 +408,6 @@ enum JotComposition {
                             spaceless: language.isSpaceless
                         )
                     )
-                case .qwen3_multilingual:
-                    // Qwen3 was retired in FluidAudio 0.15.x — `Qwen3AsrManager`
-                    // (and `Qwen3Transcriber`) no longer exist. INTERIM until the
-                    // Qwen-removal phase deletes this case: the Qwen retirement
-                    // migration moves every Qwen-language user off
-                    // `.qwen3_multilingual` before this factory runs, so this is
-                    // unreachable in production. Return a loadable English batch
-                    // transcriber (construction is lazy — no model load here) so
-                    // nothing crashes if it is somehow reached.
-                    return Transcriber(modelID: .tdt_0_6b_v3_eou_streaming, language: language)
                 case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
                     return Transcriber(modelID: modelID, language: language)
                 }

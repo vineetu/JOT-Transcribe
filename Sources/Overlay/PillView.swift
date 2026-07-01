@@ -458,9 +458,9 @@ private struct RecordingContent: View {
                     .frame(width: 56, height: 22)
                 Spacer(minLength: 0)
             } else {
-                // Non-streaming (e.g. the experimental Qwen3 languages — no live
-                // preview): a SINGLE waveform spanning the pill is the whole
-                // "we're listening" indicator. One meter, not two.
+                // Non-streaming (e.g. Japanese — no live preview): a SINGLE
+                // waveform spanning the pill is the whole "we're listening"
+                // indicator. One meter, not two.
                 AmplitudeTrail(reduceMotion: reduceMotion)
                     .frame(maxWidth: .infinity, maxHeight: 22)
                     .transition(.opacity)

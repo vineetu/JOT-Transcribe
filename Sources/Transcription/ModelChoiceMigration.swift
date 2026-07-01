@@ -91,10 +91,6 @@ enum ModelChoiceMigration {
             target = .tdt_0_6b_v3_eou_streaming
         case .nemotron_en:
             target = .nemotron_en
-        case .qwen3_multilingual:
-            // Experimental Qwen3 languages post-date this migration; preserve
-            // the stored choice (no-op rewrite below).
-            target = .qwen3_multilingual
         case .nemotron_multilingual:
             // Post-dates this migration; preserve the stored choice.
             target = .nemotron_multilingual
