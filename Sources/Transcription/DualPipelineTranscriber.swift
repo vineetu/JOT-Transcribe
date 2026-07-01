@@ -169,22 +169,27 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             if recordsProvenance {
                 await CorrectionProvenance.shared.clearPending()
             }
-            // The final transcript is either the streamed final handed off at
-            // stop, or a fresh one-shot decode. EITHER way we then run the
+            // The final transcript is ALWAYS a fresh one-shot decode over the
+            // full captured audio — never the live streamed accumulation.
+            //
+            // Why: on a cold model the streaming consumer only starts decoding
+            // ~1s into the recording (model warm-up), and `finish()` drains the
+            // backlog with a bounded timeout, so the accumulated text can be
+            // missing the head (~1s of speech). This was verified directly: the
+            // saved audio is always complete, and a one-shot decode over it
+            // reproduces the full transcript (head intact) at any chunk size,
+            // while the live streamed-final does not. Re-decoding the complete
+            // `samples` here is the authoritative, head-complete result.
+            // Streaming stays on purely for the live preview (and the CTC vocab
+            // spotter, which is independent of this handoff). We then run the
             // custom-vocabulary spot+gate over the audio — this is the live
             // dictation path for Nemotron, so vocab MUST run here (it was
             // previously only wired into `Transcriber.transcribeWithNemotron`,
             // which this path never calls).
-            let raw: String
-            let processingTime: TimeInterval
-            if let final = consumePendingNemotronFinal() {
-                raw = final
-                processingTime = 0
-            } else {
-                let started = Date()
-                raw = try await nemotron.transcribeOneShot(samples)
-                processingTime = Date().timeIntervalSince(started)
-            }
+            clearPendingNemotronFinal()
+            let started = Date()
+            let raw = try await nemotron.transcribeOneShot(samples)
+            let processingTime = Date().timeIntervalSince(started)
             return await Self.nemotronResult(
                 raw: raw,
                 samples: samples,
@@ -266,9 +271,11 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             }
         }
 
-        if case .nemotron = finalEngine, let final {
-            storePendingNemotronFinal(final)
-        }
+        // The streamed text is NOT used as the final transcript anymore (the
+        // final is a one-shot decode over the full captured audio in
+        // `transcribe(_:recordsProvenance:)` — see the head-drop note there).
+        // `finish()` is still called to drain + flush the streaming session
+        // cleanly; its return value is intentionally discarded.
         return final
     }
 
@@ -283,20 +290,6 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     }
 
     // MARK: - Nemotron final handoff
-
-    private func storePendingNemotronFinal(_ text: String) {
-        pendingLock.lock()
-        pendingNemotronFinal = text
-        pendingLock.unlock()
-    }
-
-    private func consumePendingNemotronFinal() -> String? {
-        pendingLock.lock()
-        defer { pendingLock.unlock() }
-        let value = pendingNemotronFinal
-        pendingNemotronFinal = nil
-        return value
-    }
 
     private func clearPendingNemotronFinal() {
         pendingLock.lock()
