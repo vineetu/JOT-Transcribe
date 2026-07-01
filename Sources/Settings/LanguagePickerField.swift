@@ -16,6 +16,12 @@ struct LanguagePickerField: View {
     @State private var isOpen = false
     @State private var query = ""
     @FocusState private var searchFocused: Bool
+    @AppStorage(RecentLanguages.key) private var recentRaw = ""
+
+    /// MRU languages pinned above the full list (only when not searching).
+    private var recents: [LanguageChoice] {
+        RecentLanguages.display(fromRaw: recentRaw, current: selection)
+    }
 
     /// Token-substring match over both the English and native names, so typing
     /// "ger" finds "German — Deutsch" and typing "中" finds Mandarin. Mirrors the
@@ -84,6 +90,28 @@ struct LanguagePickerField: View {
                     .foregroundStyle(.secondary)
                     .font(.callout)
                 Spacer(minLength: 0)
+            } else if query.isEmpty && !recents.isEmpty {
+                // Not searching: pin a "Recent" (MRU) section above the full
+                // alphabetical list. The full list still contains every
+                // language (recents are a shortcut, not a filter).
+                List {
+                    Section("Recent") {
+                        ForEach(recents) { lang in
+                            row(for: lang)
+                                .contentShape(Rectangle())
+                                .onTapGesture { choose(lang) }
+                        }
+                    }
+                    Section("All Languages") {
+                        ForEach(LanguageChoice.presentationOrder) { lang in
+                            row(for: lang)
+                                .contentShape(Rectangle())
+                                .onTapGesture { choose(lang) }
+                        }
+                    }
+                }
+                .listStyle(.inset)
+                .scrollContentBackground(.hidden)
             } else {
                 List {
                     ForEach(filtered) { lang in
@@ -127,6 +155,7 @@ struct LanguagePickerField: View {
 
     private func choose(_ lang: LanguageChoice) {
         selection = lang
+        recentRaw = RecentLanguages.recordedRaw(fromRaw: recentRaw, picked: lang)
         isOpen = false
         query = ""
     }
