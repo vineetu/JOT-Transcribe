@@ -46,18 +46,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
     /// English-only Nemotron option. One streaming model powers both live
     /// preview and the final transcript.
     case nemotron_en
-    /// Qwen3-ASR 0.6B int8, the multilingual engine that backs the three
-    /// experimental CJK/SE-Asian languages Parakeet v3 can't do: Mandarin
-    /// (zh), Cantonese (yue), and Vietnamese (vi). Like `.nemotron_en` it is
-    /// **not** an `AsrManager` model — it loads through FluidAudio's
-    /// `Qwen3AsrManager` (an autoregressive 2-model CoreML pipeline), so any
-    /// caller that needs the batch `AsrModelVersion` / `encoderPrecision` must
-    /// switch explicitly instead of assuming a batch backend. `@available`
-    /// macOS 15 only (the manager is gated); Jot's deployment target is
-    /// already 15, so no runtime hiding is required. Single shared on-disk
-    /// bundle for all three languages — the language is a per-call prompt
-    /// hint, not a separate model.
-    case qwen3_multilingual
     /// Nemotron 3.5 Multilingual 0.6B streaming. Like `.nemotron_en` it is a
     /// streaming model loaded outside `AsrManager` (via
     /// `StreamingNemotronMultilingualAsrManager`), one model powering both live
@@ -93,8 +81,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return "Parakeet v3 (multilingual) + live preview"
         case .nemotron_en:
             return "Nemotron English"
-        case .qwen3_multilingual:
-            return "Qwen3-ASR (Mandarin / Cantonese / Vietnamese)"
         case .nemotron_multilingual:
             return "Nemotron Multilingual"
         case .nemotron_multilingual_latin:
@@ -128,10 +114,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return 461_000_000
         case .nemotron_en:
             return 600_000_000
-        case .qwen3_multilingual:
-            // Qwen3-ASR int8 bundle (audio encoder + stateful decoder +
-            // float16 embedding matrix + vocab). ~900 MB–1 GB effective.
-            return 950_000_000
         case .nemotron_multilingual:
             // Full "multilingual" ship (full vocab) ~640 MB/tier.
             return 640_000_000
@@ -157,8 +139,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return .v2
         case .nemotron_en, .nemotron_multilingual, .nemotron_multilingual_latin:
             preconditionFailure("Nemotron is not an AsrManager model")
-        case .qwen3_multilingual:
-            preconditionFailure("Qwen3-ASR is not an AsrManager model")
         }
     }
 
@@ -177,8 +157,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return .int8
         case .nemotron_en, .nemotron_multilingual, .nemotron_multilingual_latin:
             preconditionFailure("Nemotron is not an AsrManager model")
-        case .qwen3_multilingual:
-            preconditionFailure("Qwen3-ASR is not an AsrManager model")
         }
     }
 
@@ -210,8 +188,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return "parakeet-tdt-0.6b-v2-coreml"
         case .nemotron_en:
             return "nemotron-streaming-en-1120ms"
-        case .qwen3_multilingual:
-            return "qwen3-asr-0.6b-int8"
         case .nemotron_multilingual:
             // The id bakes in the variant + tier, so `cacheURL` resolves
             // directly to the on-disk bundle dir that `downloadVariant` produces
@@ -233,7 +209,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_nemotron_streaming,
              .tdt_0_6b_v3_eou_streaming:
             return true
-        case .nemotron_en, .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
+        case .nemotron_en, .nemotron_multilingual, .nemotron_multilingual_latin:
             return false
         }
     }
@@ -257,12 +233,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_int4,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_eou_streaming,
-             // Qwen3 is BATCH-ONLY in Jot: no live preview (the autoregressive
-             // model's soft language hint drifts on short streaming windows), so
-             // it fetches / caches only its single batch bundle. `ModelCache`
-             // / `ModelDownloader` special-case Qwen3 before this branch anyway.
-             .qwen3_multilingual:
+             .tdt_0_6b_v3_eou_streaming:
             return false
         case .tdt_0_6b_v3_nemotron_streaming,
              .nemotron_en,
@@ -280,8 +251,7 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         case .tdt_0_6b_v3_eou_streaming,
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
-             .nemotron_en,
-             .qwen3_multilingual:
+             .nemotron_en:
             return true
         case .tdt_0_6b_v3, .tdt_0_6b_v3_int4, .tdt_0_6b_v3_nemotron_streaming,
              // Auto-routed by language on ≥24 GB Macs, never a direct picker row.
@@ -301,29 +271,18 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v3_nemotron_streaming,
              .tdt_0_6b_v3_eou_streaming,
              .nemotron_en,
-             .qwen3_multilingual,
              .nemotron_multilingual,
              .nemotron_multilingual_latin:
             return false
         }
     }
 
-    /// `true` when the option should be labelled as experimental.
+    /// `true` when the option should be labelled as experimental. No currently
+    /// shipping model id carries the experimental badge (the Qwen3 experimental
+    /// engine was retired); language-level beta marking now lives on
+    /// `LanguageChoice.isExperimental`.
     public var isExperimental: Bool {
-        switch self {
-        case .qwen3_multilingual:
-            return true
-        case .tdt_0_6b_v3,
-             .tdt_0_6b_v3_int4,
-             .tdt_0_6b_ja,
-             .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_nemotron_streaming,
-             .tdt_0_6b_v3_eou_streaming,
-             .nemotron_en,
-             .nemotron_multilingual,
-             .nemotron_multilingual_latin:
-            return false
-        }
+        false
     }
 
     /// `true` when the option should be labelled as a smaller-footprint
@@ -344,8 +303,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
             return "Legacy option. Available for existing users; will be removed in a future release."
         case .nemotron_en:
             return "English-only. Single model handles both the final transcript and the live preview in the pill. Smaller and faster than option 1; best on read-style English; v2/v3 batch is more accurate on noisy/conversational audio. Doesn't support custom vocabulary — switch to Parakeet v3 if you rely on boosted terms."
-        case .qwen3_multilingual:
-            return "Experimental. One on-device model covering many languages Parakeet can't — Mandarin, Cantonese, Vietnamese, Arabic, Hindi, Korean, and more. Emits native punctuation and scripts. No live preview for these languages: the recording pill shows a listening indicator and the transcript appears when you stop (a single batch pass). Doesn't support custom vocabulary."
         case .tdt_0_6b_v3, .tdt_0_6b_v3_nemotron_streaming, .tdt_0_6b_ja,
              // Auto-routed by language; never rendered as a picker row.
              .nemotron_multilingual, .nemotron_multilingual_latin:
@@ -375,7 +332,6 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3_nemotron_streaming,
              .tdt_0_6b_v3_eou_streaming,
-             .qwen3_multilingual,
              .nemotron_multilingual,
              .nemotron_multilingual_latin:
             return false

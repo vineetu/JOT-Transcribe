@@ -73,11 +73,13 @@ enum QwenRetirementMigration {
         }
         defer { defaults.set(true, forKey: migratedKey) }
 
-        // A stored Qwen MODEL id no longer decodes under 0.15.x — rewrite it to
-        // a loadable default regardless of the language outcome below, so
-        // nothing dangles on `.qwen3_multilingual`.
-        if defaults.string(forKey: TranscriberHolder.defaultsKey)
-            == ParakeetModelID.qwen3_multilingual.rawValue {
+        // A stored Qwen MODEL id no longer decodes (the `.qwen3_multilingual`
+        // enum case was deleted in the Qwen-removal phase) — rewrite the raw
+        // string to a loadable default regardless of the language outcome
+        // below, so nothing dangles on the retired id. The literal is
+        // intentional: this migration must keep working after the enum case is
+        // gone, so it never references the case symbol.
+        if defaults.string(forKey: TranscriberHolder.defaultsKey) == "qwen3_multilingual" {
             defaults.set(
                 ParakeetModelID.tdt_0_6b_v3_eou_streaming.rawValue,
                 forKey: TranscriberHolder.defaultsKey)

@@ -234,8 +234,6 @@ public actor ModelDownloader: ModelDownloading {
             try await downloader.downloadNemotronMultilingual(id, progress: progress)
         } else if id == .nemotron_en {
             try await downloader.downloadStreamingOnly(id, progress: progress)
-        } else if id == .qwen3_multilingual {
-            try await downloader.downloadQwen3(id, progress: progress)
         } else if id.supportsStreaming {
             try await downloader.downloadMultiBundle(id, progress: progress)
         } else {
@@ -301,37 +299,6 @@ public actor ModelDownloader: ModelDownloading {
         }
 
         progress(1.0)
-    }
-
-    // MARK: - Qwen3 (single autoregressive bundle)
-
-    /// Download the Qwen3-ASR int8 bundle into Jot's own cache directory.
-    ///
-    /// Like the Nemotron flow, this fetches into a temporary FluidAudio-shaped
-    /// staging root (`DownloadUtils.downloadRepo` insists on writing under
-    /// `<root>/<repo.folderName>` and strips the subPath when saving), then
-    /// moves the produced files into `cache.cacheURL(for:)`. We avoid
-    /// `Qwen3AsrModels.download(...)` because that helper writes to
-    /// FluidAudio's shared `~/Library/Application Support/FluidAudio/Models`
-    /// directory regardless of its `to:` argument — Jot keeps all model files
-    /// under its own namespace.
-    ///
-    /// `downloadRepo` reports `fractionCompleted` in `[0, 0.5]` for the
-    /// download phase (the `[0.5, 1.0]` band is reserved for a compile step
-    /// `downloadRepo` never runs), so we rescale via `repoDownloadFraction`
-    /// to a smooth 0→100%.
-    private func downloadQwen3(
-        _ id: ParakeetModelID,
-        progress: @Sendable @escaping (Double) -> Void
-    ) async throws {
-        // Qwen3 was removed from FluidAudio in 0.15.x (the `Repo.qwen3AsrInt8`
-        // staging path no longer exists). The Qwen retirement migration moves
-        // every Qwen-language user off `.qwen3_multilingual` before any download
-        // can be requested, so this path is unreachable at runtime; it remains
-        // only as a defensive guard and is deleted in the Qwen-removal phase.
-        _ = id
-        progress(0)
-        throw ModelDownloadError.corrupted
     }
 
     // MARK: - Streaming options
@@ -416,7 +383,6 @@ public actor ModelDownloader: ModelDownloading {
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3_eou_streaming,
              .nemotron_en,
-             .qwen3_multilingual,
              // Streaming-only (no batch side) — like .nemotron_en.
              .nemotron_multilingual,
              .nemotron_multilingual_latin:
@@ -496,14 +462,12 @@ public actor ModelDownloader: ModelDownloading {
              .tdt_0_6b_ja,
              .tdt_0_6b_v2_en_streaming,
              .tdt_0_6b_v3_eou_streaming,
-             .qwen3_multilingual,
              // Multilingual ships download via `downloadVariant` (handled in
              // `performDownload`), never this batch+streaming staging flow.
              .nemotron_multilingual,
              .nemotron_multilingual_latin:
             // No separate streaming bundle — these fetch only their batch /
-            // single bundle (Qwen3 via `downloadQwen3`). Reaching here would
-            // be a routing bug.
+            // single bundle. Reaching here would be a routing bug.
             throw ModelDownloadError.corrupted
         }
     }

@@ -304,13 +304,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // window / Vocabulary pane appearing, so a hotkey-only user — never
         // opening a window — got a `nil` spotter and ZERO vocabulary on every
         // dictation. Best-effort; the holder logs its own failures.
-        // CTC-capable = everything except JA (alias substitution) and the Qwen3
-        // multilingual engine (Mandarin/Cantonese/Vietnamese — no custom-vocab
-        // wiring), so we don't prep a hundreds-MB spotter bundle a Qwen3 user
-        // never uses.
+        // CTC-capable = everything except JA, which uses alias substitution
+        // rather than the CTC spotter.
         if VocabularyStore.shared.isEnabled,
            services.transcriberHolder.primaryModelID != .tdt_0_6b_ja,
-           services.transcriberHolder.primaryModelID != .qwen3_multilingual,
            let vocabURL = VocabularyStore.shared.fileURL {
             Task { try? await VocabularyRescorerHolder.shared.prepare(vocabularyFileURL: vocabURL) }
         }

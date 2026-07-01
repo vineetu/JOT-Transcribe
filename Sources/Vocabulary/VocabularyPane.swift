@@ -47,15 +47,6 @@ struct VocabularyPane: View {
         transcriberHolder.primaryModelID == .tdt_0_6b_ja
     }
 
-    /// True when one of the experimental Qwen3 languages (Mandarin / Cantonese
-    /// / Vietnamese) is active. Custom vocabulary is OFF for this engine — the
-    /// CTC-110M acoustic spotter is Latin/English-oriented, so the gate does
-    /// not run and `Qwen3Transcriber` returns no corrections. The pane surfaces
-    /// a note so the user isn't surprised that their list is inert.
-    private var isQwen3Primary: Bool {
-        transcriberHolder.primaryModelID == .qwen3_multilingual
-    }
-
     var body: some View {
         ScrollViewReader { proxy in
             Form {
@@ -273,9 +264,6 @@ struct VocabularyPane: View {
     }
 
     private var headerSubtext: String {
-        if isQwen3Primary {
-            return "Custom vocabulary isn’t available for Mandarin, Cantonese, or Vietnamese yet — the boosting engine is English/Latin-oriented. Your terms are kept but won’t affect these transcripts. Switch to an English or European language to use boosting."
-        }
         if isJAPrimary {
             return store.isEnabled
                 ? "Japanese support uses alias substitution. Write your canonical spelling as a term, then add the writing systems the model might output (hiragana, katakana, romaji) as aliases by editing the vocabulary file."

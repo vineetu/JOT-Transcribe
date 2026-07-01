@@ -75,9 +75,9 @@ public actor Transcriber: Transcribing {
             }
             return
 
-        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
-            // Neither is an `AsrManager` model; both load through a dedicated
-            // streaming transcriber built by `JotComposition.transcriberFactory`
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Not an `AsrManager` model; loads through a dedicated streaming
+            // transcriber built by `JotComposition.transcriberFactory`
             // (DualPipelineTranscriber), never this wrapper. Reaching here is a
             // routing bug.
             throw TranscriberError.modelMissing
@@ -191,9 +191,9 @@ public actor Transcriber: Transcribing {
                 recordsProvenance: recordsProvenance
             )
 
-        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
-            // Never reached: both route through their own streaming
-            // transcriber, not this `AsrManager` wrapper.
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Never reached: routes through its own streaming transcriber, not
+            // this `AsrManager` wrapper.
             throw TranscriberError.modelNotLoaded
         }
     }
@@ -299,8 +299,8 @@ public actor Transcriber: Transcribing {
         // segmenter only inserts `\n\n` (1.4s pause after sentence-final
         // punctuation, with safety caps + timing verification) — it never
         // rewrites words, so it's safe to run on v3's already-clean text.
-        // Nemotron / Qwen3 emit plain text with NO timings, so `tokenTimings` is
-        // nil and they remain a single block (deterministic-only by design).
+        // Nemotron emits plain text with NO timings, so `tokenTimings` is nil
+        // and it remains a single block (deterministic-only by design).
         //
         // The v2-ONLY regex cleanup chain (FillerWordCleaner → NumberNormalizer →
         // PostProcessing) stays scoped to v2: v3 already emits well-cased,
@@ -373,9 +373,9 @@ public actor Transcriber: Transcribing {
             // batch PreviewScheduler.
             return nil
 
-        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
-            // Qwen3 has no live preview; Nemotron multilingual drives its own
-            // streaming preview. Neither routes through this wrapper.
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Nemotron multilingual drives its own streaming preview; it does
+            // not route through this wrapper.
             return nil
         }
     }
@@ -519,8 +519,8 @@ public actor Transcriber: Transcribing {
         switch modelID {
         case .nemotron_en:
             return nemotronBatch != nil
-        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
-            // Neither loads through this wrapper.
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Does not load through this wrapper.
             return false
         case .tdt_0_6b_v3,
              .tdt_0_6b_v3_int4,

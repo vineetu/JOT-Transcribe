@@ -27,7 +27,7 @@ public enum PostProcessing {
             return applyEnglish(text)
         case .tdt_0_6b_ja:
             return applyJapanese(text)
-        case .qwen3_multilingual, .nemotron_multilingual, .nemotron_multilingual_latin:
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
             // These emit clean native punctuation/casing across scripts (CJK,
             // Arabic, Devanagari, …); the English regex chain would mangle
             // non-Latin output. Passthrough.

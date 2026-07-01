@@ -800,10 +800,9 @@ final class TranscriberHolder: ObservableObject {
             // No compatible alternate: JA is a distinct model and the v3
             // family does not serve Japanese.
             preference = []
-        case .mandarin, .cantonese, .vietnamese,
-             .arabic, .persian, .korean, .thai, .turkish, .hindi,
-             .indonesian, .malay, .filipino, .macedonian:
-            // Only the Qwen3 bundle serves these; no Parakeet fallback exists.
+        case .mandarin, .vietnamese, .arabic, .korean, .turkish, .hindi:
+            // Only the Nemotron multilingual ship serves these; no Parakeet
+            // fallback exists.
             preference = []
         case .spanish, .french, .german, .italian, .portuguese, .romanian,
              .polish, .czech, .slovak, .slovenian, .croatian, .bosnian,
