@@ -89,3 +89,4 @@ AuthKey_*.p8
 
 # Private marketing playbook — kept local, not in the public repo
 marketing/distribution/
+node_modules
