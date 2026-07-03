@@ -561,16 +561,47 @@ enum VocabularyGate {
     /// 0.50, name→jamy 0.50 (all block).
     static let plausibilityCeiling: Double = 0.45
 
+    /// A candidate skeleton this short (letters) can't be fuzzy-matched
+    /// reliably: the normalized ceiling would pass a SINGLE edit
+    /// (jot↔job↔not↔got: 1/3 = 0.33 ≤ 0.45), so a 3-letter term like "jot"
+    /// matches a dozen everyday words — and since each mismatch is a distinct
+    /// (word→term) pair, the learned-override that normally silences the ask
+    /// after 1–2 confirms never catches up, so it asks forever. At/under this
+    /// length we require an EXACT skeleton match instead of the ratio.
+    static let shortCandidateExactLen = 3
+
     private static func plausible(original: String, term: String, aliases: [String]) -> Bool {
         let heard = skeleton(original)
         guard !heard.isEmpty else { return true }
-        for candidate in [term] + aliases {
-            let c = skeleton(candidate)
-            guard !c.isEmpty else { continue }
-            let ratio = Double(levenshtein(heard, c)) / Double(max(heard.count, c.count))
-            if ratio <= plausibilityCeiling { return true }
+
+        // ALIASES match EXACTLY (skeleton equality), never fuzzily. An alias is
+        // the user's attestation "the ASR writes THIS when I say my term" — the
+        // acoustic tolerance already happened when they declared it. Fuzzy-
+        // matching aliases re-opens a 0.45-radius net around EACH alias:
+        // `Jot: Chart` made care/cart/carry/chair all "plausible" Jots (the
+        // care→Jot ask-spam bug). Exact matching keeps the alias doing its one
+        // job — recognizing the attested mis-hear — while contributing zero new
+        // false positives. (Casing/punctuation still normalize away in
+        // `skeleton`; a user who also gets "charts" can add it as another alias.)
+        for alias in aliases {
+            let a = skeleton(alias)
+            if !a.isEmpty, a == heard { return true }
         }
-        return false
+
+        // The TERM keeps the calibrated fuzzy match: unlike an alias, the term
+        // is NOT an attestation of ASR output, so near-misses are legitimately
+        // unknown and the normalized ceiling is doing real work
+        // (shriram→sriram / cloud→claude / jamie→jamy).
+        let c = skeleton(term)
+        guard !c.isEmpty else { return false }
+        let dist = levenshtein(heard, c)
+        // Very short term → exact skeleton only. The normalized ceiling would
+        // pass a SINGLE edit (jot↔job↔not: 1/3 = 0.33 ≤ 0.45), so a 3-letter
+        // term matches a dozen everyday words and asks forever.
+        if c.count <= shortCandidateExactLen {
+            return dist == 0
+        }
+        return Double(dist) / Double(max(heard.count, c.count)) <= plausibilityCeiling
     }
 
     /// Lowercased alphanumerics only — spaces and punctuation dropped so a
