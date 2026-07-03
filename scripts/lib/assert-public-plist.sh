@@ -39,15 +39,17 @@ if grep -q -E "<key>JotDefault(Endpoint|Model)\." "$PLIST"; then
     fail "JotDefaultEndpoint.* / JotDefaultModel.* keys present (Sony override territory)"
 fi
 
-# 4. No Sony hostname substrings in any value. These are the exact
-#    strings users reported visible in the v1.8 DMG's leaked Info.plist.
+# 4. No flavor-internal hostname substrings in any value. Deliberately
+#    GENERIC substrings — the full internal FQDNs don't belong in the
+#    public tree either, and every internal host matches one of these.
+#    Catches the v1.8 leak class (Sony overrides left in Info.plist from
+#    manual testing or a botched flavor-restore).
 for needle in \
-    "internal-gateway.invalid" \
-    "internal-git.invalid" \
-    "internal-gateway.invalid" \
-    "internal-gateway.invalid"; do
-    if grep -q "$needle" "$PLIST"; then
-        fail "Sony hostname substring present: '$needle'"
+    "playstation" \
+    "sie.sony" \
+    "dspprod"; do
+    if grep -qi "$needle" "$PLIST"; then
+        fail "Flavor-internal hostname substring present: '$needle'"
     fi
 done
 

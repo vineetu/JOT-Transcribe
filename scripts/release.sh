@@ -248,7 +248,7 @@ fi
 
 # ---- 5b. Upload to Simple Host (opt-in via JOT_SIMPLE_HOST_API_KEY) ----------
 # Sony uses Simple Host (a Sony-internal anonymous-readable static host) for
-# Sparkle auto-update because internal-git.invalid requires SSO for raw content.
+# Sparkle auto-update because the Sony enterprise GitHub requires SSO for raw content.
 # Public releases leave JOT_SIMPLE_HOST_API_KEY unset and skip this step.
 if [[ -n "${JOT_SIMPLE_HOST_API_KEY:-}" ]]; then
     : "${JOT_SIMPLE_HOST_BASE_URL:?required when JOT_SIMPLE_HOST_API_KEY is set}"

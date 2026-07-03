@@ -89,3 +89,9 @@ AuthKey_*.p8
 
 # Private marketing playbook — kept local, not in the public repo
 marketing/distribution/
+
+# Sony-internal release tooling — private, never published
+scripts/release-sony.sh
+scripts/complete-sony-release.sh
+scripts/push-sony-sparkle.sh
+scripts/lib/assert-sony-plist.sh
