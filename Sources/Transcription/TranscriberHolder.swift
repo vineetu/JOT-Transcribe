@@ -664,6 +664,31 @@ final class TranscriberHolder: ObservableObject {
         let modelName = id.displayName
         repairState = .downloading(modelName: modelName, progress: nil)
 
+        // Corrupt-but-present escape hatch. `downloadIfMissing` short-circuits
+        // on `isCached` (presence only), so against a bundle whose files are on
+        // disk but won't LOAD, a plain retry is a hollow "already downloaded"
+        // that re-fetches nothing and leaves the user stuck (the exact loop a
+        // corrupt Nemotron produced). This is explicit user intent to repair,
+        // so probe-load the active model first; if it's present yet unloadable,
+        // purge it so the fetch below actually re-downloads a clean bundle.
+        // Gated on `id == activeModelID` (this method's contract) because we can
+        // only load-probe the active `transcriber`. A model that loads fine
+        // makes this a no-op and the retry simply clears the stale failure UI.
+        if id == activeModelID, cache.isCached(id) {
+            let loaded = (try? await transcriber.ensureLoaded()) != nil
+            let ready = await transcriber.isReady
+            if !(loaded && ready) {
+                cache.removeCache(for: id)
+                // A normal recovery action, not an error — `.warn` so it doesn't
+                // inflate error-count signals.
+                await ErrorLog.shared.warn(
+                    component: "TranscriberHolder",
+                    message: "Manual repair force-purged present-but-unloadable model",
+                    context: ["modelID": id.rawValue]
+                )
+            }
+        }
+
         let downloader = downloaderFactory(cache)
         let progressBinding: @Sendable (Double) -> Void = { [weak self] fraction in
             Task { @MainActor in
@@ -672,7 +697,11 @@ final class TranscriberHolder: ObservableObject {
         }
         do {
             try await downloader.downloadIfMissing(id, progress: progressBinding)
-            try? await transcriber.ensureLoaded()
+            // Propagate (not `try?`) so a re-download that STILL won't load
+            // reports failure instead of falsely clearing the UI to "repaired".
+            // The honest failure is self-correcting: a later successful
+            // transcription clears `repairState` via `noteActiveModelHealthy`.
+            try await transcriber.ensureLoaded()
             repairState = nil
             refreshInstalled()
         } catch {
@@ -807,7 +836,7 @@ final class TranscriberHolder: ObservableObject {
         case .spanish, .french, .german, .italian, .portuguese, .romanian,
              .polish, .czech, .slovak, .slovenian, .croatian, .bosnian,
              .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
-             .danish, .dutch, .finnish, .greek, .hungarian, .swedish:
+             .danish, .dutch, .finnish, .greek, .hungarian, .swedish, .latvian:
             // European languages are served by the multilingual v3 family only.
             preference = [
                 .tdt_0_6b_v3_eou_streaming,

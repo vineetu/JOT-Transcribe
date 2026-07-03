@@ -381,11 +381,15 @@ final class RecorderController: ObservableObject {
         } catch VoiceInputPipeline.PipelineError.modelMissing {
             state = .error("Transcription model is still loading — try again in a moment.")
         } catch VoiceInputPipeline.PipelineError.repairInProgress {
-            // Phase 5: active model is re-downloading and no installed
-            // alternate English model is available to dictate on. The
-            // persistent repairing pill (driven off `repairState`) carries the
-            // live progress; this transient error nudges the user to wait.
-            state = .error("Repairing your transcription model — try again once the download finishes.")
+            // Phase 5: the active model is unusable and NO installed, language-
+            // compatible model exists to dictate on meanwhile (if one existed,
+            // `resolveSessionTranscriber` would have returned it — no download).
+            // Rather than a dead-end "please wait", point the user at the
+            // feedback surface (Settings → About → Send Feedback) so they can
+            // tell us — per product decision, we do NOT auto-download a stopgap
+            // model. The persistent repairing pill still carries any re-download
+            // progress for the corrupt-active-model case.
+            state = .error("No usable transcription model. Please send feedback via Settings → About → Send Feedback.")
         } catch VoiceInputPipeline.PipelineError.audioTooShort(let recording) {
             // If the recording was cut short by a mid-recording mic
             // disconnect AND fell below the 1 s transcriber floor, give

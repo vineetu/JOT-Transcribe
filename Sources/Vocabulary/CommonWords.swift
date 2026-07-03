@@ -128,6 +128,7 @@ extension LanguageChoice {
         case .greek:      return "el"
         case .hungarian:  return "hu"
         case .swedish:    return "sv"
+        case .latvian:    return "lv"
         }
     }
 }

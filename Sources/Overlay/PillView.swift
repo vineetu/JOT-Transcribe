@@ -235,15 +235,17 @@ struct PillView: View {
             .onEnded { _ in didEscalate = false }
     }
 
-    /// Stable-canvas (v3): the compact recording capsule's max width — wide
-    /// (`streamingPillWidth`) once a non-blank live-preview partial has arrived,
-    /// compact (`compactPillWidth`) otherwise. Replaces the old behaviour where
-    /// the WINDOW width bounded the capsule's flexible content.
+    /// Stable-canvas (v3): the recording capsule is a CONSTANT width for the
+    /// whole recording state — the full `streamingPillWidth`, reserved up front.
+    /// Previously it started at `compactPillWidth` and jumped to
+    /// `streamingPillWidth` when the first live-preview partial landed, and
+    /// because the pill body is spring-animated on `state`, that read as the
+    /// capsule visibly "expanding" on record start. Keeping it constant makes
+    /// the pill slide down from the notch already at full width and never grow.
+    /// (`streamingPartial` is now unused for width but kept so callers/hit-region
+    /// geometry stay signature-compatible.)
     static func recordingCapsuleMaxWidth(_ streamingPartial: String?) -> CGFloat {
-        let hasText = streamingPartial?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .isEmpty == false
-        return hasText ? streamingPillWidth : compactPillWidth
+        return streamingPillWidth
     }
 
     private var isRecordingState: Bool {

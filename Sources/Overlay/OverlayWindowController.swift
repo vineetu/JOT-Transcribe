@@ -611,16 +611,13 @@ final class OverlayWindowController {
             // [icon | "Saved to Recents" + preview line | arrow]. Reuse
             // the text-driven sizing so the preview can breathe.
             return errorPillWidth(for: preview)
-        case .recording(_, let streamingPartial):
-            // Streaming option only: when the partial is non-empty,
-            // widen the pill so the live preview text has room. A
-            // fixed wider width (rather than text-measured per
-            // emission) avoids churning `setFrame` calls.
-            if let text = streamingPartial,
-               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return Self.streamingPillWidth
-            }
-            return Self.compactPillWidth
+        case .recording:
+            // Constant recording width (matches PillView.recordingCapsuleMaxWidth):
+            // the capsule is always `streamingPillWidth`, so the pill never
+            // expands when the first live-preview partial arrives. Must stay in
+            // lockstep with the SwiftUI capsule bound or the drawn pill and the
+            // drag/hit region separate into a click-through dead zone.
+            return Self.streamingPillWidth
         case .repairingModel(let modelName, _, let isError):
             // Persistent self-heal pill: text-driven width so the progress /
             // failure copy isn't truncated. The width is capped at

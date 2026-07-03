@@ -81,6 +81,10 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     case greek
     case hungarian
     case swedish
+    // Latvian: v3-supported but the model's weakest European language
+    // (~23% WER) and Nemotron's beta tier — surfaced as EXPERIMENTAL
+    // (`isExperimental`). No FluidAudio hint case, so it auto-detects on v3.
+    case latvian
 
     public var id: String { rawValue }
 
@@ -119,6 +123,7 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         case .greek:      return ("Greek", "Ελληνικά")
         case .hungarian:  return ("Hungarian", "Magyar")
         case .swedish:    return ("Swedish", "Svenska")
+        case .latvian:    return ("Latvian", "Latviešu")
         }
     }
 
@@ -140,10 +145,11 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     }
 
     /// Experimental languages — surfaced with a small badge in the picker
-    /// rather than a text suffix. The remaining experimental set is exactly the
-    /// Nemotron-multilingual-only languages (no proven Parakeet fallback), so
-    /// it's derived from `requiresNemotronMultilingual` to avoid drift.
-    public var isExperimental: Bool { requiresNemotronMultilingual }
+    /// rather than a text suffix. Covers the Nemotron-multilingual-only
+    /// languages (no proven Parakeet fallback) PLUS Latvian, which runs on v3
+    /// but is the model's weakest-accuracy European language (~23% WER) and
+    /// Nemotron's beta tier, so it's flagged honestly.
+    public var isExperimental: Bool { requiresNemotronMultilingual || self == .latvian }
 
     /// The model the language picker resolves to. **English is tier-aware**:
     /// Nemotron on eligible hardware (≥ M2 Pro AND ≥ 16 GB), else v2. Japanese
@@ -175,9 +181,10 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
                 ? .nemotron_multilingual : .tdt_0_6b_v3_eou_streaming
         case .romanian, .polish, .czech, .slovak, .slovenian, .croatian, .bosnian,
              .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
-             .danish, .dutch, .finnish, .greek, .hungarian, .swedish:
+             .danish, .dutch, .finnish, .greek, .hungarian, .swedish, .latvian:
             // Stay on Parakeet v3 — either Nemotron regressed on the eval
             // (cs/sk/sl/da/nb) or they're untested; v3 is the proven backend.
+            // Latvian rides v3 too (no Nemotron latin-ship membership).
             return .tdt_0_6b_v3_eou_streaming
         }
     }
@@ -215,7 +222,7 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         case .bulgarian:  return .bulgarian
         case .serbian:    return .serbian
         // v3-supported but no FluidAudio hint case → auto-detect.
-        case .danish, .dutch, .finnish, .greek, .hungarian, .swedish:
+        case .danish, .dutch, .finnish, .greek, .hungarian, .swedish, .latvian:
             return nil
         }
     }
@@ -259,6 +266,7 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         case .greek:      return "el"
         case .hungarian:  return "hu"
         case .swedish:    return "sv"
+        case .latvian:    return "lv"
         }
     }
 
@@ -289,7 +297,7 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         case .english, .spanish, .french, .german, .italian, .portuguese,
              .romanian, .polish, .czech, .slovak, .slovenian, .croatian,
              .bosnian, .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
-             .danish, .dutch, .finnish, .greek, .hungarian, .swedish:
+             .danish, .dutch, .finnish, .greek, .hungarian, .swedish, .latvian:
             return false
         }
     }
@@ -372,6 +380,7 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         case "el": return .greek
         case "hu": return .hungarian
         case "sv": return .swedish
+        case "lv": return .latvian
         default:   return nil
         }
     }

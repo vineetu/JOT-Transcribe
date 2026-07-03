@@ -269,15 +269,31 @@ public struct ModelCache: Sendable {
     /// options depend on.
     func removeCache(for id: ParakeetModelID, removeBatch: Bool, removeStreaming: Bool) {
         let fm = FileManager.default
+        // Nemotron models have NO separate batch bundle — the single streaming
+        // bundle backs both preview and final (mirrors `stillPresent`'s
+        // special-case above). The startup self-heal only ever sees Nemotron's
+        // failure as the `.batch` side: `DualPipelineTranscriber.probeIntegrity`
+        // probes the one nemotron engine as `batch` and returns `streaming =
+        // nil`, so `beginSelfHeal` purges with `removeBatch:true,
+        // removeStreaming:false`. Without this, that purge would no-op —
+        // `batchCachePaths(.nemotron_en)` is empty — leaving the corrupt bundle
+        // on disk, `stillPresent` still true, and the heal permanently stranded
+        // on "could not purge corrupt model side". Treat a batch-side purge of a
+        // streaming-backed model as a purge of the one real (streaming) bundle
+        // so the verify passes and the re-download actually runs.
+        let isStreamingBacked = id == .nemotron_en
+            || id == .nemotron_multilingual
+            || id == .nemotron_multilingual_latin
+        let dropStreaming = removeStreaming || (isStreamingBacked && removeBatch)
         if removeBatch {
             for url in batchCachePaths(for: id) {
                 try? fm.removeItem(at: url)
             }
         }
-        if removeStreaming, let streamingURL = streamingPartialCacheURL(for: id) {
+        if dropStreaming, let streamingURL = streamingPartialCacheURL(for: id) {
             try? fm.removeItem(at: streamingURL)
         }
-        if removeStreaming, let stagingRoot = streamingNemotronStagingRoot(for: id) {
+        if dropStreaming, let stagingRoot = streamingNemotronStagingRoot(for: id) {
             try? fm.removeItem(at: stagingRoot)
         }
     }
