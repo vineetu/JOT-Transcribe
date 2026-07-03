@@ -12,7 +12,7 @@ Free, on-device dictation for Mac and iPhone. Press a hotkey, talk, and your wor
   <a href="https://jot-transcribe.com/">Website</a>
 </p>
 
-Apple Silicon · macOS 15+ · iPhone on the App Store · MIT-licensed · No account · No telemetry
+Apple Silicon · macOS 15+ · iPhone on the App Store · Source-available (free for personal use) · No account · No telemetry
 
 ---
 
@@ -21,7 +21,7 @@ Apple Silicon · macOS 15+ · iPhone on the App Store · MIT-licensed · No acco
 - **Private by default.** Transcription runs entirely on your Mac. No audio, no transcripts, nothing leaves the device — there's nothing to leak.
 - **Free, with no catch.** No subscription, no usage limits, no account. The leading dictation apps charge ~$144/year for this.
 - **Works everywhere.** One global hotkey types into Mail, Slack, your editor, a browser form — anywhere there's a cursor.
-- **Open source.** Read every line. MIT-licensed.
+- **Source-available.** Read every line. Free for personal and noncommercial use under PolyForm Noncommercial 1.0.0.
 
 ## What it does
 
@@ -74,4 +74,6 @@ Jot is free and always will be. If you'd like to give back, **every donation goe
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[PolyForm Noncommercial 1.0.0](LICENSE) — you may read, learn from, modify, and use Jot freely for any personal or noncommercial purpose. You may not sell it, offer it as a paid product or service, or ship a competing commercial product based on it without a commercial license — for that, contact the maintainer.
+
+Versions up to and including v1.17 were published under the MIT license and remain MIT — see [NOTICE](NOTICE) for the full license history and third-party attributions. "Jot" and the Jot icon are trademarks of Vineet Sriram; see [TRADEMARKS.md](TRADEMARKS.md).

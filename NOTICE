@@ -1,0 +1,34 @@
+Jot
+Required Notice: Copyright Vineet Sriram (https://jot-transcribe.com)
+
+License history
+---------------
+- Versions up to and including v1.17 (git tag `v1.17-last-mit`) were
+  published under the MIT License. Those versions remain available under
+  MIT permanently.
+- All later versions are licensed under the PolyForm Noncommercial
+  License 1.0.0 — see LICENSE.
+  <https://polyformproject.org/licenses/noncommercial/1.0.0>
+
+Third-party software
+--------------------
+Jot depends on the following open-source packages (via Swift Package
+Manager); each remains under its own license:
+
+- FluidInference/FluidAudio — Apache License 2.0
+- sindresorhus/KeyboardShortcuts — MIT
+- sparkle-project/Sparkle — MIT and permissive component licenses
+  (see Sparkle's bundled LICENSE)
+- john-rocky/CoreML-LLM — MIT
+- mattt/EventSource — MIT
+- apple/swift-asn1, swift-atomics, swift-collections, swift-crypto,
+  swift-nio, swift-system — Apache License 2.0
+- huggingface/swift-huggingface, swift-jinja, swift-transformers —
+  Apache License 2.0
+- ibireme/yyjson — MIT
+
+Apache-2.0-licensed components are used unmodified; their license and
+any NOTICE files ship with the packages themselves.
+
+Speech models are fetched at runtime by FluidAudio and are covered by
+their own upstream licenses (Parakeet: MIT/Apache-2.0).
