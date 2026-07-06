@@ -27,6 +27,18 @@ Manager); each remains under its own license:
   Apache License 2.0
 - ibireme/yyjson — MIT
 
+Bundled binary (not via Swift Package Manager):
+
+- FFmpeg — LGPL v2.1 or later. Jot bundles a minimal, decode-only,
+  network-free build of FFmpeg 7.1.1 (`Contents/Helpers/ffmpeg`) used ONLY
+  as a fallback decoder for audio/video containers AVFoundation cannot read
+  (WebM, MKV, WMA, AVI, …). It is built with no GPL/nonfree codecs and is
+  invoked as a separate executable (not statically linked into Jot's binary),
+  so the LGPL relink requirement is satisfied by replacing the binary. The
+  full license text and exact build recipe ship in the source at
+  `Vendor/ffmpeg/COPYING.LGPLv2.1` and `Vendor/ffmpeg/BUILD.md`; corresponding
+  source is available on request. FFmpeg is a trademark of Fabrice Bellard.
+
 Apache-2.0-licensed components are used unmodified; their license and
 any NOTICE files ship with the packages themselves.
 

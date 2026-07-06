@@ -226,6 +226,7 @@
 				A00000000000000000000080 /* Sources */,
 				A00000000000000000000030 /* Frameworks */,
 				A00000000000000000000081 /* Resources */,
+				A000000000000000000000E1 /* Bundle FFmpeg Helper */,
 			);
 			buildRules = (
 			);
@@ -415,6 +416,29 @@
 			shellPath = /bin/sh;
 			shellScript = "# Grounding-doc pipeline step 3/3 (spec v5 §11, §17 gotcha 2–3).\n# Measures token count via SystemLanguageModel.default.tokenCount(for:)\n# and fails the build if help-content.md exceeds 1500 tokens.\nset -e\ncd \"$SRCROOT\"\nxcrun swift tools/check-help-doc-budget.swift\n";
 		};
+		A000000000000000000000E1 /* Bundle FFmpeg Helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/Vendor/ffmpeg/ffmpeg",
+				"$(SRCROOT)/Vendor/jot-cli/jot",
+			);
+			name = "Bundle Helpers (ffmpeg + jot)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(CODESIGNING_FOLDER_PATH)/Contents/Helpers/ffmpeg",
+				"$(CODESIGNING_FOLDER_PATH)/Contents/Helpers/jot",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Bundles + code-signs the decode-only FFmpeg fallback decoder\n# (docs/audio-file-transcription/design.md §8, Vendor/ffmpeg/BUILD.md) into\n# Contents/Helpers so FFmpegDecoder can locate + launch it at runtime.\n# Runs in EVERY build (Debug test installs and Release archives alike) so\n# a Debug install always has a working fallback decoder, and re-signs here\n# (rather than only in build-dmg.sh) so Xcode's own final app-seal step\n# picks up the already-signed helper when it reseals CodeResources.\nset -e\nmkdir -p \"${CODESIGNING_FOLDER_PATH}/Contents/Helpers\"\ncp -f \"${SRCROOT}/Vendor/ffmpeg/ffmpeg\" \"${CODESIGNING_FOLDER_PATH}/Contents/Helpers/ffmpeg\"\nchmod 755 \"${CODESIGNING_FOLDER_PATH}/Contents/Helpers/ffmpeg\"\ncodesign --force --options runtime ${OTHER_CODE_SIGN_FLAGS:+$OTHER_CODE_SIGN_FLAGS} -s \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/Helpers/ffmpeg\"\n# jot CLI helper (Vendor/jot-cli/BUILD.md) — self-contained Swift executable,\n# same copy+sign pattern. Finds ffmpeg as its sibling here at runtime.\ncp -f \"${SRCROOT}/Vendor/jot-cli/jot\" \"${CODESIGNING_FOLDER_PATH}/Contents/Helpers/jot\"\nchmod 755 \"${CODESIGNING_FOLDER_PATH}/Contents/Helpers/jot\"\ncodesign --force --options runtime ${OTHER_CODE_SIGN_FLAGS:+$OTHER_CODE_SIGN_FLAGS} -s \"${EXPANDED_CODE_SIGN_IDENTITY}\" \"${CODESIGNING_FOLDER_PATH}/Contents/Helpers/jot\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -492,7 +516,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -557,7 +581,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;

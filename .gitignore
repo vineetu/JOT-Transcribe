@@ -95,3 +95,13 @@ scripts/release-sony.sh
 scripts/complete-sony-release.sh
 scripts/push-sony-sparkle.sh
 scripts/lib/assert-sony-plist.sh
+scripts/sony-download-stats.sh
+scripts/sony-stats-refresh.sh
+scripts/.sony-stats-refresh.log
+scripts/.sony-stats-launchd.log
+
+# dev-only probes + SPM build artifacts + stray debug notes (keep out of public)
+tools/nemotron-probe/
+tools/diarize-probe/
+tools/*/.build/
+CURRENT_DEBUG_STATE.md
