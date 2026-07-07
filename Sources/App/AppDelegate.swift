@@ -122,8 +122,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         ChatbotVoiceInputTests.runAll()
         ShortcutsTests.runAll()
         DockActivationPolicyTests.runAll()
-        SpeakerLabelsTests.runAll()
         AdvancedFlagTests.runAll()
+        WebVTTExporterTests.runAll()
         #endif
 
         ResetActions.processPendingHardReset()
@@ -337,49 +337,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // `jot.retentionDays` (0 = keep forever).
         services.retention.start()
 
-        // Speaker Labels piece A — warmup. Loads Sortformer + replays
-        // enrolled clips so slot↔name bindings are live before the first
-        // recording. Skipped when: model isn't downloaded yet (a fresh
-        // install or pre-feature user); no identities enrolled; master
-        // toggle is OFF; hardware is below the 16 GB gate.
-        //
-        // Per plan Risk #1 the wall-clock cost (replays N ~30 s clips
-        // through `enrollSpeaker(withAudio:)`) is empirically unknown.
-        // Detached `Task` keeps it off the launch critical path; the
-        // first recording after launch may briefly run without labels
-        // if warmup hasn't completed.
-        let speakerLabelsMasterOn = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
-        if Features.speakerLabels,
-           speakerLabelsMasterOn,
-           SortformerHardwareGate.isSupported {
-            let clips = services.enrolledIdentitiesStore.clipsForWarmup()
-            switch services.sortformerHolder.state {
-            case .offHaveModel where !clips.isEmpty:
-                Task { @MainActor [weak holder = services.sortformerHolder] in
-                    await holder?.loadIfNeeded(clips: clips)
-                }
-            case .notSetUp where !clips.isEmpty:
-                // Identities already enrolled but model bundle missing or
-                // corrupt — auto-redownload so labels resume working without
-                // the user having to delete their enrollment to expose the
-                // "Set up" CTA.
-                Task { @MainActor [weak holder = services.sortformerHolder] in
-                    guard let holder else { return }
-                    try? await holder.downloadModelIfNeeded()
-                    // Re-check the master toggle after the (~250 MB,
-                    // multi-second) download. The user may have flipped
-                    // Speaker Labels OFF mid-download — in that case the
-                    // bundle is on disk but we honor the OFF intent by
-                    // skipping the load. The next launch with the toggle
-                    // back ON will warm the model from the disk cache.
-                    let stillEnabled = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
-                    guard stillEnabled else { return }
-                    await holder.loadIfNeeded(clips: clips)
-                }
-            default:
-                break
-            }
-        }
+        // "Never lose audio" safety net (docs/resilient-transcription/design.md):
+        // one-time scan adopting any audio file with no Recording row as a
+        // pending row (crash mid-transcription, force-quit, or a
+        // pre-existing shipped orphan).
+        services.orphanRecordingScanner.start()
+
+        // Speaker diarization (offline VBx): deliberately NO launch-time
+        // warmup (design D4). The model downloads/loads lazily the first
+        // time the user opens Settings → Speaker labels or taps "Detect
+        // speakers" — there is no background cost to eagerly pay at launch.
     }
 
     /// The single dictation auto-paste choke point (`ask-ux.md` §1). Decides
@@ -398,6 +365,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         overlay: OverlayWindowController?
     ) {
         guard let text = recorder.lastTranscript, !text.isEmpty else { return }
+
+        // "Return to the app I started in" (design §5.1): read the Origin
+        // that was stamped onto this SPECIFIC session's result, atomically
+        // alongside `lastTranscript`/`lastResult`. Captured once here —
+        // never re-read from `recorder` later in this function — so it
+        // travels with `text` through the (possibly async, possibly
+        // multi-step) ask sequence below to whichever `deliver(...)` call
+        // ultimately fires for this session.
+        let originApp = recorder.lastResultOriginApp
 
         // v1.14: read-and-clear `skipNextPaste`. When the user stopped via the
         // in-app Record pill or Esc (rather than the trigger hotkey), the
@@ -430,7 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         guard let pill = overlay?.pillViewModel, !resolved.isEmpty else {
             // Unchanged fast path — deliver immediately (zero added latency; no
             // ask candidates means no need to touch the CorrectionStore actor).
-            Task { @MainActor in await delivery.deliver(text) }
+            Task { @MainActor in await delivery.deliver(text, originApp: originApp) }
             return
         }
 
@@ -453,7 +429,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             guard !askable.isEmpty else {
                 // Every candidate is suppressed → no ask. Deliver the staged text
                 // unchanged (matches the no-ask default: keep the gate's outcome).
-                await delivery.deliver(text)
+                await delivery.deliver(text, originApp: originApp)
                 return
             }
 
@@ -462,7 +438,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 candidates: Array(askable),
                 index: 0,
                 delivery: delivery,
-                pill: pill
+                pill: pill,
+                originApp: originApp
             )
         }
     }
@@ -520,13 +497,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         candidates: [AskItem],
         index: Int,
         delivery: DeliveryService,
-        pill: PillViewModel
+        pill: PillViewModel,
+        originApp: NSRunningApplication? = nil
     ) {
         guard index < candidates.count else {
             // Queue drained — deliver the final staged text exactly once.
             // Auto-Enter (if enabled) runs INSIDE deliver(), after the paste,
             // which is correct relative to the resolved text (§8 M3).
-            Task { @MainActor in await delivery.deliver(staged) }
+            Task { @MainActor in await delivery.deliver(staged, originApp: originApp) }
             return
         }
 
@@ -541,7 +519,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 candidates: candidates,
                 index: index + 1,
                 delivery: delivery,
-                pill: pill
+                pill: pill,
+                originApp: originApp
             )
             return
         }
@@ -552,7 +531,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 candidates: candidates,
                 index: index + 1,
                 delivery: delivery,
-                pill: pill
+                pill: pill,
+                originApp: originApp
             )
         }
 
@@ -624,7 +604,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 } else {
                     Task { await CorrectionStore.shared.noteBlockedKeep(originalWord: c.from, term: c.term) }
                 }
-                Task { @MainActor in await delivery?.deliver(staged) }
+                Task { @MainActor in await delivery?.deliver(staged, originApp: originApp) }
             }
         )
     }

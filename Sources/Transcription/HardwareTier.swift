@@ -28,8 +28,8 @@ public enum HardwareTier {
     /// Both halves are required:
     ///  * **chip tier ≥ M2 Pro** — a Pro/Max/Ultra suffix on an M2-or-newer
     ///    chip (`chipClearsNemotronTier`), guarded by `isAppleSilicon`.
-    ///  * **RAM ≥ 16 GB** — matching the existing `SortformerHardwareGate`
-    ///    precedent (`SortformerHolder.swift`).
+    ///  * **RAM ≥ 16 GB** — the same class threshold once used to gate the
+    ///    (since-removed) Sortformer diarization pipeline.
     ///
     /// Computed on demand from constant-per-boot sysctls; cheap enough to read
     /// at recording start without caching.
@@ -95,8 +95,8 @@ public enum HardwareTier {
     // MARK: - Gate halves
 
     /// RAM half of the Nemotron gate: ≥ 16 GiB. Mirrors
-    /// `SortformerHardwareGate.isSupported` deliberately (same 16 GB class
-    /// threshold, different concern).
+    /// the same 16 GB class threshold once used to gate the (since-removed)
+    /// Sortformer diarization pipeline — same threshold, different concern.
     public static var hasSixteenGBOrMore: Bool {
         physicalMemoryBytes >= UInt64(16) * 1_073_741_824
     }

@@ -1,3 +1,4 @@
+import FluidAudio
 import Foundation
 
 /// Output of a single transcription pass.
@@ -20,6 +21,15 @@ public struct TranscriptionResult: Sendable {
     /// paste and ask "Did you mean X?". Empty for the no-vocab / no-correction
     /// path (the overwhelming majority) → zero added latency there.
     public let corrections: [VocabularyRescorerHolder.UXCorrection]
+    /// Speaker diarization (design `docs/speaker-diarization/design.md`,
+    /// "Token→speaker alignment"): per-word timing from the Parakeet TDT
+    /// decoder, surfaced so a future diarization pass could refine
+    /// speaker-turn boundaries against the RAW transcript. Populated only
+    /// on the Parakeet `AsrManager` path (`Transcriber.transcribeWithAsrManager`);
+    /// `nil` for Nemotron (no per-word timings) and for every other caller.
+    /// Every initializer defaults this to `nil` so the ripple is
+    /// compiler-checked, not a behavior change for existing call sites.
+    public let tokenTimings: [TokenTiming]?
 
     public init(
         text: String,
@@ -27,7 +37,8 @@ public struct TranscriptionResult: Sendable {
         duration: TimeInterval,
         processingTime: TimeInterval,
         confidence: Float,
-        corrections: [VocabularyRescorerHolder.UXCorrection] = []
+        corrections: [VocabularyRescorerHolder.UXCorrection] = [],
+        tokenTimings: [TokenTiming]? = nil
     ) {
         self.text = text
         self.rawText = rawText
@@ -35,5 +46,6 @@ public struct TranscriptionResult: Sendable {
         self.processingTime = processingTime
         self.confidence = confidence
         self.corrections = corrections
+        self.tokenTimings = tokenTimings
     }
 }

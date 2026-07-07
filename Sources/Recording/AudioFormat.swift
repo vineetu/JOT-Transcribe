@@ -60,4 +60,16 @@ enum AudioFormat {
         AVNumberOfChannelsKey: 1,
         AVEncoderBitRateKey: 16_000,
     ]
+
+    /// Best-effort duration (seconds) of an audio file at `url`, computed via
+    /// `AVAudioFile`. Returns 0 on any read failure (corrupt/missing file).
+    /// Shared by the "never lose audio" safety net
+    /// (docs/resilient-transcription/design.md) — `FileTranscriptionIngest`'s
+    /// pending-import path and the startup orphan-adoption scan both need a
+    /// duration without a `TranscriptionResult` to read one off of. Safe for
+    /// bookkeeping (list "m:ss" text); never used for playback correctness.
+    static func duration(ofFileAt url: URL) -> TimeInterval {
+        guard let file = try? AVAudioFile(forReading: url), file.fileFormat.sampleRate > 0 else { return 0 }
+        return Double(file.length) / file.fileFormat.sampleRate
+    }
 }

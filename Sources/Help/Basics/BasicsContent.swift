@@ -249,7 +249,7 @@ struct BasicsContent {
                     isExpandable: true,
                     detail: SubRowDetailContent(
                         prose: "You pick a language, not a model — Jot loads the right transcription model for you (Settings → General, or during setup). English uses an English-optimized model for best accuracy; the European languages share Jot's multilingual model; Japanese is a separate download. Only the active model is kept hot in memory.",
-                        warning: "Custom Vocabulary applies only to European-language transcription. The Japanese model uses a different tokenizer, so vocabulary boosts are not applied when Japanese is selected.",
+                        warning: "Custom Vocabulary now works across English (Parakeet v2 or Nemotron) and the 25 European languages (Parakeet v3) — not just European transcription. It doesn't yet apply to Japanese, which uses a different tokenizer.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",
                             pane: .general,
@@ -277,7 +277,7 @@ struct BasicsContent {
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'. Marked experimental because the rescoring pipeline only applies to certain transcription models; saved terms persist and re-engage when you switch to a supported model.",
+                        prose: "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'. Works across English (Parakeet v2, Nemotron) and the 25 European languages. Marked experimental because it doesn't yet reach every model (Japanese); saved terms persist and re-engage when you switch to a supported one.",
                         warning: "Vocabulary entries override similar-sounding words. Adding many entries that sound alike causes unpredictable preference among them. Keep the list focused.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",

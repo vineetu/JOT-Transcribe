@@ -9,12 +9,16 @@ import Foundation
 /// Flip to `true` to re-enable a gated feature without touching the
 /// surrounding implementation.
 enum Features {
-    /// Speaker Labels piece A — Sortformer-driven diarization of
-    /// multi-speaker recordings. Held off in v1.13 while UX polish and
-    /// load-time hitches settle; the pipeline, downloader, enrollment
-    /// UI, RecordingDetailView labeled-view, and the post-stop pass in
-    /// `RecordingPersister` are all still compiled. Set to `true` to
-    /// surface the Settings sidebar entry, render labeled transcripts,
-    /// and re-arm the launch-time warmup / auto-redownload paths.
-    static let speakerLabels: Bool = false
+    /// Speaker diarization — offline VBx (`OfflineDiarizerManager`) driven
+    /// "Detect speakers" action in the recording detail view, with
+    /// auto-identified device-owner labeling
+    /// (`docs/speaker-diarization/design.md`). Replaces the earlier
+    /// Sortformer-based "Speaker Labels piece A" (ripped out — wrong engine,
+    /// heavy enrollment UX). Gates: the Settings → Speaker labels sidebar
+    /// entry, the "Detect speakers" toolbar button + labeled transcript
+    /// rendering in `RecordingDetailView`, and the label-preservation prompt
+    /// rule in Cleanup / Rewrite (`SpeakerLabelDetector.looksLabeled`, which
+    /// is engine-agnostic and runs regardless — this flag only controls
+    /// whether a labeled timeline can ever be produced in the first place).
+    static let speakerLabels: Bool = true
 }

@@ -386,6 +386,11 @@ struct JotAppWindow: View {
         switch raw {
         case .askJot:
             return .home
+        case .settings(.speakerLabels):
+            // Speaker labels is Advanced-only in the sidebar (AppSidebar);
+            // redirect any deep-link / stale selection to Home when Advanced
+            // is off so the user never lands on a hidden pane.
+            return .home
         default:
             return raw
         }

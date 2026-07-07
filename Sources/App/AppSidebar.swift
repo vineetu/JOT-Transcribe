@@ -75,7 +75,11 @@ struct AppSidebar: View {
                     systemImage: "command",
                     tag: .settings(.shortcuts)
                 )
-                if Features.speakerLabels {
+                // Speaker labels is a power-user surface — only shown in the
+                // sidebar when Advanced is on (a stale `.speakerLabels`
+                // selection is redirected to Home by `JotAppWindow.sanitize`
+                // when Advanced is off).
+                if Features.speakerLabels && advancedEnabled {
                     subRow(
                         title: "Speaker labels",
                         systemImage: "person.wave.2",

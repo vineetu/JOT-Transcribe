@@ -89,19 +89,28 @@ private struct DictationRowView: View {
         }
     }
 
+    @ViewBuilder
     private var preview: some View {
-        // `.textSelection(.enabled)` was previously applied here. Removed
-        // because it makes every row install AppKit text-selection /
-        // first-responder machinery during the table row layout pass —
-        // a known source of "Application performed a reentrant operation
-        // in its NSTableView delegate" warnings on macOS Lists. The full
-        // transcript is selectable in `RecordingDetailView`; truncated
-        // single-line previews aren't a useful selection target anyway.
-        Text(recording.transcript.isEmpty ? "(empty transcript)" : recording.transcript)
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.tail)
+        // "Never lose audio" safety net (docs/resilient-transcription/design.md):
+        // a pending row's audio is safe on disk but has no transcript yet —
+        // say so plainly instead of showing "(empty transcript)", which
+        // would read as a real transcription that came back blank.
+        if recording.pendingSince != nil {
+            PendingTranscriptionChip()
+        } else {
+            // `.textSelection(.enabled)` was previously applied here. Removed
+            // because it makes every row install AppKit text-selection /
+            // first-responder machinery during the table row layout pass —
+            // a known source of "Application performed a reentrant operation
+            // in its NSTableView delegate" warnings on macOS Lists. The full
+            // transcript is selectable in `RecordingDetailView`; truncated
+            // single-line previews aren't a useful selection target anyway.
+            Text(recording.transcript.isEmpty ? "(empty transcript)" : recording.transcript)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
     }
 
     private func beginEditTitle() {
@@ -212,6 +221,24 @@ private struct RewriteRowView: View {
 
     private func cancelTitle() {
         isEditingTitle = false
+    }
+}
+
+/// "Never lose audio" safety net (docs/resilient-transcription/design.md):
+/// subtle inline affordance for a `Recording` row whose audio is saved but
+/// not yet transcribed (`pendingSince != nil`). Deliberately understated —
+/// same secondary/orange treatment as `FileTranscriptionIngest`'s
+/// `.savedPending` caption in `HomePane` — so it reads as "needs a quick
+/// action", not an error.
+struct PendingTranscriptionChip: View {
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 10.5))
+            Text("Needs transcription")
+                .font(.system(size: 12))
+        }
+        .foregroundStyle(.orange)
     }
 }
 

@@ -657,37 +657,155 @@ private struct TranscribingContent: View {
     }
 }
 
-private struct ThreeDotLoader: View {
+/// "Working…" three-dot marquee.
+///
+/// Historically this was a plain SwiftUI view driven by a
+/// `Timer.scheduledTimer` on the main run loop, ticking a `@State private var
+/// phase` every 0.25s. That freezes solid whenever the main thread is
+/// starved — which happens for the whole duration of a REWRITE or TRANSFORM
+/// using Apple Intelligence, because `FoundationModels.LanguageModelSession`
+/// is `@MainActor`-bound and runs its on-device inference synchronously on
+/// main. Transcribing (Parakeet on the ANE, off-main) never showed the bug.
+///
+/// Fix: hand the marquee to Core Animation instead of SwiftUI/Timer. Each dot
+/// is a `CALayer` with a `CAKeyframeAnimation` on `opacity`
+/// (`calculationMode = .discrete`, `repeatCount = .infinity`). Once an
+/// animation is added to a layer and committed, CA hands it to the
+/// WindowServer's render server — it steps forward on its own timeline
+/// independent of the app's main run loop, so it keeps marching even while
+/// `LanguageModelSession` has main fully blocked. No `Timer`, no `@State`,
+/// no SwiftUI animation driving it.
+private struct ThreeDotLoader: NSViewRepresentable {
     let reduceMotion: Bool
-    @State private var phase = 0
-    @State private var ticker: Timer?
 
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { i in
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 4, height: 4)
-                    .opacity(opacity(for: i))
-            }
-        }
-        .onAppear {
-            guard !reduceMotion else { return }
-            ticker = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
-                DispatchQueue.main.async {
-                    phase = (phase + 1) % 3
-                }
-            }
-        }
-        .onDisappear {
-            ticker?.invalidate()
-            ticker = nil
+    fileprivate static let dotSize: CGFloat = 4
+    fileprivate static let spacing: CGFloat = 4
+    fileprivate static let dotCount = 3
+    fileprivate static let stepDuration: CFTimeInterval = 0.25
+    fileprivate static let onOpacity: Float = 1.0
+    fileprivate static let offOpacity: Float = 0.3
+    fileprivate static let staticReducedOpacity: Float = 0.7
+    fileprivate static let animationKey = "jot.threeDotLoader.march"
+
+    func makeNSView(context: Context) -> DotStripView {
+        let view = DotStripView(dotCount: Self.dotCount, dotSize: Self.dotSize, spacing: Self.spacing)
+        apply(to: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: DotStripView, context: Context) {
+        apply(to: nsView)
+    }
+
+    /// Pin the hosted view to the 3-dot strip's intrinsic size so SwiftUI's
+    /// HStack lays it out tight (and vertically centers it) exactly like the
+    /// old SwiftUI dots did — without this, SwiftUI can hand the NSView a
+    /// taller/wider frame and the dots drift to a corner.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: DotStripView, context: Context) -> CGSize? {
+        nsView.intrinsicContentSize
+    }
+
+    private func apply(to view: DotStripView) {
+        if reduceMotion {
+            view.stopMarching(staticOpacity: Self.staticReducedOpacity)
+        } else {
+            view.startMarching(
+                onOpacity: Self.onOpacity,
+                offOpacity: Self.offOpacity,
+                stepDuration: Self.stepDuration,
+                animationKey: Self.animationKey
+            )
         }
     }
 
-    private func opacity(for i: Int) -> Double {
-        if reduceMotion { return 0.7 }
-        return i == phase ? 1.0 : 0.3
+    /// Layer-hosting `NSView` holding the three dot `CALayer`s. No SwiftUI
+    /// state, no timer — `startMarching` adds a `CAKeyframeAnimation` to
+    /// each dot layer once and leaves it running.
+    final class DotStripView: NSView {
+        private let dotLayers: [CALayer]
+        private let dotSize: CGFloat
+        private let spacing: CGFloat
+        private let dotCount: Int
+
+        init(dotCount: Int, dotSize: CGFloat, spacing: CGFloat) {
+            self.dotCount = dotCount
+            self.dotSize = dotSize
+            self.spacing = spacing
+            self.dotLayers = (0..<dotCount).map { _ in
+                let dot = CALayer()
+                dot.backgroundColor = CGColor.white
+                dot.cornerRadius = dotSize / 2
+                dot.opacity = ThreeDotLoader.offOpacity
+                return dot
+            }
+            super.init(frame: .zero)
+            wantsLayer = true
+            layer?.backgroundColor = CGColor.clear
+            dotLayers.forEach { layer?.addSublayer($0) }
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override var intrinsicContentSize: NSSize {
+            NSSize(
+                width: CGFloat(dotCount) * dotSize + CGFloat(dotCount - 1) * spacing,
+                height: dotSize
+            )
+        }
+
+        override func layout() {
+            super.layout()
+            // Center the dot strip within whatever bounds SwiftUI gives us —
+            // both axes — so the dots sit on the pill's centerline next to the
+            // "Transcribing"/"Rewriting" text rather than pinned to a corner.
+            let totalWidth = CGFloat(dotCount) * dotSize + CGFloat(max(0, dotCount - 1)) * spacing
+            let startX = ((bounds.width - totalWidth) / 2).rounded()
+            let y = ((bounds.height - dotSize) / 2).rounded()
+            for (i, dot) in dotLayers.enumerated() {
+                let x = startX + CGFloat(i) * (dotSize + spacing)
+                dot.frame = CGRect(x: x, y: y, width: dotSize, height: dotSize)
+            }
+        }
+
+        /// Reduce Motion: drop any running animation, hold every dot at a
+        /// fixed opacity — mirrors the loader's previous `opacity(for:)`
+        /// reduce-motion branch (all dots static at ~0.7).
+        func stopMarching(staticOpacity: Float) {
+            dotLayers.forEach {
+                $0.removeAnimation(forKey: ThreeDotLoader.animationKey)
+                $0.opacity = staticOpacity
+            }
+        }
+
+        /// Adds a discrete, infinitely-repeating opacity keyframe animation
+        /// per dot, staggered so exactly one dot is at `onOpacity` per step.
+        /// Idempotent: `updateNSView` calls this on every SwiftUI re-render,
+        /// so bail if the animation is already attached rather than
+        /// restarting (which would cause a visible stutter).
+        func startMarching(onOpacity: Float, offOpacity: Float, stepDuration: CFTimeInterval, animationKey: String) {
+            let stepCount = dotLayers.count
+            let cycleDuration = stepDuration * Double(stepCount)
+            for (i, dot) in dotLayers.enumerated() {
+                guard dot.animation(forKey: animationKey) == nil else { continue }
+
+                var values: [NSNumber] = (0..<stepCount).map { step in
+                    NSNumber(value: step == i ? onOpacity : offOpacity)
+                }
+                values.append(values[0]) // close the loop cleanly at keyTime 1.0
+                let keyTimes: [NSNumber] = (0...stepCount).map { NSNumber(value: Double($0) / Double(stepCount)) }
+
+                let animation = CAKeyframeAnimation(keyPath: "opacity")
+                animation.values = values
+                animation.keyTimes = keyTimes
+                animation.calculationMode = .discrete
+                animation.duration = cycleDuration
+                animation.repeatCount = .infinity
+                animation.isRemovedOnCompletion = false
+                animation.fillMode = .both
+                dot.add(animation, forKey: animationKey)
+            }
+        }
     }
 }
 
@@ -695,7 +813,6 @@ private struct ThreeDotLoader: View {
 
 private struct RewritingContent: View {
     let reduceMotion: Bool
-    @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -704,15 +821,14 @@ private struct RewritingContent: View {
                 .frame(width: 7, height: 7)
             ThreeDotLoader(reduceMotion: reduceMotion)
             Spacer(minLength: 4)
+            // Static text — the CA-backed ThreeDotLoader above is the sole
+            // "it's working" signal. A `repeatForever` SwiftUI opacity pulse
+            // here used to freeze alongside the old timer-driven dots
+            // whenever the main thread was blocked (Apple Intelligence
+            // rewrite); removing it means nothing on the pill can look frozen.
             Text("Rewriting")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(pulse && !reduceMotion ? 0.6 : 0.9))
-                .animation(
-                    reduceMotion ? nil :
-                        .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
-                    value: pulse
-                )
-                .onAppear { pulse = true }
+                .foregroundStyle(.white.opacity(0.9))
             AppLabel()
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
@@ -726,7 +842,6 @@ private struct RewritingContent: View {
 /// it to the chatbot. Same cadence as `TransformingContent`.
 private struct CondensingContent: View {
     let reduceMotion: Bool
-    @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -735,15 +850,12 @@ private struct CondensingContent: View {
                 .frame(width: 7, height: 7)
             ThreeDotLoader(reduceMotion: reduceMotion)
             Spacer(minLength: 4)
+            // Static text — see ThreeDotLoader's doc comment and
+            // RewritingContent above for why the old repeatForever pulse
+            // was removed (it froze in lockstep with the timer-driven dots).
             Text("Condensing")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(pulse && !reduceMotion ? 0.6 : 0.9))
-                .animation(
-                    reduceMotion ? nil :
-                        .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
-                    value: pulse
-                )
-                .onAppear { pulse = true }
+                .foregroundStyle(.white.opacity(0.9))
             AppLabel()
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
@@ -754,7 +866,6 @@ private struct CondensingContent: View {
 
 private struct TransformingContent: View {
     let reduceMotion: Bool
-    @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -763,15 +874,12 @@ private struct TransformingContent: View {
                 .frame(width: 7, height: 7)
             ThreeDotLoader(reduceMotion: reduceMotion)
             Spacer(minLength: 4)
+            // Static text — see ThreeDotLoader's doc comment and
+            // RewritingContent above for why the old repeatForever pulse
+            // was removed (it froze in lockstep with the timer-driven dots).
             Text("Cleaning up")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(pulse && !reduceMotion ? 0.6 : 0.9))
-                .animation(
-                    reduceMotion ? nil :
-                        .easeInOut(duration: 1.0).repeatForever(autoreverses: true),
-                    value: pulse
-                )
-                .onAppear { pulse = true }
+                .foregroundStyle(.white.opacity(0.9))
             AppLabel()
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))

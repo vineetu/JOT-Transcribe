@@ -41,7 +41,12 @@ struct GeneralPane: View {
     @AppStorage("jot.autoPaste") private var autoPaste: Bool = true
     @AppStorage("jot.autoPressEnter") private var autoPressEnter: Bool = false
     @AppStorage("jot.preserveClipboard") private var preserveClipboard: Bool = true
-    @AppStorage("jot.speakerLabels.enabled") private var speakerLabelsEnabled: Bool = true
+    /// "Return to the app I started in" (opt-in, off by default) —
+    /// docs/return-to-origin-app/design.md. When on, delivery reactivates
+    /// the app that was frontmost when dictation STARTED (Origin) before
+    /// pasting, even if the user switched apps mid-dictation. Mirrors the
+    /// `jot.autoPressEnter` delivery-toggle pattern.
+    @AppStorage("jot.returnToOriginApp") private var returnToOriginApp: Bool = false
     /// Semantic-search gate (default ON, opt-out). See `SemanticSearchSettings`.
     @AppStorage(SemanticSearchSettings.enabledKey) private var semanticSearchEnabled: Bool = true
 
@@ -60,9 +65,6 @@ struct GeneralPane: View {
     /// Active-language binding + model status row are sourced from the same
     /// holder. Aliased as `holder` to mirror the relocated TranscriptionPane code.
     private var holder: TranscriberHolder { transcriberHolder }
-    /// Only used by the (off-by-default) Speaker Labels card relocated from
-    /// TranscriptionPane.
-    @EnvironmentObject private var identitiesStore: EnrolledIdentitiesStore
     @Environment(\.setSidebarSelection) private var setSidebarSelection
 
     /// Constructor-injected seams (`audioCapture` and `keychain`) for the
@@ -168,10 +170,9 @@ struct GeneralPane: View {
                 transcriptionLanguageRows
             }
 
-            // Speaker Labels card (off-by-default via Features.speakerLabels).
-            if Features.speakerLabels {
-                speakerLabelsCard
-            }
+            // Speaker labels lives entirely in its own Advanced-gated sidebar
+            // pane (Settings → Speaker labels, shown only when Advanced is on).
+            // It is deliberately NOT surfaced here in General.
 
             if advancedEnabled {
             Section {
@@ -697,6 +698,17 @@ struct GeneralPane: View {
                     helpAnchor: "dictation"
                 )
             }
+            HStack {
+                Toggle("Return to the app I started in", isOn: $returnToOriginApp)
+                    .disabled(!autoPaste)
+                    .help("Deliver the transcript back to the app that was frontmost when you started dictating, even if you switched apps while speaking.")
+                Spacer()
+                InfoPopoverButton(
+                    title: "Return to the app I started in",
+                    body: "When on, Jot remembers the app you were in when you started dictating and pastes the transcript back there — refocusing it — even if you clicked into another app while speaking. When off, the transcript pastes wherever your cursor is now.",
+                    helpAnchor: "dictation"
+                )
+            }
             if !autoPaste {
                 Text("Requires Automatically paste transcription.")
                     .font(.system(size: 11))
@@ -735,7 +747,8 @@ struct GeneralPane: View {
                 Toggle("Semantic search", isOn: $semanticSearchEnabled)
                 InfoPopoverButton(
                     title: "Semantic search",
-                    body: "Finds recordings by meaning, not just exact words — searching “rent increase” can surface a recording where you said “the landlord is raising my payment.” It runs fully on-device: enabling it downloads a one-time search model (about 339 MB) and quietly indexes your existing recordings in the background. Exact-text search always works whether this is on or off."
+                    body: "Finds recordings by meaning, not just exact words — searching “rent increase” can surface a recording where you said “the landlord is raising my payment.” It runs fully on-device: enabling it downloads a one-time search model (about 339 MB) and quietly indexes your existing recordings in the background. Exact-text search always works whether this is on or off.",
+                    helpAnchor: "recordings-ai-search"
                 )
             }
             semanticAdvancedRows
@@ -894,56 +907,6 @@ struct GeneralPane: View {
         }
     }
 
-    // MARK: - Speaker Labels card (relocated from TranscriptionPane; off by default)
-
-    @ViewBuilder
-    private var speakerLabelsCard: some View {
-        Section {
-            Button {
-                setSidebarSelection(.settings(.speakerLabels))
-            } label: {
-                HStack {
-                    Image(systemName: "person.wave.2")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.tint)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Speaker labels")
-                            .font(.system(size: 13, weight: .medium))
-                        Text(speakerLabelsCardSubtitle)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text(speakerLabelsCardActionLabel)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.tint)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var speakerLabelsCardSubtitle: String {
-        if !identitiesStore.hasIdentities {
-            return "Not set up — label who said what in meeting recordings."
-        }
-        let voiceCount = identitiesStore.identities.count
-        let voicesText = voiceCount == 1 ? "1 voice" : "\(voiceCount) voices"
-        if speakerLabelsEnabled && SortformerHardwareGate.isSupported {
-            return "On (\(voicesText))"
-        } else {
-            return "Off (\(voicesText))"
-        }
-    }
-
-    private var speakerLabelsCardActionLabel: String {
-        identitiesStore.hasIdentities ? "Manage" : "Set up"
-    }
 }
 
 private enum ResetAlertKind: Identifiable {

@@ -241,6 +241,20 @@ extension Feature {
         features.append(advancedCard(id: "sound-transcription-complete", title: "Transcription complete"))
         features.append(advancedCard(id: "sound-error-chime", title: "Error chime"))
 
+        // Recordings & Library (7). Covers the file-import / diarization /
+        // export / CLI / search / progress / never-lose-audio surfaces that
+        // shipped alongside the recordings redesign — none of the three
+        // existing Basics heroes (Dictation, Cleanup, Prompts) are a good
+        // conceptual home for "library" features, so they get their own
+        // Advanced section instead of being wedged under an unrelated hero.
+        features.append(advancedCard(id: "recordings-diarization", title: "Detect speakers"))
+        features.append(advancedCard(id: "recordings-file-import", title: "Transcribe a file"))
+        features.append(advancedCard(id: "recordings-webvtt-export", title: "Export as WebVTT"))
+        features.append(advancedCard(id: "recordings-cli", title: "jot command line"))
+        features.append(advancedCard(id: "recordings-ai-search", title: "AI search"))
+        features.append(advancedCard(id: "recordings-progress", title: "Transcription progress"))
+        features.append(advancedCard(id: "recordings-never-lose-audio", title: "Never lose audio"))
+
         // ---------------- Troubleshooting ----------------
 
         // Existing (8)
@@ -416,6 +430,10 @@ extension Feature {
         "input-silent-capture",
         "sound-recording-chimes", "sound-transcription-complete",
         "sound-error-chime",
+        // Recordings & Library
+        "recordings-diarization", "recordings-file-import", "recordings-webvtt-export",
+        "recordings-cli", "recordings-ai-search", "recordings-progress",
+        "recordings-never-lose-audio",
         // Troubleshooting
         "permissions", "modifier-required", "bluetooth-redirect",
         "shortcut-conflicts", "recording-wont-start", "hotkey-stopped-working",

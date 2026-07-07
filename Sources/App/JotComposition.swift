@@ -169,6 +169,12 @@ struct AppServices {
     let overlay: OverlayWindowController
     let recordingPersister: RecordingPersister
     let retention: RetentionService
+    /// "Never lose audio" safety net (docs/resilient-transcription/design.md):
+    /// one-time startup scan that adopts any audio file in
+    /// `RecordingStore.audioDirectory` with no `Recording` row (crash mid-
+    /// transcription, force-quit, or a pre-existing shipped orphan) as a
+    /// pending row. Strong-retain for the app's lifetime like `retention`.
+    let orphanRecordingScanner: OrphanRecordingScanner
     let soundTriggers: SoundTriggers
     let updaterController: SPUStandardUpdaterController
     let modelContainer: ModelContainer
@@ -183,14 +189,18 @@ struct AppServices {
     /// soon as `build()` returns and holding Rewrite would silently
     /// no-op (Codex review, 2026-05-17).
     let promptPicker: PromptPickerController
-    /// Speaker Labels piece A: lifecycle owner for the Sortformer model.
-    /// `.notSetUp` for existing users on update; transitions are driven
-    /// by Settings → Speaker Labels.
-    let sortformerHolder: SortformerHolder
-    /// Speaker Labels piece A: SwiftData-backed identity list + writer.
-    /// Held strongly so SwiftUI surfaces (`SpeakerLabelsPane`) can observe
-    /// via `@EnvironmentObject` without holding their own context handle.
-    let enrolledIdentitiesStore: EnrolledIdentitiesStore
+    /// Speaker diarization (offline VBx): lifecycle owner for the FluidAudio
+    /// `OfflineDiarizerManager` + PLDA transform. `.notDownloaded` until the
+    /// user taps "Detect speakers" or opens the repurposed Settings pane —
+    /// no launch-time warmup (design D4: manual, on-demand only).
+    let diarizerHolder: DiarizerHolder
+    /// Audio-file transcription (docs/audio-file-transcription/design.md):
+    /// ingests a dropped/picked file on Home into a normal `Recording` row.
+    /// Strong-retain here for the app's lifetime; `HomePane` observes it via
+    /// `.environmentObject`, and `RecorderController` reaches it through
+    /// `FileTranscriptionIngest.shared` to cancel an in-flight file job the
+    /// instant a live dictation starts (§6 R1 — see that type's doc comment).
+    let fileTranscriptionIngest: FileTranscriptionIngest
 }
 
 extension AppServices {
@@ -508,7 +518,7 @@ enum JotComposition {
             do {
                 let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self, RecordingChunk.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, RecordingChunk.self,
                     configurations: memoryConfig
                 )
             } catch {
@@ -518,7 +528,7 @@ enum JotComposition {
             do {
                 let config = ModelConfiguration(url: newURL)
                 modelContainer = try ModelContainer(
-                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self, RecordingChunk.self,
+                    for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, RecordingChunk.self,
                     configurations: config
                 )
             } catch {
@@ -540,7 +550,7 @@ enum JotComposition {
                 do {
                     let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
                     modelContainer = try ModelContainer(
-                        for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, EnrolledIdentity.self, RecordingChunk.self,
+                        for: Recording.self, RewriteSession.self, PromptUsage.self, UserPrompt.self, RecordingChunk.self,
                         configurations: memoryConfig
                     )
                 } catch {
@@ -714,14 +724,11 @@ enum JotComposition {
             return (body: prompt.body, title: prompt.title)
         }
 
-        // Speaker Labels piece A: lifecycle for the Sortformer diarization
-        // model. Defaults to `.notSetUp` on existing installs — the
-        // Settings pane CTA + post-stop labeling are gated on identities
-        // being enrolled and the master toggle being ON.
-        let sortformerHolder = SortformerHolder()
-        let enrolledIdentitiesStore = EnrolledIdentitiesStore(
-            context: modelContainer.mainContext
-        )
+        // Speaker diarization (offline VBx, design D4): no launch-time
+        // warmup, no hardware gate. `.notDownloaded` until the user opens
+        // the repurposed Settings pane or taps "Detect speakers" for the
+        // first time.
+        let diarizerHolder = DiarizerHolder()
 
         // AI-search Stage B: the chunk-embedding indexer. Built here so it
         // captures the one true `ModelContainer` and a live read of the
@@ -737,11 +744,36 @@ enum JotComposition {
         let recordingPersister = RecordingPersister(
             recorder: recorder,
             context: modelContainer.mainContext,
-            transcriberHolder: transcriberHolder,
-            sortformerHolder: sortformerHolder
+            transcriberHolder: transcriberHolder
         )
 
+        // Audio-file transcription: the file-job service reads the live
+        // transcriber off the same `transcriberHolder` every call (a model
+        // swap mid-session picks up the new one, mirroring
+        // `RecordingPersister`'s `holder` field) and refuses to start a new
+        // job while `recorder.state != .idle` (§6 R1 guard 2 — see the
+        // type's doc comment for the full mic-vs-file collision writeup).
+        // `.shared` lets `RecorderController.runFlow()` cancel an in-flight
+        // job at record START without a constructor-injection cycle (recorder
+        // must exist before this closure can read it).
+        let fileTranscriptionIngest = FileTranscriptionIngest(
+            context: modelContainer.mainContext,
+            transcriberHolder: transcriberHolder,
+            recorderIsIdle: { [weak recorder] in recorder?.state == .idle }
+        )
+        FileTranscriptionIngest.shared = fileTranscriptionIngest
+
         let retention = RetentionService(context: modelContainer.mainContext)
+
+        // "Never lose audio" safety net
+        // (docs/resilient-transcription/design.md): one-time startup
+        // reconciliation between what's on disk and what SwiftData knows
+        // about. Needs the same `transcriberHolder` as `recordingPersister`
+        // for the best-guess `modelIdentifier` stamped on adopted rows.
+        let orphanRecordingScanner = OrphanRecordingScanner(
+            context: modelContainer.mainContext,
+            transcriberHolder: transcriberHolder
+        )
 
         let soundTriggers = SoundTriggers()
 
@@ -764,13 +796,14 @@ enum JotComposition {
             overlay: overlay,
             recordingPersister: recordingPersister,
             retention: retention,
+            orphanRecordingScanner: orphanRecordingScanner,
             soundTriggers: soundTriggers,
             updaterController: updaterController,
             modelContainer: modelContainer,
             promptStore: promptStore,
             promptPicker: promptPicker,
-            sortformerHolder: sortformerHolder,
-            enrolledIdentitiesStore: enrolledIdentitiesStore
+            diarizerHolder: diarizerHolder,
+            fileTranscriptionIngest: fileTranscriptionIngest
         )
     }
 }

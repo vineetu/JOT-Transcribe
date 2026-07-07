@@ -41,6 +41,17 @@ final class Recording {
     /// Optional default `nil` = unconditionally-safe additive migration.
     var editedAt: Date?
 
+    /// "Never lose audio" safety net (docs/resilient-transcription/design.md).
+    /// Non-nil = the audio is saved to disk but the transcript is empty and
+    /// still needs a (re)transcription pass — set when a recorder dictation's
+    /// or a file import's transcription failed (busy engine, model error,
+    /// crash) after the audio was already finalized, or when the startup
+    /// orphan scan adopts a WAV/m4a with no `Recording` row. Cleared by the
+    /// existing re-transcribe flow once it fills in the transcript. Optional
+    /// default `nil` = unconditionally-safe additive migration, same pattern
+    /// as `editedAt` above.
+    var pendingSince: Date?
+
     init(
         id: UUID = UUID(),
         createdAt: Date = .now,
@@ -52,7 +63,8 @@ final class Recording {
         modelIdentifier: String,
         speakerTimeline: Data? = nil,
         tags: [String] = [],
-        editedAt: Date? = nil
+        editedAt: Date? = nil,
+        pendingSince: Date? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -65,6 +77,7 @@ final class Recording {
         self.speakerTimeline = speakerTimeline
         self.tags = tags
         self.editedAt = editedAt
+        self.pendingSince = pendingSince
     }
 }
 

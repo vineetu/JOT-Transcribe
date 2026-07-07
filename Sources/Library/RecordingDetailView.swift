@@ -3,6 +3,7 @@ import AppKit
 import Combine
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One recording's full face: editable title, waveform strip, scrubber +
 /// play/pause, full transcript. Playback is driven by a small main-actor
@@ -11,7 +12,7 @@ struct RecordingDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
-    @EnvironmentObject private var sortformerHolder: SortformerHolder
+    @EnvironmentObject private var diarizerHolder: DiarizerHolder
     @Bindable var recording: Recording
 
     @StateObject private var player = AudioPlaybackController()
@@ -19,6 +20,16 @@ struct RecordingDetailView: View {
     @State private var isRetranscribing = false
     @State private var retranscribeError: String?
     @State private var showRawTranscript = false
+    /// Speaker diarization (design D4): "Detect speakers" in-flight state,
+    /// error, and the last non-error status ("Single speaker — nothing to
+    /// label.") to show inline near the playback bar.
+    @State private var isDetectingSpeakers = false
+    @State private var detectSpeakersError: String?
+    @State private var detectSpeakersStatus: String?
+    /// Per-recording speaker rename (design D5): the label currently being
+    /// renamed (`nil` when the rename alert is dismissed) and the draft text.
+    @State private var renameTargetLabel: String?
+    @State private var renameDraft: String = ""
     /// Edit mode for the canonical transcript. The view is REUSED across
     /// sidebar navigation, so this is reset in `.task(id:)` when the bound
     /// recording changes. Editing binds the `TextEditor` directly to
@@ -31,6 +42,9 @@ struct RecordingDetailView: View {
     /// `CopyTranscriptButton` provides in row contexts.
     @State private var didCopy = false
     @State private var copyResetTask: Task<Void, Never>?
+    /// WebVTT export (`docs/webvtt-export/design.md`): error surfaced via
+    /// the same alert idiom as retranscribe/detect-speakers.
+    @State private var exportError: String?
     /// Slice C: the correction-review model. Created lazily on first
     /// `.task(id:)` once the environment `modelContext` is available (a `@State`
     /// initializer can't read `@Environment`), then reloaded whenever the bound
@@ -78,6 +92,8 @@ struct RecordingDetailView: View {
             // recording were already written live via the @Bindable binding +
             // autosave, so nothing is lost here.
             isEditing = false
+            detectSpeakersStatus = nil
+            detectSpeakersError = nil
             // Seed the review model with the live recording + env context, then
             // reconcile its anchors against the current transcript. Re-runs when
             // the bound recording changes (sidebar navigation), so the section
@@ -127,6 +143,46 @@ struct RecordingDetailView: View {
         } message: {
             Text(retranscribeError ?? "")
         }
+        .alert(
+            "Couldn't detect speakers",
+            isPresented: Binding(
+                get: { detectSpeakersError != nil },
+                set: { if !$0 { detectSpeakersError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { detectSpeakersError = nil }
+        } message: {
+            Text(detectSpeakersError ?? "")
+        }
+        .alert(
+            "Export failed",
+            isPresented: Binding(
+                get: { exportError != nil },
+                set: { if !$0 { exportError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { exportError = nil }
+        } message: {
+            Text(exportError ?? "")
+        }
+        .alert(
+            "Rename speaker",
+            isPresented: Binding(
+                get: { renameTargetLabel != nil },
+                set: { if !$0 { renameTargetLabel = nil } }
+            )
+        ) {
+            TextField("Name", text: $renameDraft)
+            Button("Rename") {
+                if let old = renameTargetLabel {
+                    renameSpeaker(from: old, to: renameDraft)
+                }
+                renameTargetLabel = nil
+            }
+            Button("Cancel", role: .cancel) { renameTargetLabel = nil }
+        } message: {
+            Text("This renames the speaker in this recording only.")
+        }
     }
 
     // MARK: - Header
@@ -147,6 +203,13 @@ struct RecordingDetailView: View {
                 if let model = friendlyModelName {
                     Text("·")
                     Text(model)
+                }
+                // "Never lose audio" safety net
+                // (docs/resilient-transcription/design.md): audio saved,
+                // transcript still pending — same chip as the list row.
+                if recording.pendingSince != nil {
+                    Text("·")
+                    PendingTranscriptionChip()
                 }
             }
         }
@@ -273,6 +336,18 @@ struct RecordingDetailView: View {
                         .controlSize(.small)
                 }
             }
+            if isDetectingSpeakers {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Detecting speakers…")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            } else if let detectSpeakersStatus {
+                Text(detectSpeakersStatus)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
             transcriptBody(segments: segments, colorMap: colorMap, useLabeledView: useLabeledView)
                 .frame(maxWidth: DetailMetrics.readingMeasure, alignment: .leading)
         }
@@ -297,6 +372,13 @@ struct RecordingDetailView: View {
                         Text(seg.speakerLabel)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(colorMap?[seg.speakerLabel] ?? .primary)
+                            .contextMenu {
+                                Button("Rename speaker…") {
+                                    renameDraft = seg.speakerLabel
+                                    renameTargetLabel = seg.speakerLabel
+                                }
+                            }
+                            .accessibilityLabel("Speaker: \(seg.speakerLabel). Right-click or long-press to rename.")
                         ReadingProse(text: seg.text)
                     }
                 }
@@ -391,11 +473,33 @@ struct RecordingDetailView: View {
             // is a read-mode action.
             .disabled(isRetranscribing || isEditing)
 
+            if Features.speakerLabels {
+                Button {
+                    detectSpeakers()
+                } label: {
+                    if isDetectingSpeakers {
+                        Label("Detecting speakers…", systemImage: "person.wave.2")
+                    } else {
+                        Label("Detect speakers", systemImage: "person.wave.2")
+                    }
+                }
+                .disabled(isDetectingSpeakers || isRetranscribing || isEditing)
+                .help("Label who said what in this recording. Runs entirely on this Mac. Best for meeting & call recordings where each person is on clean, separate audio — not audio captured through speakers or a single room mic.")
+            }
+
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([RecordingStore.audioURL(for: recording)])
             } label: {
                 Label("Reveal", systemImage: "folder")
             }
+
+            Button {
+                exportWebVTT()
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .disabled(displayedTranscript.isEmpty)
+            .help("Export the transcript as a WebVTT (.vtt) file, with speaker labels if detected.")
 
             Button(role: .destructive) {
                 pendingDelete = true
@@ -416,51 +520,32 @@ struct RecordingDetailView: View {
                 // Detail re-transcribe owns the provenance slot: it commits the
                 // fresh gate proposals under the SAME recording id below.
                 let result = try await transcriber.transcribeFile(url, recordsProvenance: true)
-                // Decode audio off MainActor for the diarization pass.
-                // A bare `Task { }` inside an `@MainActor View` inherits
-                // MainActor isolation, so wrapping the synchronous read
-                // in `Task.detached` is the explicit jump that keeps the
-                // AVAudioFile + AVAudioConverter work off the main
-                // thread — for a multi-minute recording the resample
-                // can stall the UI for hundreds of ms to multi-seconds.
-                let samples = await Task.detached(priority: .userInitiated) {
-                    (try? Self.readMono16kFloat(url: url)) ?? []
-                }.value
                 await MainActor.run {
                     recording.rawTranscript = result.rawText
                     recording.transcript = result.text
                     // Fresh machine output — no longer a hand-edited transcript.
                     recording.editedAt = nil
-                    // Best-effort re-diarization. Diarizer is non-Sendable,
-                    // so the call has to live entirely on the main actor —
-                    // we grabbed `samples` and `result.text` from off-actor
-                    // work above. A failure here (solo detection, decode
-                    // failure, model unloaded) is silent: the transcript
-                    // still updates; the labeled timeline gets cleared so
-                    // it doesn't desync with the new transcript.
-                    //
-                    // Gated on `Features.speakerLabels` so the re-transcribe
-                    // path stays consistent with the rest of the UI while
-                    // the feature is held off.
-                    let payload: SpeakerTimelinePayload? = {
-                        guard Features.speakerLabels,
-                              !samples.isEmpty,
-                              sortformerHolder.state == .loaded,
-                              let diarizer = sortformerHolder.currentDiarizer()
-                        else { return nil }
-                        return try? SpeakerTimelineBuilder.buildTimeline(
-                            samples: samples,
-                            transcript: result.text,
-                            duration: Double(samples.count) / 16_000.0,
-                            diarizer: diarizer
-                        )
-                    }()
-                    if let payload, let data = try? JSONEncoder().encode(payload) {
-                        recording.speakerTimeline = data
-                    } else {
-                        recording.speakerTimeline = nil
-                    }
+                    // Re-transcribing invalidates any existing speaker
+                    // timeline (design D4/D5): diarization is manual +
+                    // on-demand, so we don't re-run it here — just drop the
+                    // stale timeline so it can't desync from the new text.
+                    // The user re-taps "Detect speakers" if they want labels
+                    // on the fresh transcript.
+                    recording.speakerTimeline = nil
+                    // "Never lose audio" safety net: a filled-in transcript
+                    // means this row is no longer pending, whether it got
+                    // here via the normal empty-transcript re-transcribe
+                    // action or a first-time fill of a pending row adopted
+                    // by the failure/orphan paths.
+                    recording.pendingSince = nil
                     try? context.save()
+                    // F3 (review C2): re-transcribe is the ONLY path that fills
+                    // a recovered pending row's transcript, so it must (re)index
+                    // for AI/semantic search — the insert-time paths index
+                    // (RecordingPersister/FileTranscriptionIngest) but the
+                    // empty pending row was skipped, so without this a recovered
+                    // recording is invisible to search forever.
+                    RecordingIndexer.shared?.index(recordingID: recording.id, text: result.text)
                     // Slice C linkage: a re-transcribe re-runs the gate (which
                     // refilled `pending` via `clearPending` + `record` inside
                     // `transcribe`), so commit the fresh proposals under the SAME
@@ -483,60 +568,83 @@ struct RecordingDetailView: View {
         }
     }
 
-    /// Decode an audio file to 16 kHz mono Float32 samples. Mirrors
-    /// `Transcriber.readMono16kFloat` (kept private there); duplicated as
-    /// a static helper so re-transcribe can run Sortformer over the same
-    /// PCM buffer without exposing the Transcriber internals.
-    /// `nonisolated` so `Task.detached` in `retranscribe()` can call it
-    /// off the main actor — the function touches no shared mutable state
-    /// (it allocates locals and returns a `[Float]`), so it's safe to
-    /// run on any executor.
-    nonisolated private static func readMono16kFloat(url: URL) throws -> [Float] {
-        let file = try AVAudioFile(forReading: url)
-        let frameCount = AVAudioFrameCount(file.length)
-        guard frameCount > 0 else { return [] }
-        let processingFormat = file.processingFormat
+    // MARK: - Speaker diarization ("Detect speakers", design D4)
 
-        let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16_000,
-            channels: 1,
-            interleaved: false
-        )!
-
-        if processingFormat.sampleRate == targetFormat.sampleRate,
-           processingFormat.channelCount == 1,
-           processingFormat.commonFormat == .pcmFormatFloat32,
-           !processingFormat.isInterleaved {
-            guard let buf = AVAudioPCMBuffer(pcmFormat: processingFormat, frameCapacity: frameCount) else { return [] }
-            try file.read(into: buf)
-            return Self.floats(from: buf)
-        }
-
-        guard let inBuf = AVAudioPCMBuffer(pcmFormat: processingFormat, frameCapacity: frameCount) else { return [] }
-        try file.read(into: inBuf)
-        guard let converter = AVAudioConverter(from: processingFormat, to: targetFormat) else { return [] }
-        let outCap = AVAudioFrameCount(Double(frameCount) * targetFormat.sampleRate / processingFormat.sampleRate) + 1024
-        guard let outBuf = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outCap) else { return [] }
-        var consumed = false
-        var err: NSError?
-        converter.convert(to: outBuf, error: &err) { _, status in
-            if consumed {
-                status.pointee = .endOfStream
-                return nil
+    private func detectSpeakers() {
+        guard !isDetectingSpeakers else { return }
+        isDetectingSpeakers = true
+        detectSpeakersError = nil
+        detectSpeakersStatus = nil
+        let url = RecordingStore.audioURL(for: recording)
+        let transcript = recording.transcript
+        let holder = diarizerHolder
+        Task {
+            defer { Task { @MainActor in isDetectingSpeakers = false } }
+            do {
+                try await holder.prepareIfNeeded()
+                let samples = await Task.detached(priority: .userInitiated) {
+                    (try? DiarizationAudio.readMono16kFloat(url: url)) ?? []
+                }.value
+                guard !samples.isEmpty else {
+                    await MainActor.run { detectSpeakersError = "Couldn't read this recording's audio." }
+                    return
+                }
+                let result = try await holder.process(samples: samples)
+                let payload = try await DiarizationTimelineBuilder.buildPayload(
+                    result: result,
+                    transcript: transcript,
+                    duration: Double(samples.count) / 16_000.0
+                )
+                await MainActor.run {
+                    guard let payload else {
+                        // Solo recording (design D7 dominance gate) — nothing
+                        // to label. Clear any stale timeline from a prior run.
+                        recording.speakerTimeline = nil
+                        detectSpeakersStatus = "Single speaker — nothing to label."
+                        try? context.save()
+                        return
+                    }
+                    if let data = try? JSONEncoder().encode(payload) {
+                        recording.speakerTimeline = data
+                        try? context.save()
+                        // Honest scope note (design ask: diarization is only
+                        // reliable on clean, separate-audio-per-voice input —
+                        // e.g. a meeting/call recording — not audio captured
+                        // acoustically through one shared mic/speakers).
+                        let speakerCount = Set(payload.segments.map(\.speakerLabel)).count
+                        detectSpeakersStatus = "Labeled \(speakerCount) speakers. Best for meeting & call recordings where each person is on clean, separate audio."
+                    }
+                }
+            } catch is CancellationError {
+                // View disappeared mid-run — no user-visible error.
+            } catch {
+                await MainActor.run {
+                    detectSpeakersError = error.localizedDescription
+                }
             }
-            consumed = true
-            status.pointee = .haveData
-            return inBuf
         }
-        if err != nil { return [] }
-        return Self.floats(from: outBuf)
     }
 
-    nonisolated private static func floats(from buffer: AVAudioPCMBuffer) -> [Float] {
-        let frames = Int(buffer.frameLength)
-        guard frames > 0, let ptr = buffer.floatChannelData?[0] else { return [] }
-        return Array(UnsafeBufferPointer(start: ptr, count: frames))
+    /// Per-recording rename (design D5): rewrite every segment currently
+    /// carrying `oldLabel` to `newLabel` in THIS recording's timeline only.
+    private func renameSpeaker(from oldLabel: String, to newLabel: String) {
+        let trimmed = newLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != oldLabel,
+              let data = recording.speakerTimeline,
+              let payload = try? JSONDecoder().decode(SpeakerTimelinePayload.self, from: data)
+        else { return }
+        let renamed = payload.segments.map { seg -> SpeakerTimelineSegment in
+            guard seg.speakerLabel == oldLabel else { return seg }
+            return SpeakerTimelineSegment(
+                speakerLabel: trimmed,
+                startSec: seg.startSec,
+                endSec: seg.endSec,
+                text: seg.text
+            )
+        }
+        guard let newData = try? JSONEncoder().encode(SpeakerTimelinePayload(segments: renamed)) else { return }
+        recording.speakerTimeline = newData
+        try? context.save()
     }
 
     private func copyTranscript() {
@@ -565,6 +673,43 @@ struct RecordingDetailView: View {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
             didCopy = false
+        }
+    }
+
+    // MARK: - WebVTT export (`docs/webvtt-export/design.md`)
+
+    /// Filesystem-sanitized default save-panel filename: strips `/` and
+    /// control characters from `recording.title`, falling back to
+    /// "transcript" when nothing usable survives.
+    private func sanitizedExportFilename() -> String {
+        let stripped = recording.title.unicodeScalars
+            .filter { $0 != "/" && !CharacterSet.controlCharacters.contains($0) }
+            .map(Character.init)
+        let trimmed = String(stripped).trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "transcript" : trimmed
+    }
+
+    private func exportWebVTT() {
+        // Reuse the same decode `speakerSegments` uses for rendering — don't
+        // re-derive the diarized/non-diarized choice differently here.
+        let segments = speakerSegments
+        let vtt: String
+        if let segments, !segments.isEmpty {
+            vtt = WebVTTExporter.vtt(segments: segments)
+        } else {
+            vtt = WebVTTExporter.vtt(fullTranscript: recording.transcript, durationSec: recording.durationSeconds)
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "vtt") ?? .plainText]
+        panel.nameFieldStringValue = "\(sanitizedExportFilename()).vtt"
+        panel.canCreateDirectories = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try vtt.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            exportError = error.localizedDescription
         }
     }
 

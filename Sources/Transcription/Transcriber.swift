@@ -146,6 +146,32 @@ public actor Transcriber: Transcribing {
         _ samples: [Float],
         recordsProvenance: Bool = false
     ) async throws -> TranscriptionResult {
+        try await transcribe(samples, recordsProvenance: recordsProvenance, progress: nil)
+    }
+
+    /// Progress-aware entry point (docs/transcription-progress/design.md).
+    /// Deliberately a SEPARATE overload from `transcribe(_:recordsProvenance:)`
+    /// above rather than a third defaulted parameter on it: `Transcribing`
+    /// requires the exact 2-parameter signature, and Swift protocol-witness
+    /// matching does NOT use default argument values to bridge an arity
+    /// mismatch — a 3-parameter method (even with the 3rd defaulted) does
+    /// NOT satisfy a 2-parameter protocol requirement. Keeping the original
+    /// 2-param method (which just forwards `progress: nil`) preserves
+    /// `Transcriber: Transcribing` conformance; this overload is the one
+    /// `FileTranscriptionIngest` reaches via an `as? Transcriber` downcast
+    /// (see that file) since `any Transcribing`-typed callers can't see it.
+    ///
+    /// - Parameter progress: fraction-complete callback (0...1). Only fired
+    ///   on the Parakeet (`AsrManager`) path, and only for audio long enough
+    ///   that FluidAudio actually emits a stream (`ASRConstants.maxModelSamples`,
+    ///   ~15s) — see `transcribeWithAsrManager`. The Nemotron path never
+    ///   calls this closure (`transcribeWithNemotron` doesn't accept it).
+    ///   Passing `nil` here is identical to calling the 2-param overload.
+    func transcribe(
+        _ samples: [Float],
+        recordsProvenance: Bool,
+        progress: (@Sendable (Double) -> Void)?
+    ) async throws -> TranscriptionResult {
         guard !isTranscribing else { throw TranscriberError.busy }
         guard samples.count >= Int(AudioFormat.sampleRate) else {
             throw TranscriberError.audioTooShort
@@ -166,8 +192,17 @@ public actor Transcriber: Transcribing {
             await CorrectionProvenance.shared.clearPending()
         }
 
+        // Design D6: serialize against the offline diarizer so the two CoreML
+        // graphs never run concurrently (FluidAudio #661). Acquired before `isTranscribing`
+        // flips so a diarize call already holding the gate is waited out
+        // rather than racing this transcription's own busy-flag.
+        await CoreMLInferenceGate.shared.acquire()
+
         isTranscribing = true
-        defer { isTranscribing = false }
+        defer {
+            isTranscribing = false
+            Task { await CoreMLInferenceGate.shared.release() }
+        }
 
         switch modelID {
         case .tdt_0_6b_v3,
@@ -180,11 +215,15 @@ public actor Transcriber: Transcribing {
             return try await transcribeWithAsrManager(
                 samples,
                 manager: manager,
-                recordsProvenance: recordsProvenance
+                recordsProvenance: recordsProvenance,
+                progress: progress
             )
 
         case .nemotron_en:
             guard let nemotronBatch else { throw TranscriberError.modelNotLoaded }
+            // `progress` is intentionally NOT forwarded here — Nemotron never
+            // exposes a progress stream (design §1), so the UI falls back to
+            // the indeterminate + elapsed-time treatment for this path.
             return try await transcribeWithNemotron(
                 samples,
                 nemotronBatch: nemotronBatch,
@@ -201,9 +240,44 @@ public actor Transcriber: Transcribing {
     private func transcribeWithAsrManager(
         _ samples: [Float],
         manager: AsrManager,
-        recordsProvenance: Bool
+        recordsProvenance: Bool,
+        progress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> TranscriptionResult {
         let result: ASRResult
+
+        // File-transcription progress (docs/transcription-progress/design.md
+        // §3.1). `AsrManager.transcriptionProgressStream` is a shared,
+        // one-session-at-a-time actor resource (FluidAudio's
+        // `ProgressEmitter`): reading it calls `ensureSession()`, and if
+        // nothing ever calls `finishSession()`/`failSession()` afterward
+        // (which is exactly what happens for audio ≤ `maxModelSamples` —
+        // `AsrManager.transcribe`'s own `shouldEmitProgress` guard skips both),
+        // that session's stream is left open forever and the NEXT caller's
+        // `ensureSession()` would hand back the same stale, already-consumed
+        // stream instead of a fresh one. So we only ever touch the stream
+        // when we already know this call will cross that threshold — the
+        // same gate FluidAudio itself uses internally — which both matches
+        // the design ("emitted automatically for audio > 15s") and avoids
+        // ever creating a session that risks going unfinished.
+        var progressTask: Task<Void, Never>?
+        defer { progressTask?.cancel() }
+        if let progress, samples.count > ASRConstants.maxModelSamples {
+            let stream = await manager.transcriptionProgressStream
+            progressTask = Task {
+                do {
+                    for try await fraction in stream {
+                        if Task.isCancelled { break }
+                        progress(fraction)
+                    }
+                } catch {
+                    // Stream failed (e.g. `failSession` on a decode error) or
+                    // was cancelled — no percentage left to report; the
+                    // caller's own do/catch around `manager.transcribe` below
+                    // is what actually surfaces the failure.
+                }
+            }
+        }
+
         do {
             // FluidAudio 0.13.7+ exposes the TDT decoder state explicitly
             // instead of hiding it behind a `source: .microphone` enum
@@ -327,7 +401,8 @@ public actor Transcriber: Transcribing {
             duration: result.duration,
             processingTime: result.processingTime,
             confidence: result.confidence,
-            corrections: corrections
+            corrections: corrections,
+            tokenTimings: result.tokenTimings
         )
     }
 
@@ -549,11 +624,28 @@ public actor Transcriber: Transcribing {
         _ url: URL,
         recordsProvenance: Bool = false
     ) async throws -> TranscriptionResult {
+        try await transcribeFile(url, recordsProvenance: recordsProvenance, progress: nil)
+    }
+
+    /// Progress-aware entry point — same rationale as the
+    /// `transcribe(_:recordsProvenance:progress:)` overload above (a
+    /// separate overload, not a 3rd defaulted parameter on the protocol-
+    /// conforming method, to preserve `Transcriber: Transcribing`
+    /// conformance's exact 2-parameter arity match). `FileTranscriptionIngest`
+    /// reaches this via an `as? Transcriber` downcast.
+    ///
+    /// - Parameter progress: forwarded to
+    ///   `transcribe(_:recordsProvenance:progress:)` unchanged.
+    func transcribeFile(
+        _ url: URL,
+        recordsProvenance: Bool,
+        progress: (@Sendable (Double) -> Void)?
+    ) async throws -> TranscriptionResult {
         try await ensureLoaded()
 
         let file = try AVAudioFile(forReading: url)
         let samples = try Self.readMono16kFloat(file: file)
-        return try await transcribe(samples, recordsProvenance: recordsProvenance)
+        return try await transcribe(samples, recordsProvenance: recordsProvenance, progress: progress)
     }
 
     /// Read `file` into `[Float]` at `AudioFormat.target`. Fast path when the

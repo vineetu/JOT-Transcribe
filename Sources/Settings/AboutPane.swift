@@ -461,6 +461,18 @@ struct AboutPane: View {
                 Spacer()
             }
             .font(.system(size: 11))
+            // LGPL notice for the bundled decode-only FFmpeg fallback decoder
+            // (design §8.6 / §8.8). Full license + build recipe ship in the
+            // source (Vendor/ffmpeg/) and NOTICE.
+            HStack(spacing: 4) {
+                Text("Extended format decoding")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("FFmpeg (LGPL v2.1)")
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            .font(.system(size: 11))
         }
     }
 

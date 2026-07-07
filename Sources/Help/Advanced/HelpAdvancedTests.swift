@@ -26,17 +26,20 @@ enum HelpRuntimeTests {
 
     static func testAdvancedHasFourSections_with6_4_4_3_cards() {
         let sections = AdvancedContent.sections
-        assert(sections.count == 4, "Expected 4 Advanced sections; got \(sections.count)")
+        assert(sections.count == 5, "Expected 5 Advanced sections; got \(sections.count)")
 
         // AI providers section grew from 6 → 7 with ai-prompt-library
         // added alongside the existing ai-editable-prompts (the two
         // cover different concerns: shared system prompts vs. the
-        // catalog of named prompts).
+        // catalog of named prompts). "Recordings & Library" (7 cards) was
+        // added for the file-import / diarization / export / CLI / search /
+        // progress / never-lose-audio surfaces.
         let expected: [(String, Int)] = [
             ("AI providers", 7),
             ("System", 4),
             ("Input", 4),
             ("Sounds", 3),
+            ("Recordings & Library", 7),
         ]
         for (idx, (title, count)) in expected.enumerated() {
             let section = sections[idx]

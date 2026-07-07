@@ -50,6 +50,7 @@ enum AdvancedContent {
         system,
         input,
         sounds,
+        recordingsLibrary,
     ]
 
     /// Every Advanced card, flattened from the sections. Used by tests that
@@ -275,6 +276,103 @@ enum AdvancedContent {
                 expansionProse:
                     "A separate tone for error states — silent capture, transcription failure, "
                     + "LLM timeout, permission revoked. Never shares the completion chime."
+            ),
+        ]
+    )
+
+    private static let recordingsLibrary = AdvancedSection(
+        id: "recordings-library",
+        title: "Recordings & Library",
+        subtitle: "Speaker labels, file import, export, search, and safety nets for everything Jot records.",
+        cards: [
+            AdvancedCardData(
+                id: "recordings-diarization",
+                title: "Detect speakers",
+                badge: "on-device",
+                body: "Labels who spoke when in a recording, right from its detail view.",
+                expansionProse:
+                    "Tap Detect speakers in a recording's detail to split the transcript into "
+                    + "color-coded, per-speaker blocks, computed fully on-device. Speakers are "
+                    + "labeled \u{201c}Speaker 1 / 2 / 3\u{2026}\u{201d} in the order they first appear — right-click "
+                    + "any label \u{2192} Rename speaker\u{2026} to name them across every one of their turns. "
+                    + "Best for clean meeting or call recordings where each person is on separate "
+                    + "audio (Zoom/Meet, a video's own soundtrack) — not reliable when voices blur "
+                    + "together acoustically through a single room mic. Single-speaker recordings "
+                    + "are detected and skipped automatically; the result is computed once and saved."
+            ),
+            AdvancedCardData(
+                id: "recordings-file-import",
+                title: "Transcribe a file",
+                badge: "drag & drop",
+                body: "Drag an existing audio or video file onto Recents to transcribe it like a live recording.",
+                expansionProse:
+                    "Drop an audio or video file onto the dictate zone on Recents (or click browse "
+                    + "to pick one), and Jot transcribes it on the same on-device pipeline as a live "
+                    + "dictation. It lands as a normal recording — playable, searchable, diarizable. "
+                    + "Format coverage is close to universal: AVFoundation covers the common set "
+                    + "(mp3, m4a, wav, mp4, mov\u{2026}), and a bundled, network-free FFmpeg fallback "
+                    + "extracts audio from the long tail (WebM, MKV, WMA, AVI, and more). A live "
+                    + "dictation always takes priority over an in-flight import."
+            ),
+            AdvancedCardData(
+                id: "recordings-webvtt-export",
+                title: "Export as WebVTT",
+                badge: "export",
+                body: "Save any recording's transcript as a standard .vtt subtitle file.",
+                expansionProse:
+                    "The Export button in a recording's detail view saves its transcript as a "
+                    + ".vtt file. If the recording has been through Detect speakers, each cue "
+                    + "carries a <v Speaker N> voice tag; otherwise it's a single-cue transcript. "
+                    + "Works in video players, subtitle tools, and other transcription apps — "
+                    + "generated fully on-device."
+            ),
+            AdvancedCardData(
+                id: "recordings-cli",
+                title: "jot command line",
+                badge: "terminal",
+                body: "A bundled CLI transcribes a file to WebVTT from the terminal, with optional speaker labels.",
+                expansionProse:
+                    "Jot ships a standalone command-line tool at Jot.app/Contents/Helpers/jot. Add "
+                    + "it to your PATH once with `sudo ln -s /Applications/Jot.app/Contents/Helpers/jot "
+                    + "/usr/local/bin/jot`, then run `jot transcribe meeting.mp4 --diarize -o out.vtt`. "
+                    + "It reuses the same on-device engine, bundled ffmpeg, and downloaded models as "
+                    + "the app — nothing leaves your Mac, no network required."
+            ),
+            AdvancedCardData(
+                id: "recordings-ai-search",
+                title: "AI search",
+                badge: "semantic",
+                body: "Finds recordings by meaning, not just exact words — on by default.",
+                expansionProse:
+                    "Search over your recordings is augmented with on-device semantic recall: "
+                    + "searching \u{201c}rent increase\u{201d} can surface a recording where you said \u{201c}the "
+                    + "landlord is raising my payment.\u{201d} It runs a local embedding model, indexes "
+                    + "transcripts in the background, and is on by default — exact-text search keeps "
+                    + "working whether it's enabled or not. Toggle it off in Settings → General if "
+                    + "you'd rather skip the one-time model download."
+            ),
+            AdvancedCardData(
+                id: "recordings-progress",
+                title: "Transcription progress",
+                badge: "status",
+                body: "See how far along an import is, not just a spinner.",
+                expansionProse:
+                    "Importing a file shows real progress on the standard transcription model — a "
+                    + "percent-complete bar tied to the actual decode. On models that don't expose "
+                    + "a progress signal (Nemotron, the streaming Parakeet variants), Jot shows an "
+                    + "honest elapsed-time counter instead of a made-up estimate."
+            ),
+            AdvancedCardData(
+                id: "recordings-never-lose-audio",
+                title: "Never lose audio",
+                badge: "safety net",
+                body: "A recording's audio is saved even when transcription can't run.",
+                expansionProse:
+                    "If the transcriber is busy or errors out, your recording is still saved to "
+                    + "Recents as a \u{201c}Needs transcription\u{201d} pending item — re-transcribe it with one "
+                    + "click instead of losing it. A startup scan also recovers any orphaned audio "
+                    + "left on disk from a crash or an older version, so nothing you recorded is "
+                    + "ever silently discarded."
             ),
         ]
     )

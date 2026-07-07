@@ -120,7 +120,7 @@
       "body": "Transform the user's text into a clean, ready-to-use AI prompt. The text is a rough verbal description of something they want an AI to do — extract from it: the task, any context the AI will need, constraints (tone, length, audience, format), and the desired output shape. Write the result as a single coherent prompt addressed to an AI assistant, with each section wrapped in XML tags: <task>, <context>, <constraints>, <output_format>. Be concrete and specific. Do not invent constraints the user did not mention. Do not address the user — write it as instructions to the AI. Omit any tag whose section has no material from the user (do not write empty sections). Return only the tagged prompt — no preamble, no commentary, no surrounding code fence.",
       "sampleInput": "i need to write a follow-up email to a client who hasn't responded in two weeks about a proposal we sent, i want it to be firm but not pushy, like five sentences max, and end with a specific call to action",
       "sampleOutput": "<task>Write a follow-up email to a client who has not responded for two weeks regarding a proposal we sent.</task>\n<constraints>\n- Tone: firm but not pushy — clear about needing a response, respectful about their time.\n- Length: five sentences maximum.\n- End with a specific call to action (e.g., a proposed reply deadline or short call).\n</constraints>\n<output_format>Email body only, no subject line.</output_format>",
-      "voiceAugmentHint": "Say which model you'll paste this into (e.g. \"for Claude\")",
+      "voiceAugmentHint": null,
       "providerCompatibility": ["anthropic", "openai", "gemini", "ollama"]
     },
 

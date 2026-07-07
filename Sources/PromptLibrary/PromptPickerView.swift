@@ -14,6 +14,33 @@ struct PromptPickerView: View {
     @ObservedObject var model: PromptPickerViewModel
     @FocusState private var searchFocused: Bool
 
+    /// Coach strip onboarding (docs — prompt-pane onboarding). Re-shows once
+    /// per app VERSION: it reappears after each update (re-surfacing the voice
+    /// flow + any new prompts/features) but, once dismissed, stays hidden for
+    /// the rest of that version so it never nags a regular user within a
+    /// release. Stores the version string it was last dismissed at; shown
+    /// whenever that differs from the running version. A "?" in the header
+    /// forces it back mid-version. (Deliberately version-gated, not
+    /// dismiss-forever, per product ask.)
+    @AppStorage("jot.promptPicker.walkthroughDismissedVersion")
+    private var walkthroughDismissedVersion: String = ""
+
+    private var currentAppVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    }
+
+    /// True when the strip should be visible — i.e. it hasn't been dismissed
+    /// for the currently-running version yet.
+    private var showCoachStrip: Bool {
+        walkthroughDismissedVersion != currentAppVersion
+    }
+
+    /// The user's ACTUAL bound Rewrite key (⌥/ by default) — the one they held
+    /// to open this picker. Read live so the coach copy matches their binding.
+    private var rewriteKeyLabel: String {
+        SingleKeyMigration.effectiveBinding(for: .rewrite).displayLabel
+    }
+
     private static let panelWidth: CGFloat = 620
     private static let panelHeight: CGFloat = 440
     private static let previewDrawerWidth: CGFloat = 280
@@ -52,6 +79,10 @@ struct PromptPickerView: View {
     @ViewBuilder
     private var mainColumn: some View {
         VStack(spacing: 0) {
+            if showCoachStrip {
+                coachStrip
+                Divider()
+            }
             searchHeader
             operandStrip
             Divider().padding(.vertical, 2)
@@ -97,9 +128,70 @@ struct PromptPickerView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 15, weight: .regular))
                 .focused($searchFocused)
+            // Once dismissed, a quiet "?" brings the coach strip back — the
+            // one discoverable way to re-read how the picker + voice flow work.
+            if !showCoachStrip {
+                Button {
+                    // Force the strip back for the rest of this version.
+                    withAnimation(.easeOut(duration: 0.16)) { walkthroughDismissedVersion = "" }
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Show how the prompt picker works")
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
+    }
+
+    // MARK: - First-open coach strip
+
+    @ViewBuilder
+    private var coachStrip: some View {
+        let key = rewriteKeyLabel
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("How this works")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    withAnimation(.easeOut(duration: 0.16)) { walkthroughDismissedVersion = currentAppVersion }
+                } label: {
+                    Text("Got it")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+            }
+            coachRow(icon: "hand.tap",
+                     text: "You **held** \(key) to open this — **tap** it instead to apply your default prompt.")
+            coachRow(icon: "text.cursor",
+                     text: "Pick a prompt — it rewrites the text you had selected in your app.")
+            coachRow(icon: "mic.fill",
+                     text: "Some prompts let you **speak** a detail: pick one, speak, then press \(key) again to finish.")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(Color.primary.opacity(0.045))
+    }
+
+    private func coachRow(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .frame(width: 14, alignment: .center)
+                .padding(.top, 1)
+            Text(.init(text))
+                .font(.system(size: 11.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
     }
 
     @ViewBuilder

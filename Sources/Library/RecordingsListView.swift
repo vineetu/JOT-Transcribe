@@ -659,7 +659,13 @@ private struct PagedRecordingsList: View {
                     r.transcript = result.text
                     // Fresh machine output — clear any hand-edited marker.
                     r.editedAt = nil
+                    // "Never lose audio" safety net: this row is no longer
+                    // pending once its transcript is filled in.
+                    r.pendingSince = nil
                     try? context.save()
+                    // F3 (review C2): index the filled transcript so a recovered
+                    // pending row becomes findable in AI/semantic search.
+                    RecordingIndexer.shared?.index(recordingID: r.id, text: result.text)
                 }
             } catch {
                 await MainActor.run {

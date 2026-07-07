@@ -126,6 +126,20 @@ final class VoiceInputPipeline {
     /// is ~done at stop instead of adding a 2–3 s post-stop wait.
     private var activeStreamingCtc: StreamingCtcSpotter?
 
+    /// "Never lose audio" safety net (docs/resilient-transcription/design.md).
+    /// Set the instant `capture.stop()` finalizes the WAV inside
+    /// `stopAndTranscribe`, BEFORE `transcribe()` runs — i.e. it captures
+    /// audio that is on disk regardless of what transcription does next.
+    /// Tagged with the token so a caller reading this after a *later*
+    /// session's early failure (e.g. `capture.stop()` itself throwing,
+    /// before this session ever sets the tuple) can tell a stale prior
+    /// value apart from this session's own finalized audio — only a token
+    /// match means "this session's audio". `RecorderController`'s failure
+    /// catch clauses read this (still holding `pipelineToken` at that
+    /// point) to persist a pending Recents row without reordering
+    /// stop-vs-transcribe or splitting this method.
+    private(set) var lastFinalizedRecording: (token: Token, recording: AudioRecording)?
+
     init(
         capture: any AudioCapturing = AudioCapture(),
         transcriberHolder: TranscriberHolder,
@@ -276,6 +290,7 @@ final class VoiceInputPipeline {
         let recording: AudioRecording
         do {
             recording = try await capture.stop()
+            lastFinalizedRecording = (token: token, recording: recording)
         } catch {
             await endStreamingSession(graceful: false)
             clearIfMatching(token)
@@ -351,6 +366,17 @@ final class VoiceInputPipeline {
 
         if isRecordingPhase {
             await capture.cancel()
+        } else if token.owner == .recorder,
+                  let finalized = lastFinalizedRecording, finalized.token == token {
+            // Cancel during the TRANSCRIBING phase: `capture.stop()` already
+            // finalized the recorder WAV on disk and (for recorder owners)
+            // deliberately did NOT delete it. An explicit user cancel means
+            // DISCARD — delete it now, otherwise `OrphanRecordingScanner`
+            // would resurrect it as a "Needs transcription" row on the next
+            // launch (review C1). Genuine crash-orphans are still recovered;
+            // only an explicit cancel deletes.
+            try? FileManager.default.removeItem(at: finalized.recording.fileURL)
+            lastFinalizedRecording = nil
         }
         // No graceful flush on cancel — user is aborting, partial
         // text doesn't matter.

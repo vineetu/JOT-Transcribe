@@ -1,5 +1,7 @@
+import AppKit
 import Combine
 import Foundation
+import SwiftUI
 import os.log
 
 /// Tiny atomic-flag box shared between `RecorderController.runFlow`'s
@@ -55,6 +57,30 @@ final class RecorderController: ObservableObject {
     /// pair land atomically — we set this immediately before `lastResult`.
     @Published private(set) var lastAudioRecording: AudioRecording?
 
+    /// "Never lose audio" safety net (docs/resilient-transcription/design.md).
+    /// Published when a RECORDER dictation's transcription throws (busy
+    /// engine, model error, etc.) AFTER the pipeline already finalized the
+    /// WAV on disk — i.e. the audio exists but no `lastResult` will ever
+    /// fire for it. `RecordingPersister` subscribes to this exactly like
+    /// `lastResult` and inserts a PENDING row (empty transcript,
+    /// `pendingSince = .now`) so the file isn't orphaned; the user
+    /// re-transcribes it from Recents. The success path never touches this
+    /// property — it is set ONLY from the failure catch clauses below.
+    @Published private(set) var pendingFailedRecording: AudioRecording?
+
+    /// "Return to the app I started in" (opt-in, `jot.returnToOriginApp`,
+    /// docs/return-to-origin-app/design.md §5.1). The app that was
+    /// frontmost at the TRIGGER instant of the session that produced
+    /// `lastResult`, or `nil` when the feature is off, Origin was Jot
+    /// itself, or auto-paste is off. Set immediately before `lastResult`
+    /// (same ordering invariant as `lastAudioRecording`) so
+    /// `AppDelegate`'s `$lastResult` sink reads a consistent pair — the
+    /// value travels WITH the transcript that captured it rather than
+    /// living as separately-mutated controller state, so a session that
+    /// never reaches delivery can't leak its Origin into a later
+    /// `pasteLast()` (design §7 R4).
+    @Published private(set) var lastResultOriginApp: NSRunningApplication?
+
     /// v1.14 recording-safety contract. When `true`, the delivery bridge
     /// in `AppDelegate` skips the paste step for the *next* successful
     /// transcript only; the recording still persists to Recents via
@@ -63,6 +89,15 @@ final class RecorderController: ObservableObject {
     /// from the in-app Record pill) so clicking the pill again stops
     /// the recording without pasting at the user's cursor.
     @Published var skipNextPaste: Bool = false
+
+    /// Read (not written) here — `DeliveryService` and `GeneralPane` own
+    /// these as the source of truth. Mirrored via `@AppStorage` so Origin
+    /// capture can be gated without threading the toggle state through
+    /// `toggle()` / `runFlow()` call sites. Both are checked (not just
+    /// `returnToOriginApp`) because the stored bool persists even while
+    /// its Settings row is `.disabled(!autoPaste)` (design §5.1 / review C2).
+    @AppStorage("jot.autoPaste") private var autoPaste: Bool = true
+    @AppStorage("jot.returnToOriginApp") private var returnToOriginApp: Bool = false
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "Recorder")
     private var autoRecoveryTask: Task<Void, Never>?
@@ -197,6 +232,32 @@ final class RecorderController: ObservableObject {
         DictationStats.record(durationSeconds: durationSeconds)
     }
 
+    /// "Never lose audio" safety net (docs/resilient-transcription/design.md):
+    /// publish the finalized WAV so `RecordingPersister` inserts a pending
+    /// Recents row, instead of orphaning it, when transcription fails after
+    /// `capture.stop()` already wrote the audio to disk.
+    ///
+    /// Deliberately narrow:
+    /// - Only for `.recorder`-owned sessions — Rewrite / Ask-Jot voice
+    ///   intentionally discard their WAV (`VoiceInputPipeline.swift`,
+    ///   `stopAndTranscribe`'s `token.owner != .recorder` cleanup) and must
+    ///   never persist a row.
+    /// - `pipelineToken` is read here (not a local from `runFlow`'s `do`
+    ///   block) because it's still set to this session's token at the point
+    ///   every relevant catch clause runs — it's only cleared on the
+    ///   success path (after `stopAndTranscribe` returns) or in `runFlow`'s
+    ///   `defer` at the very end of the method, which fires AFTER the catch
+    ///   body completes.
+    /// - `lastFinalizedRecording` is token-tagged so a stale value from a
+    ///   PRIOR session (e.g. this session's own `capture.stop()` throwing,
+    ///   which never sets the tuple) can't be mistaken for this session's
+    ///   audio — only an exact token match counts.
+    private func publishPendingFailureIfNeeded() {
+        guard let token = pipelineToken, token.owner == .recorder else { return }
+        guard let finalized = pipeline.lastFinalizedRecording, finalized.token == token else { return }
+        pendingFailedRecording = finalized.recording
+    }
+
     private func scheduleAutoRecoveryIfNeeded() {
         autoRecoveryTask?.cancel()
         autoRecoveryTask = nil
@@ -214,6 +275,35 @@ final class RecorderController: ObservableObject {
             pipelineToken = nil
             stopContinuation = nil
         }
+
+        // Audio-file transcription mic-vs-file collision (review C1, DATA
+        // LOSS — docs/audio-file-transcription/design.md §6 R1, preferred
+        // fix "a"): the transcriber is single-in-flight, so a file import
+        // still running when this dictation later reaches its stop-time
+        // `transcribe()` call would throw `.busy` and the whole spoken
+        // recording would be silently discarded. Cancel any in-flight file
+        // job THE INSTANT a dictation starts — before any mic capture below
+        // — so live speech always wins; the cancelled file is retriable.
+        // See `FileTranscriptionIngest`'s doc comment for the full writeup
+        // (including the reciprocal mic→file guard and its documented
+        // residual-risk window).
+        FileTranscriptionIngest.shared?.cancelInFlight()
+
+        // "Return to the app I started in" (design §5.1): capture Origin
+        // at the TRIGGER instant — before `pipeline.startRecording`'s
+        // await below, which can take real wall-clock time (permission
+        // prompts, engine spin-up) during which the user may click into
+        // another app. Sampling after that await would capture the wrong
+        // app (review R-a). Gated on both flags (see the properties'
+        // doc); nil when the feature is off, Origin is Jot itself, or
+        // there's no frontmost app to capture. This local travels with
+        // the session and is only ever stamped onto `lastResultOriginApp`
+        // alongside `lastResult` — never stored as reusable mutable state.
+        let origin: NSRunningApplication? = (autoPaste && returnToOriginApp)
+            ? NSWorkspace.shared.frontmostApplication.flatMap {
+                  $0.bundleIdentifier == Bundle.main.bundleIdentifier ? nil : $0
+              }
+            : nil
 
         // Defense-in-depth pre-warm. If the user downloads Parakeet after
         // launch, AppDelegate's one-shot pre-warm may have run before the
@@ -329,6 +419,7 @@ final class RecorderController: ObservableObject {
                         // PillViewModel) see a consistent pair.
                         self.lastAudioRecording = recording
                         self.lastFallbackNotice = composedNotice
+                        self.lastResultOriginApp = origin
                         self.lastResult = result
                         self.noteSuccessfulDelivery(text: transformed, durationSeconds: recording.duration)
                         self.state = .idle
@@ -348,6 +439,7 @@ final class RecorderController: ObservableObject {
                         self.lastTranscriptAt = .now
                         self.lastAudioRecording = recording
                         self.lastFallbackNotice = composedNotice
+                        self.lastResultOriginApp = origin
                         self.lastResult = result
                         self.noteSuccessfulDelivery(text: rawText, durationSeconds: recording.duration)
                         self.state = .idle
@@ -360,6 +452,7 @@ final class RecorderController: ObservableObject {
                 lastTranscriptAt = .now
                 lastAudioRecording = recording
                 lastFallbackNotice = composedNotice
+                lastResultOriginApp = origin
                 lastResult = result
                 noteSuccessfulDelivery(text: rawText, durationSeconds: recording.duration)
                 state = .idle
@@ -379,6 +472,7 @@ final class RecorderController: ObservableObject {
             log.error("AudioCapture.start failed: \(String(describing: error))")
             state = .error("Could not start recording: \(error.localizedDescription)")
         } catch VoiceInputPipeline.PipelineError.modelMissing {
+            publishPendingFailureIfNeeded()
             state = .error("Transcription model is still loading — try again in a moment.")
         } catch VoiceInputPipeline.PipelineError.repairInProgress {
             // Phase 5: the active model is unusable and NO installed, language-
@@ -401,8 +495,10 @@ final class RecorderController: ObservableObject {
                 state = .error(shortRecordingMessage(for: recording))
             }
         } catch VoiceInputPipeline.PipelineError.transcribeBusy {
-            state = .error("Another transcription is already running.")
+            publishPendingFailureIfNeeded()
+            state = .error("Saved to Recents — Jot was busy. Re-transcribe it when you're ready.")
         } catch VoiceInputPipeline.PipelineError.transcribeFailed(let error) {
+            publishPendingFailureIfNeeded()
             log.error("Transcription failed: \(String(describing: error))")
             let logSink = self.logSink
             Task {
@@ -414,6 +510,7 @@ final class RecorderController: ObservableObject {
             }
             state = .error(transcriptionFailureMessage(for: error))
         } catch {
+            publishPendingFailureIfNeeded()
             log.error("Transcription failed: \(String(describing: error))")
             let logSink = self.logSink
             Task {

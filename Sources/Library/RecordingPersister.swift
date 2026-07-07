@@ -21,24 +21,24 @@ final class RecordingPersister {
     /// snapshotted at init), so a swap mid-session stamps subsequent rows
     /// with the new id without rebinding the persister.
     private let holder: TranscriberHolder
-    /// Speaker Labels piece A: when the model is loaded, the persister runs
-    /// a post-stop Sortformer pass on the recorded audio buffer to attach a
-    /// labeled timeline to the new `Recording` row. `nil` when Speaker
-    /// Labels is not built into this graph (test harnesses) — the persist
-    /// path still writes a plain transcript.
-    private let sortformerHolder: SortformerHolder?
     private var cancellable: AnyCancellable?
+    /// "Never lose audio" safety net (docs/resilient-transcription/design.md).
+    /// Mirrors `cancellable` above but for the failure edge —
+    /// `RecorderController.$pendingFailedRecording` fires when a recorder
+    /// dictation's transcription throws after the WAV was already
+    /// finalized. Kept as a separate subscription (not folded into
+    /// `$lastResult`) since it's a wholly separate publisher with its own
+    /// payload type and never fires for the same session as `$lastResult`.
+    private var pendingCancellable: AnyCancellable?
 
     init(
         recorder: RecorderController,
         context: ModelContext,
-        transcriberHolder: TranscriberHolder,
-        sortformerHolder: SortformerHolder? = nil
+        transcriberHolder: TranscriberHolder
     ) {
         self.recorder = recorder
         self.context = context
         self.holder = transcriberHolder
-        self.sortformerHolder = sortformerHolder
     }
 
     func start() {
@@ -46,6 +46,11 @@ final class RecordingPersister {
             .compactMap { $0 }
             .sink { [weak self] result in
                 self?.persist(result: result)
+            }
+        pendingCancellable = recorder.$pendingFailedRecording
+            .compactMap { $0 }
+            .sink { [weak self] audio in
+                self?.persistPending(audio: audio)
             }
     }
 
@@ -94,54 +99,41 @@ final class RecordingPersister {
         // detached `.utility` task so it never hitches the save path or the UI.
         RecordingIndexer.shared?.index(recordingID: recordingID, text: transcript)
 
-        // Speaker Labels piece A: kick off a best-effort post-stop
-        // diarization pass. Gated on:
-        //   • `state == .loaded` (model warm in memory)
-        //   • `currentDiarizer() != nil` (non-nil handle)
-        //   • `jot.speakerLabels.enabled == true` (master toggle ON)
-        // The master-toggle check is defense-in-depth against a race
-        // where the user toggled OFF mid-download but the warmup task
-        // still completed and set state to `.loaded` — without the
-        // explicit master read here, those recordings would still get
-        // diarized + stamped with a `speakerTimeline` against the
-        // user's OFF intent. Failures are silent: the recording stays
-        // as a plain transcript, indistinguishable from a pre-feature
-        // recording.
-        let _stateDesc: String = sortformerHolder.map { "\($0.state)" } ?? "no-holder"
-        let _diarDesc: String = sortformerHolder?.currentDiarizer() == nil ? "nil" : "present"
-        SortformerDiag.log("RecordingPersister.persist state=\(_stateDesc) diarizer=\(_diarDesc) duration=\(audio.duration)s samples=\(audio.samples.count)")
-        let speakerLabelsMasterOn = UserDefaults.standard.object(forKey: "jot.speakerLabels.enabled") as? Bool ?? true
-        if Features.speakerLabels,
-           speakerLabelsMasterOn,
-           let sortformerHolder, sortformerHolder.state == .loaded,
-           let diarizer = sortformerHolder.currentDiarizer() {
-            let samples = audio.samples
-            let duration = audio.duration
-            let modelContext = self.context
-            let recordingID = recording.id
-            let logRef = self.log
-            Task { @MainActor in
-                do {
-                    guard let payload = try SpeakerTimelineBuilder.buildTimeline(
-                        samples: samples,
-                        transcript: transcript,
-                        duration: duration,
-                        diarizer: diarizer
-                    ) else {
-                        return // solo recording — detect-and-skip
-                    }
-                    let data = try JSONEncoder().encode(payload)
-                    let descriptor = FetchDescriptor<Recording>(
-                        predicate: #Predicate { $0.id == recordingID }
-                    )
-                    if let row = try modelContext.fetch(descriptor).first {
-                        row.speakerTimeline = data
-                        try modelContext.save()
-                    }
-                } catch {
-                    logRef.error("Speaker timeline build failed: \(String(describing: error))")
-                }
-            }
+        // Speaker diarization (offline VBx, design D4) is manual + on-demand
+        // only — there is deliberately NO automatic post-stop pass here.
+        // The user taps "Detect speakers" in the recording detail view
+        // (`RecordingDetailView.detectSpeakers()`), which writes
+        // `recording.speakerTimeline` after the fact. This mirrors the
+        // "attach a timeline after the fact" pattern this hook used to run
+        // synchronously, minus the automatic trigger.
+    }
+
+    /// "Never lose audio" safety net (docs/resilient-transcription/design.md).
+    /// Inserts a PENDING row (empty transcript, `pendingSince = .now`) for
+    /// a recorder dictation whose WAV was finalized on disk but whose
+    /// transcription then threw (busy engine, model error, etc.) — see
+    /// `RecorderController.publishPendingFailureIfNeeded()`. Deliberately
+    /// does nothing else: no `CorrectionProvenance.commit` and no
+    /// `RecordingIndexer.index` here, matching the design's "empty +
+    /// pending rows have nothing to Transform/index/commit until the user
+    /// re-transcribes, which already does all three."
+    func persistPending(audio: AudioRecording) {
+        let recording = Recording(
+            createdAt: audio.createdAt,
+            title: Recording.defaultTitle(from: ""),
+            durationSeconds: audio.duration,
+            transcript: "",
+            rawTranscript: "",
+            audioFileName: audio.fileURL.lastPathComponent,
+            modelIdentifier: holder.primaryModelID.rawValue,
+            pendingSince: .now
+        )
+        context.insert(recording)
+        do {
+            try context.save()
+        } catch {
+            log.error("Failed to save pending Recording: \(String(describing: error))")
+            Task { await ErrorLog.shared.error(component: "RecordingPersister", message: "Pending SwiftData save failed", context: ["error": ErrorLog.redactedAppleError(error)]) }
         }
     }
 }

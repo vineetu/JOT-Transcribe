@@ -1,6 +1,6 @@
 # Jot
 On-device Mac dictation. Hotkey, speak, transcript pastes at cursor. Local default; cloud optional for Cleanup, Rewrite.
-Jot cannot transcribe pre-recorded audio files — live mic input only.
+Jot can transcribe existing audio/video files too — drag one onto Recents or use the bundled `jot` CLI.
 
 Keyboard modifier glossary: ⌥=Option, ⌘=Command, ⌃=Control, ⇧=Shift.
 
@@ -15,7 +15,7 @@ multilingual: 25 European langs, auto-detected per recording.
 languages: Jot supports these ASR models — pick one as primary at Settings → Transcription. Only the primary is hot in memory; switching unloads + reloads.
 <!-- FRAGMENT: jot-asr-languages -->
 japanese: yes — install the Parakeet 0.6B Japanese model from Settings → Transcription, then make it primary. v3 does NOT transcribe Japanese; the JA model is required.
-custom-vocabulary: experimental. Short list of names, acronyms, jargon Jot prefers. Biases recognizer — best-effort, not guarantee. Too many similar entries cause unpredictable preference. Edit at Settings → Vocabulary. Applies to Parakeet v3, v3 int4, and v2. NOT applied to Japanese or Nemotron-only English — those models don't expose per-token timings the rescorer needs.
+custom-vocabulary: experimental. Short list of names, acronyms, jargon Jot prefers. Biases recognizer — best-effort, not guarantee. Too many similar entries cause unpredictable preference. Edit at Settings → Vocabulary. Applies to Parakeet v3, v3 int4, v2, and Nemotron English (parallel CTC spotter). NOT applied to Japanese — no per-token timings for the rescorer.
 
 ## Cleanup (optional, off default)
 LLM polishes transcript. Four passes: filler removal, grammar, number normalization, structure. Voice, word choice, register preserved — not style rewrite.
@@ -45,6 +45,11 @@ copy-last: ⌥⇧V (Option+Shift+V) re-pastes most recent transcript.
 
 ## Retention
 Library items (recordings + rewrite sessions) and transcripts kept on-device, configurable. Options: 7, 30, 90 days, forever. Enforced on launch, hourly. Settings → General → Keep library items.
+
+## Files & Library
+recordings-file-import: drag an audio/video file onto Recents (or browse) to transcribe like a live recording; near-universal formats via AVFoundation + bundled ffmpeg.
+recordings-diarization: Detect speakers button labels who spoke when, on-device; right-click a speaker → Rename speaker. Best for clean meeting/call audio, not same-room mic; single-speaker skipped.
+Also new: WebVTT export (recordings-webvtt-export), bundled jot CLI (recordings-cli), default-on AI search (recordings-ai-search), import progress (recordings-progress), never-lost audio on failure (recordings-never-lose-audio).
 
 ## Troubleshooting
 permissions: Mic, Input Monitoring, Accessibility.

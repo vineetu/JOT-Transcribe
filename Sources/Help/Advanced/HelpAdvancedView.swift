@@ -1,13 +1,14 @@
 import SwiftUI
 
-/// The Advanced tab (spec v1 §6) — four sections stacked vertically, each
+/// The Advanced tab (spec v1 §6) — five sections stacked vertically, each
 /// rendering a 2-column card grid that collapses to 1 column below 560pt.
 ///
 /// Sections & card counts come from `AdvancedContent` and mirror spec §6:
-///   * AI providers — 6 cards
+///   * AI providers — 7 cards
 ///   * System — 4 cards
 ///   * Input — 4 cards
 ///   * Sounds — 3 cards
+///   * Recordings & Library — 7 cards
 ///
 /// Deep-link contract (coordinated with `HelpPane`):
 ///   * `pendingExpansion` — a slug the navigator wants expanded-and-scrolled
@@ -144,12 +145,12 @@ extension HelpAdvancedView {
     /// Invoked at app startup to assert the catalog matches the spec. Cheap;
     /// runs once. A release build strips this whole block.
     static func runDebugInvariants() {
-        // Shape: 4 sections with expected counts per spec §6.
+        // Shape: 5 sections with expected counts per spec §6 (+ Recordings & Library).
         assert(
-            AdvancedContent.sections.count == 4,
-            "Advanced must have exactly 4 sections; got \(AdvancedContent.sections.count)"
+            AdvancedContent.sections.count == 5,
+            "Advanced must have exactly 5 sections; got \(AdvancedContent.sections.count)"
         )
-        let expectedCounts = [6, 4, 4, 3]
+        let expectedCounts = [7, 4, 4, 3, 7]
         for (idx, section) in AdvancedContent.sections.enumerated() {
             assert(
                 section.cards.count == expectedCounts[idx],

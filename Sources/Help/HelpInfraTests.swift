@@ -437,6 +437,7 @@ enum InfoCircleAnchorRegistry {
         ("GeneralPane.transcriptionLanguage",       "transcription-language"),
         ("GeneralPane.autoPaste",                   "dictation"),
         ("GeneralPane.pressReturnAfterPasting",     "dictation"),
+        ("GeneralPane.returnToOriginApp",           "dictation"),
         ("GeneralPane.keepLastTranscriptOnClipboard", "dictation"),
 
         // AI pane (RewritePane) — provider/auth/test + folded-in Prompts.
@@ -471,6 +472,9 @@ enum InfoCircleAnchorRegistry {
 
         // VocabularyPane
         ("VocabularyPane.customVocabulary",   "custom-vocabulary"),
+
+        // GeneralPane — Semantic search (AI search over recordings)
+        ("GeneralPane.semanticSearch",         "recordings-ai-search"),
 
         // SavingsBadge.savingsEstimate has helpAnchor: nil
     ]
