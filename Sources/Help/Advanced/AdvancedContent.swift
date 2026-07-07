@@ -298,7 +298,10 @@ enum AdvancedContent {
                     + "Best for clean meeting or call recordings where each person is on separate "
                     + "audio (Zoom/Meet, a video's own soundtrack) — not reliable when voices blur "
                     + "together acoustically through a single room mic. Single-speaker recordings "
-                    + "are detected and skipped automatically; the result is computed once and saved."
+                    + "are detected and skipped automatically; the result is computed once and saved. "
+                    + "Files you import are diarized automatically right after they transcribe (on by "
+                    + "default \u{2014} turn it off in Settings \u{2192} Speaker labels); the speaker model "
+                    + "downloads the first time it's needed. Live mic dictations stay manual-only."
             ),
             AdvancedCardData(
                 id: "recordings-file-import",
@@ -312,7 +315,9 @@ enum AdvancedContent {
                     + "Format coverage is close to universal: AVFoundation covers the common set "
                     + "(mp3, m4a, wav, mp4, mov\u{2026}), and a bundled, network-free FFmpeg fallback "
                     + "extracts audio from the long tail (WebM, MKV, WMA, AVI, and more). A live "
-                    + "dictation always takes priority over an in-flight import."
+                    + "dictation always takes priority over an in-flight import \u{2014} starting one "
+                    + "pauses the import, which then auto-resumes on its own once you finish, so you "
+                    + "never have to re-drop the file."
             ),
             AdvancedCardData(
                 id: "recordings-webvtt-export",

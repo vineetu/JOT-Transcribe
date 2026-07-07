@@ -32,7 +32,21 @@ final class RecorderController: ObservableObject {
     }
 
     @Published private(set) var state: State = .idle {
-        didSet { scheduleAutoRecoveryIfNeeded() }
+        didSet {
+            scheduleAutoRecoveryIfNeeded()
+            // Resilient import resume (docs/resilient-import-resume/design.md
+            // §3): the symmetric counterpart of `runFlow()`'s dictation-start
+            // `cancelInFlight()` call. `state` flips back to `.idle` from
+            // several terminal sites (transform success/failure, the plain
+            // no-transform path, `cancel()`, `clearError()`, error
+            // auto-recovery) — this `didSet` is the ONE point they all pass
+            // through, so a file job paused for this dictation resumes no
+            // matter how the session ended. `recorderIsIdle()` (checked
+            // inside) reads this same property, already updated here.
+            if state == .idle, oldValue != .idle {
+                FileTranscriptionIngest.shared?.resumePendingIfNeeded()
+            }
+        }
     }
     @Published private(set) var lastTranscript: String?
     /// Timestamp paired with `lastTranscript`. Updated on every write so
@@ -283,7 +297,9 @@ final class RecorderController: ObservableObject {
         // `transcribe()` call would throw `.busy` and the whole spoken
         // recording would be silently discarded. Cancel any in-flight file
         // job THE INSTANT a dictation starts — before any mic capture below
-        // — so live speech always wins; the cancelled file is retriable.
+        // — so live speech always wins; the cancelled file is captured for
+        // auto-resume (docs/resilient-import-resume/design.md) and retried
+        // by the `state` didSet's `resumePendingIfNeeded()` idle hook.
         // See `FileTranscriptionIngest`'s doc comment for the full writeup
         // (including the reciprocal mic→file guard and its documented
         // residual-risk window).

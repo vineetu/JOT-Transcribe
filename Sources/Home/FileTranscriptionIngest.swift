@@ -25,8 +25,9 @@ import os.log
 ///     before and after the actor-isolated `transcriber.transcribeFile(...)`
 ///     call, so a job cancelled before it reaches that call never sets the
 ///     transcriber's busy flag, and a job cancelled after it returns is
-///     discarded (no `Recording` inserted, no stray file left behind) — it's
-///     simply retriable by dropping the file again.
+///     discarded (no `Recording` inserted, no stray file left behind) — and
+///     captured as a `pendingResume` that auto-retries once the recorder
+///     returns to idle (docs/resilient-import-resume/design.md).
 ///  2. **Mic → file:** `enqueue(_:)` refuses to START a brand-new file job
 ///     while a dictation is already in flight (`recorderIsIdle() == false`).
 ///     Without this, a freshly-dropped file could grab the transcriber's busy
@@ -74,6 +75,32 @@ final class FileTranscriptionIngest: ObservableObject {
         /// model not ready). Deliberately distinct from `.failure` — nothing
         /// was lost, so the caption shouldn't read as an error.
         case savedPending(filename: String)
+        /// Auto-diarize (docs/auto-diarize-imports/design.md): transcription
+        /// already succeeded and the `Recording` is already saved — this is
+        /// the post-success "Detect speakers" pass running automatically,
+        /// gated by `autoDiarizeImports`. Distinct from `.importing` so the
+        /// caption can show a different glyph/message; a failure here never
+        /// regresses to `.failure` (see `run()`) — it just returns to
+        /// `.success` unlabeled.
+        case diarizing(filename: String)
+        /// Resilient import resume (docs/resilient-import-resume/design.md):
+        /// a live dictation preempted the in-flight job. The unfinished part
+        /// was captured as `pendingResume` and will auto-resume (silently)
+        /// when the recorder returns to `.idle` — see `resumePendingIfNeeded()`.
+        /// Non-terminal: `scheduleClear` never resets it, and `isImporting`
+        /// stays `true` so the Dictate pill remains disabled.
+        case pausedForDictation(filename: String)
+    }
+
+    /// Resilient import resume (docs/resilient-import-resume/design.md §1):
+    /// the unfinished part of a job interrupted by a live dictation.
+    /// Resume-from-scratch — a transcription-phase interrupt re-transcribes
+    /// the original dropped URL (nothing was saved yet; the transcode to
+    /// `.m4a` happens AFTER transcription); a diarization-phase interrupt
+    /// re-runs only `DiarizationRunner` on the already-saved `Recording`.
+    private enum ResumeJob {
+        case transcribe(url: URL, filename: String)
+        case diarize(recordingID: PersistentIdentifier, filename: String)
     }
 
     private enum IngestError: Error {
@@ -108,6 +135,15 @@ final class FileTranscriptionIngest: ObservableObject {
     private let context: ModelContext
     private let transcriberHolder: TranscriberHolder
     private let recorderIsIdle: () -> Bool
+    private let diarizerHolder: DiarizerHolder
+
+    /// Advanced toggle (docs/auto-diarize-imports/design.md), default ON —
+    /// read via `UserDefaults` directly rather than `@AppStorage` since this
+    /// is a plain `ObservableObject`, not a `View`. `SpeakerLabelsPane` binds
+    /// the same key with `@AppStorage` for the Settings toggle.
+    private var autoDiarizeImports: Bool {
+        (UserDefaults.standard.object(forKey: "jot.diarize.autoDetectOnImport") as? Bool) ?? true
+    }
 
     private var currentTask: Task<Void, Never>?
     /// Bumped on every `start()` and every `cancelInFlight()`. A job cancelled
@@ -118,6 +154,21 @@ final class FileTranscriptionIngest: ObservableObject {
     private var generation = 0
     /// File-vs-file collisions (design §3.5): FIFO, one at a time.
     private var queue: [URL] = []
+    /// Resilient import resume (design §1): set by `cancelInFlight()` when a
+    /// live dictation preempts an in-flight job (and by the auto-diarize
+    /// defer-not-skip path). Consumed by `resumePendingIfNeeded()` on the
+    /// recorder's next `.idle` transition. In-memory only — a quit loses it
+    /// (accepted v1). At most one at a time; a NEW user drop supersedes it.
+    private var pendingResume: ResumeJob?
+    /// Context of the job currently in `.importing` so a mid-transcription
+    /// `cancelInFlight()` can capture it as `.transcribe`. Set in `start(_:)`,
+    /// cleared on terminal completion (`run()`'s defer) and after capture.
+    private var currentJob: (url: URL, filename: String)?
+    /// Set immediately before a diarize pass runs (both the post-import
+    /// auto-diarize block and the resumed-diarize path) so a mid-diarize
+    /// `cancelInFlight()` can capture it as `.diarize`. Cleared when the
+    /// pass finishes and after capture.
+    private var currentDiarizingRecordingID: PersistentIdentifier?
     /// Auto-clears the terminal (success/failure) banner after a beat,
     /// mirroring `RecorderController.scheduleAutoRecoveryIfNeeded()`'s idiom.
     private var clearTask: Task<Void, Never>?
@@ -136,16 +187,22 @@ final class FileTranscriptionIngest: ObservableObject {
     init(
         context: ModelContext,
         transcriberHolder: TranscriberHolder,
-        recorderIsIdle: @escaping () -> Bool
+        recorderIsIdle: @escaping () -> Bool,
+        diarizerHolder: DiarizerHolder
     ) {
         self.context = context
         self.transcriberHolder = transcriberHolder
         self.recorderIsIdle = recorderIsIdle
+        self.diarizerHolder = diarizerHolder
     }
 
     var isImporting: Bool {
-        if case .importing = status { return true }
-        return false
+        switch status {
+        case .importing, .diarizing, .pausedForDictation:
+            return true
+        case .idle, .success, .failure, .savedPending:
+            return false
+        }
     }
 
     /// Entry point for both drag-and-drop and the "browse…" picker.
@@ -164,7 +221,22 @@ final class FileTranscriptionIngest: ObservableObject {
             return
         }
 
-        if isImporting {
+        // Resilient import resume: a genuinely NEW accepted drop supersedes
+        // any interrupted job waiting to auto-resume (design §1 — "a new
+        // drop, or an explicit user cancel, clears `pendingResume`").
+        // Cleared only AFTER both guards pass so a rejected drop doesn't
+        // silently discard the pending resume. Harmless on the resume path
+        // itself: `resumePendingIfNeeded()` nils `pendingResume` before
+        // re-entering here.
+        pendingResume = nil
+
+        // `currentTask != nil` rather than `isImporting`: identical for the
+        // pre-existing states (`.importing`/`.diarizing` always have a live
+        // task), but `.pausedForDictation` reports `isImporting == true`
+        // with NO task — appending there would strand the drop with nothing
+        // running to drain the queue. A new drop that reaches this point
+        // while paused (recorder idle, resume not yet fired) starts now.
+        if currentTask != nil {
             queue.append(url)
         } else {
             start(url)
@@ -173,20 +245,130 @@ final class FileTranscriptionIngest: ObservableObject {
 
     /// Called by `RecorderController.runFlow()` the INSTANT a new dictation
     /// starts, before any mic capture begins (§6 R1, preferred fix "a").
-    /// Cancels the in-flight job and drops the queue — a fresh dictation
-    /// should not silently resume a stale file job later. The cancelled
-    /// job is retriable; the user can drop the file again.
+    /// Cancels the in-flight job — the mic must get the engine now — but no
+    /// longer discards it (docs/resilient-import-resume/design.md, reversing
+    /// the original "user re-drops" decision): the unfinished part is
+    /// captured as `pendingResume` and auto-resumed by
+    /// `resumePendingIfNeeded()` when the recorder returns to `.idle`.
+    /// Already-queued (not-yet-started) drops stay queued — they were never
+    /// in flight, and the resumed job's completion drains them as usual.
     func cancelInFlight() {
         guard currentTask != nil || !queue.isEmpty else { return }
-        log.info("Live dictation started — cancelling in-flight file transcription")
+        log.info("Live dictation started — pausing in-flight file transcription for resume")
         currentTask?.cancel()
         currentTask = nil
         generation &+= 1
-        queue.removeAll()
         stopElapsedTicker()
-        if case .importing = status {
-            status = .idle
+        switch status {
+        case .importing:
+            // Transcription-phase interrupt: nothing saved yet (the m4a
+            // transcode happens AFTER transcription) — resume re-transcribes
+            // the original dropped URL from scratch. Jot is not sandboxed,
+            // so the URL stays readable with no security-scope handling.
+            if let job = currentJob {
+                pendingResume = .transcribe(url: job.url, filename: job.filename)
+                status = .pausedForDictation(filename: job.filename)
+            } else {
+                status = .idle
+            }
+        case .diarizing(let filename):
+            // Diarization-phase interrupt: the Recording + transcript are
+            // already saved — resume re-runs only the diarize pass.
+            if let recordingID = currentDiarizingRecordingID {
+                pendingResume = .diarize(recordingID: recordingID, filename: filename)
+                status = .pausedForDictation(filename: filename)
+            } else {
+                status = .idle
+            }
+        case .idle, .success, .failure, .savedPending, .pausedForDictation:
+            break
         }
+        currentJob = nil
+        currentDiarizingRecordingID = nil
+    }
+
+    /// Resilient import resume (docs/resilient-import-resume/design.md §3):
+    /// called by `RecorderController` on its transition back to `.idle` —
+    /// the symmetric counterpart of the dictation-start `cancelInFlight()`
+    /// hook. Consumes `pendingResume` (nil'd FIRST, guarding re-entrancy):
+    /// a `.transcribe` re-enters the normal `enqueue` path (Guard 2 passes —
+    /// the recorder is idle by definition here); a `.diarize` re-runs only
+    /// `DiarizationRunner` on the already-saved `Recording`. Silent
+    /// auto-resume — no prompt.
+    func resumePendingIfNeeded() {
+        guard currentTask == nil, recorderIsIdle(), let job = pendingResume else { return }
+        pendingResume = nil
+        // Leave the paused caption behind before re-entering `enqueue` /
+        // `startDiarizeResume` (both set their own in-progress status).
+        if case .pausedForDictation = status { status = .idle }
+        switch job {
+        case .transcribe(let url, _):
+            log.info("Recorder idle — resuming interrupted file transcription")
+            enqueue(url)
+        case .diarize(let recordingID, let filename):
+            log.info("Recorder idle — resuming deferred speaker detection")
+            startDiarizeResume(recordingID: recordingID, filename: filename)
+        }
+    }
+
+    /// Diarize-only resume: the transcript/`Recording` already exist — only
+    /// the speaker-detection pass was interrupted (or deferred because the
+    /// recorder was busy). Mirrors `start(_:)`'s task/generation discipline
+    /// so a fresh dictation can preempt (and re-capture) this pass too.
+    private func startDiarizeResume(recordingID: PersistentIdentifier, filename: String) {
+        let descriptor = FetchDescriptor<Recording>(
+            predicate: #Predicate { $0.persistentModelID == recordingID }
+        )
+        guard let recording = (try? context.fetch(descriptor))?.first else {
+            // The recording was deleted while paused — nothing to label.
+            log.info("Resumed diarize target no longer exists — dropping resume")
+            return
+        }
+        generation &+= 1
+        let gen = generation
+        currentJob = nil
+        currentDiarizingRecordingID = recordingID
+        status = .diarizing(filename: filename)
+        startElapsedTicker()
+        currentTask = Task { @MainActor [weak self] in
+            await self?.runDiarizeOnly(recording: recording, filename: filename, generation: gen)
+        }
+    }
+
+    /// The resumed counterpart of `run()`'s auto-diarize block — same
+    /// graceful-failure contract (a diarize failure never surfaces as
+    /// `.failure`; the transcript is already safe) and the same gen-guarded
+    /// defer so a late return can't clobber a newer job's slot.
+    private func runDiarizeOnly(recording: Recording, filename: String, generation gen: Int) async {
+        defer {
+            if gen == generation {
+                stopElapsedTicker()
+                currentTask = nil
+                currentDiarizingRecordingID = nil
+                processNextQueued()
+            }
+        }
+        do {
+            let payload = try await DiarizationRunner.run(
+                holder: diarizerHolder,
+                audioURL: RecordingStore.audioURL(for: recording),
+                transcript: recording.transcript
+            )
+            if !Task.isCancelled, let payload, let data = try? JSONEncoder().encode(payload) {
+                recording.speakerTimeline = data
+                try? context.save()
+            }
+        } catch is CancellationError {
+            // Preempted AGAIN mid-resume — `cancelInFlight` re-captured it
+            // (status was `.diarizing`, `currentDiarizingRecordingID` set),
+            // so the next idle just retries. No error, no save.
+            return
+        } catch {
+            log.error("Resumed diarize failed for \"\(filename, privacy: .public)\": \(String(describing: error))")
+        }
+        guard !Task.isCancelled else { return }
+        status = .success(filename: filename)
+        scheduleClear()
     }
 
     /// FFmpeg-only formats (design §8.5, review R5 — a FINITE explicit
@@ -247,6 +429,10 @@ final class FileTranscriptionIngest: ObservableObject {
         let filename = url.lastPathComponent
         generation &+= 1
         let gen = generation
+        // Resilient import resume: remember the in-flight job's context so a
+        // mid-transcription `cancelInFlight()` can capture it for resume.
+        currentJob = (url: url, filename: filename)
+        currentDiarizingRecordingID = nil
         status = .importing(filename: filename, progress: nil)
         startElapsedTicker()
         currentTask = Task { @MainActor [weak self] in
@@ -338,6 +524,12 @@ final class FileTranscriptionIngest: ObservableObject {
             if gen == generation {
                 stopElapsedTicker()
                 currentTask = nil
+                // Terminal completion of a still-current job — clear the
+                // resume-capture context (a cancelled job's late return has
+                // gen != generation and must not clear a newer job's, nor
+                // the context `cancelInFlight` already consumed).
+                currentJob = nil
+                currentDiarizingRecordingID = nil
                 processNextQueued()
             }
         }
@@ -538,10 +730,58 @@ final class FileTranscriptionIngest: ObservableObject {
             // AI-search Stage B, same hook `RecordingPersister` fires.
             RecordingIndexer.shared?.index(recordingID: recording.id, text: result.text)
 
-            // Diarization stays manual — the user taps "Detect speakers" in
-            // the detail view later, same as a mic recording (design §4.1
-            // step 5): no auto-diarize here.
+            // Auto-diarize (docs/auto-diarize-imports/design.md): reuse the
+            // exact "Detect speakers" pipeline (`DiarizationRunner`), gated
+            // by the Advanced toggle. Runs AFTER the `Recording` is already
+            // saved with its transcript — so any failure here (model
+            // download, decode, process) is caught and logged but never
+            // fails the import; the transcript is already safe. Skipped
+            // entirely if a live dictation cancels this job mid-diarize.
+            //
+            // `recorderIsIdle()` gate: diarization holds `CoreMLInferenceGate`
+            // (serialized against the mic's stop-time transcription by design
+            // D6). If the user is already dictating when the import lands, we
+            // DEFER auto-diarize rather than make their paste wait behind the
+            // gate — resilient-import-resume upgrades the former SKIP (which
+            // silently lost the labels) to a `pendingResume` that the
+            // recorder-idle hook picks up. This narrows but doesn't fully
+            // close the window (a dictation that STARTS mid-diarize is
+            // handled by `cancelInFlight`'s `.diarizing` capture instead).
+            if Features.speakerLabels && autoDiarizeImports, !Task.isCancelled {
+                if recorderIsIdle() {
+                    status = .diarizing(filename: filename)
+                    // Resume capture context: lets a mid-diarize
+                    // `cancelInFlight()` record which recording to re-diarize.
+                    // Cleared by `run()`'s gen-guarded defer (or consumed by
+                    // `cancelInFlight` itself).
+                    currentDiarizingRecordingID = recording.persistentModelID
+                    do {
+                        let payload = try await DiarizationRunner.run(
+                            holder: diarizerHolder,
+                            audioURL: RecordingStore.audioURL(for: recording),
+                            transcript: recording.transcript
+                        )
+                        if !Task.isCancelled, let payload, let data = try? JSONEncoder().encode(payload) {
+                            recording.speakerTimeline = data
+                            try? context.save()
+                        }
+                    } catch is CancellationError {
+                        // Live dictation preempted mid-diarize — no error, no
+                        // save; `cancelInFlight` already captured the resume.
+                    } catch {
+                        log.error("Auto-diarize failed for \"\(filename, privacy: .public)\": \(String(describing: error))")
+                    }
+                } else {
+                    // Recorder busy → DEFER (resilient-import-resume): the
+                    // transcript is already saved, so only the diarize pass
+                    // is outstanding — queue it for the idle hook instead of
+                    // losing the labels. The import still completes as
+                    // `.success` below; the deferred pass runs silently later.
+                    pendingResume = .diarize(recordingID: recording.persistentModelID, filename: filename)
+                }
+            }
 
+            guard !Task.isCancelled else { return }
             status = .success(filename: filename)
             scheduleClear()
         } catch {
@@ -636,7 +876,9 @@ final class FileTranscriptionIngest: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             switch self.status {
             case .success, .failure, .savedPending: self.status = .idle
-            case .idle, .importing: break
+            // `.pausedForDictation` is non-terminal (like `.importing`) —
+            // the caption stays up until the idle-hook resume replaces it.
+            case .idle, .importing, .diarizing, .pausedForDictation: break
             }
         }
     }

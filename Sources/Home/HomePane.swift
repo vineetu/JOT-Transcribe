@@ -75,7 +75,7 @@ struct HomePane: View {
                 // it can never be the only guard against data loss).
                 .disabled(fileIngest.isImporting)
                 .opacity(fileIngest.isImporting ? 0.5 : 1)
-                .help(fileIngest.isImporting ? "Finishing a file transcription…" : "")
+                .help(disabledPillHelp)
 
                 dictateZoneCaption
                     .animation(.easeInOut(duration: 0.14), value: isDropTargeted)
@@ -127,6 +127,15 @@ struct HomePane: View {
     /// affordance, or the file job's in-progress/terminal status —
     /// whichever is current. Never shown alongside the dictate caption
     /// (design keeps this a single quiet line, not a paragraph).
+    /// Tooltip for the disabled Dictate pill while a file job runs — reflects
+    /// the actual phase (transcribing vs. detecting speakers). Kept out of the
+    /// view body so the type-checker isn't asked to evaluate an inline closure.
+    private var disabledPillHelp: String {
+        if case .diarizing = fileIngest.status { return "Detecting speakers…" }
+        if case .pausedForDictation = fileIngest.status { return "Paused — resumes after your dictation" }
+        return fileIngest.isImporting ? "Finishing a file transcription…" : ""
+    }
+
     @ViewBuilder
     private var dictateZoneCaption: some View {
         if isDropTargeted {
@@ -194,6 +203,36 @@ struct HomePane: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.orange)
                     Text("Saved \(filename) — needs transcription")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            case .diarizing(let filename):
+                // Auto-diarize (docs/auto-diarize-imports/design.md): the
+                // post-success "Detect speakers" pass, running automatically.
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Image(systemName: "person.wave.2")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("Detecting speakers in \(filename)…")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            case .pausedForDictation:
+                // Resilient import resume (docs/resilient-import-resume/
+                // design.md §4): a live dictation preempted the file job —
+                // it auto-resumes when the recorder returns to idle. Quiet,
+                // not an error.
+                HStack(spacing: 5) {
+                    Image(systemName: "pause.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("Paused — resumes after dictation")
                         .font(.system(size: 11.5))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

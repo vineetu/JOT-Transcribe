@@ -759,7 +759,8 @@ enum JotComposition {
         let fileTranscriptionIngest = FileTranscriptionIngest(
             context: modelContainer.mainContext,
             transcriberHolder: transcriberHolder,
-            recorderIsIdle: { [weak recorder] in recorder?.state == .idle }
+            recorderIsIdle: { [weak recorder] in recorder?.state == .idle },
+            diarizerHolder: diarizerHolder
         )
         FileTranscriptionIngest.shared = fileTranscriptionIngest
 

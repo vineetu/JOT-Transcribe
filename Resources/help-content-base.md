@@ -8,14 +8,14 @@ Keyboard modifier glossary: ⌥=Option, ⌘=Command, ⌃=Control, ⇧=Shift.
 toggle-recording: press hotkey (default single key Caps Lock) start; press again stop+transcribe.
 push-to-talk: hold hotkey record, release stop. Unbound default.
 cancel-recording: Esc discards. Active only while recording, never steals Esc when idle.
-any-length: no hard limit. Quality diminishes past ~1 hr; shorter sessions best.
+any-length: no hard limit; quality diminishes past ~1 hr.
 on-device-transcription: Parakeet on Apple Neural Engine. Audio stays on Mac. Model downloads first use.
-streaming-preview: English-only v2 model — recommended for new installs, experimental. Live partial transcript in the pill; degrades to batch on cold ANE.
+streaming-preview: English-only v2 model — recommended for new installs, experimental. Live partial transcript in pill; batch fallback on cold ANE.
 multilingual: 25 European langs, auto-detected per recording.
 languages: Jot supports these ASR models — pick one as primary at Settings → Transcription. Only the primary is hot in memory; switching unloads + reloads.
 <!-- FRAGMENT: jot-asr-languages -->
 japanese: yes — install the Parakeet 0.6B Japanese model from Settings → Transcription, then make it primary. v3 does NOT transcribe Japanese; the JA model is required.
-custom-vocabulary: experimental. Short list of names, acronyms, jargon Jot prefers. Biases recognizer — best-effort, not guarantee. Too many similar entries cause unpredictable preference. Edit at Settings → Vocabulary. Applies to Parakeet v3, v3 int4, v2, and Nemotron English (parallel CTC spotter). NOT applied to Japanese — no per-token timings for the rescorer.
+custom-vocabulary: experimental. Short list of names/acronyms/jargon Jot prefers; biases the recognizer (best-effort, not guaranteed). Too many similar entries → unpredictable. Edit at Settings → Vocabulary. Applies to Parakeet v3/v3 int4/v2 and Nemotron English (CTC spotter); NOT Japanese (no per-token timings).
 
 ## Cleanup (optional, off default)
 LLM polishes transcript. Four passes: filler removal, grammar, number normalization, structure. Voice, word choice, register preserved — not style rewrite.
@@ -47,9 +47,9 @@ copy-last: ⌥⇧V (Option+Shift+V) re-pastes most recent transcript.
 Library items (recordings + rewrite sessions) and transcripts kept on-device, configurable. Options: 7, 30, 90 days, forever. Enforced on launch, hourly. Settings → General → Keep library items.
 
 ## Files & Library
-recordings-file-import: drag an audio/video file onto Recents (or browse) to transcribe like a live recording; near-universal formats via AVFoundation + bundled ffmpeg.
-recordings-diarization: Detect speakers button labels who spoke when, on-device; right-click a speaker → Rename speaker. Best for clean meeting/call audio, not same-room mic; single-speaker skipped.
-Also new: WebVTT export (recordings-webvtt-export), bundled jot CLI (recordings-cli), default-on AI search (recordings-ai-search), import progress (recordings-progress), never-lost audio on failure (recordings-never-lose-audio).
+recordings-file-import: drag an audio/video file onto Recents (or browse) to transcribe like a live recording; near-universal formats via AVFoundation + bundled ffmpeg. A dictation pauses an import; it auto-resumes after.
+recordings-diarization: Detect speakers labels who spoke when, on-device; right-click a speaker → Rename speaker. Best for clean meeting/call audio, not same-room mic; single-speaker skipped. Imported files auto-diarize by default (Settings → Speaker labels, Advanced).
+Also: WebVTT export (recordings-webvtt-export), jot CLI (recordings-cli), AI search (recordings-ai-search), import progress (recordings-progress), never-lost audio (recordings-never-lose-audio).
 
 ## Troubleshooting
 permissions: Mic, Input Monitoring, Accessibility.

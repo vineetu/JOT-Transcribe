@@ -63,6 +63,7 @@ struct AboutPane: View {
         Form {
             identitySection
             updatesSection
+            iosAppSection
             visionSection
             if advancedEnabled && isAskJotAvailable {
                 askJotSection
@@ -192,6 +193,52 @@ struct AboutPane: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Check for Updates")
             .accessibilityHint("Checks for a newer version of Jot.")
+        }
+    }
+
+    // MARK: - iOS companion app
+
+    /// Cross-promotion for the companion iPhone app (jot-mobile, shipped
+    /// separately on the App Store — see the jot-mobile repo). Placed high in
+    /// the About pane so the product family is discoverable. Uses `ShareLink`
+    /// rather than a plain `Link`: opening the store *on the Mac* doesn't help
+    /// get the app onto a phone, so tapping the row opens the system share
+    /// sheet — AirDrop it to your iPhone, Message it to yourself, etc. Static
+    /// store URL, no tracking — consistent with the "no telemetry" pledge.
+    private var iosAppSection: some View {
+        Section {
+            ShareLink(
+                item: URL(string: "https://apps.apple.com/us/app/jot-transcribe/id6766447330")!,
+                subject: Text("Jot for iPhone"),
+                message: Text("Dictate on your iPhone with Jot")
+            ) {
+                HStack(alignment: .center, spacing: 14) {
+                    Image(systemName: "iphone.gen3")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 28)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Jot for iPhone")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Text("Send the App Store link to your phone — AirDrop, Messages, and more.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share Jot for iPhone")
+            .accessibilityHint("Opens the share sheet to send the App Store link to your phone.")
         }
     }
 

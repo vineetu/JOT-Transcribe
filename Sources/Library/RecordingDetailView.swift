@@ -581,20 +581,7 @@ struct RecordingDetailView: View {
         Task {
             defer { Task { @MainActor in isDetectingSpeakers = false } }
             do {
-                try await holder.prepareIfNeeded()
-                let samples = await Task.detached(priority: .userInitiated) {
-                    (try? DiarizationAudio.readMono16kFloat(url: url)) ?? []
-                }.value
-                guard !samples.isEmpty else {
-                    await MainActor.run { detectSpeakersError = "Couldn't read this recording's audio." }
-                    return
-                }
-                let result = try await holder.process(samples: samples)
-                let payload = try await DiarizationTimelineBuilder.buildPayload(
-                    result: result,
-                    transcript: transcript,
-                    duration: Double(samples.count) / 16_000.0
-                )
+                let payload = try await DiarizationRunner.run(holder: holder, audioURL: url, transcript: transcript)
                 await MainActor.run {
                     guard let payload else {
                         // Solo recording (design D7 dominance gate) — nothing

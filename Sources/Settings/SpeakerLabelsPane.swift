@@ -17,10 +17,17 @@ import SwiftUI
 struct SpeakerLabelsPane: View {
     @EnvironmentObject private var diarizerHolder: DiarizerHolder
 
+    /// Auto-diarize imported files (docs/auto-diarize-imports/design.md),
+    /// default ON — same storage key `FileTranscriptionIngest` reads via
+    /// plain `UserDefaults` (it's a non-View `ObservableObject`, so it can't
+    /// use `@AppStorage` itself).
+    @AppStorage("jot.diarize.autoDetectOnImport") private var autoDiarizeImports: Bool = true
+
     var body: some View {
         Form {
             headerSection
             downloadStatusSection
+            autoDetectSection
             attributionSection
         }
         .formStyle(.grouped)
@@ -102,6 +109,17 @@ struct SpeakerLabelsPane: View {
                         .foregroundStyle(.green)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var autoDetectSection: some View {
+        Section {
+            Toggle("Detect speakers automatically on imported files", isOn: $autoDiarizeImports)
+                .font(.system(size: 13))
+            Text("When you import an audio or video file, Jot labels who said what right after transcribing it — no need to tap \"Detect speakers\" yourself. Turn this off to only detect speakers manually, per recording.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
         }
     }
 
