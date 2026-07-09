@@ -319,6 +319,9 @@ actor LLMClient {
         if m.contains("chat") { return false }            // gpt-5*-chat-latest
         if m == "gpt-5" || m.hasPrefix("gpt-5-") { return true }   // gpt-5.0 generation
         if m.hasPrefix("gpt-5.5") { return true }         // gpt-5.5 generation
+        // gpt-5.6 (Sol/Terra/Luna, GA 2026-07-09): unverified, assumed to
+        // follow 5.5's reject behavior — the 400-retry self-heals if wrong.
+        if m.hasPrefix("gpt-5.6") { return true }
         if m.hasPrefix("o1") || m.hasPrefix("o3") || m.hasPrefix("o4") { return true }
         return false                                      // gpt-5.1–5.4, gpt-4o, locals
     }

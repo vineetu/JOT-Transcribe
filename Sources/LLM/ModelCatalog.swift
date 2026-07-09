@@ -17,10 +17,16 @@ enum ModelCatalog {
     static func options(for provider: LLMProvider) -> [String] {
         switch provider {
         case .openai:
+            // gpt-5.6 (Sol/Terra/Luna) was announced GA 2026-07-09 but is
+            // NOT yet served on real accounts (404 verified against a live
+            // key the same day) — do not list it until /v1/models shows it.
             return ["gpt-5.4-mini", "gpt-5.5"]
         case .anthropic:
-            return ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
+            // claude-sonnet-5 is the canonical dateless ID (GA 2026-06-30).
+            return ["claude-sonnet-5", "claude-haiku-4-5-20251001"]
         case .gemini:
+            // Already-current: gemini-3.5-flash is the newest GA Gemini
+            // (2.x retired 2026-06-15); 3-pro remains preview-only.
             return ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
         case .ollama, .lmStudio, .appleIntelligence:
             return []
