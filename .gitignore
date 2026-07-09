@@ -105,3 +105,4 @@ tools/nemotron-probe/
 tools/diarize-probe/
 tools/*/.build/
 CURRENT_DEBUG_STATE.md
+scripts/*-assets/
