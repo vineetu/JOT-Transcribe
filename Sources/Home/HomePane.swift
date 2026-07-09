@@ -131,6 +131,7 @@ struct HomePane: View {
     /// the actual phase (transcribing vs. detecting speakers). Kept out of the
     /// view body so the type-checker isn't asked to evaluate an inline closure.
     private var disabledPillHelp: String {
+        if case .preparing = fileIngest.status { return "Getting ready to transcribe…" }
         if case .diarizing = fileIngest.status { return "Detecting speakers…" }
         if case .pausedForDictation = fileIngest.status { return "Paused — resumes after your dictation" }
         return fileIngest.isImporting ? "Finishing a file transcription…" : ""
@@ -152,18 +153,33 @@ struct HomePane: View {
                         .multilineTextAlignment(.center)
                     AudioFileBrowseLine(onPick: presentAudioFileOpenPanel)
                 }
+            case .preparing(let filename):
+                // Import-progress ETA (docs/import-progress-eta/design.md
+                // §3): cold model-load pre-phase — distinct caption so a
+                // ~15s ANE warmup doesn't read as a stalled transcribe.
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Getting ready to transcribe \(filename)…")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             case .importing(let filename, let progress):
                 // Determinate where honest (docs/transcription-progress/design.md):
                 // a real `progress` fraction (Parakeet, audio > ~15s) gets a
                 // linear bar + percentage; everything else (Nemotron, or any
                 // file short enough that FluidAudio never emits a stream)
                 // falls back to the indeterminate spinner + an elapsed-time
-                // counter — honest about "still working," never a faked ETA.
+                // (or, once a per-machine rate is learned, a countdown)
+                // counter — honest about "still working," never a faked ETA
+                // (docs/import-progress-eta/design.md §2).
                 if let progress {
                     HStack(spacing: 6) {
                         ProgressView(value: progress)
                             .frame(maxWidth: 120)
-                        Text("Transcribing \(filename)… \(Int((progress * 100).rounded()))%")
+                        Text("Transcribing \(filename)\(Self.lengthSuffix(fileIngest.importAudioDuration))… \(Int((progress * 100).rounded()))%")
                             .font(.system(size: 11.5))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -173,7 +189,7 @@ struct HomePane: View {
                     HStack(spacing: 6) {
                         ProgressView()
                             .controlSize(.small)
-                        Text("Transcribing \(filename)…\(Self.elapsedSuffix(fileIngest.importElapsed))")
+                        Text("Transcribing \(filename)\(Self.lengthSuffix(fileIngest.importAudioDuration))\(Self.etaOrElapsedSuffix(remaining: fileIngest.importRemaining, elapsed: fileIngest.importElapsed))")
                             .font(.system(size: 11.5))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -252,6 +268,38 @@ struct HomePane: View {
         let minutes = total / 60
         let seconds = total % 60
         return " " + String(format: "%d:%02d", minutes, seconds)
+    }
+
+    /// `"M:SS"` — shared by the length and countdown suffixes below so both
+    /// read in the same units. Mirrors `elapsedSuffix`'s `%d:%02d` idiom
+    /// (docs/import-progress-eta/design.md).
+    private static func clock(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        let minutes = total / 60
+        let secs = total % 60
+        return String(format: "%d:%02d", minutes, secs)
+    }
+
+    /// `" (M:SS)"` — total audio length, shown regardless of which model
+    /// handles transcription; empty when unknown (docs/import-progress-eta/
+    /// design.md §1).
+    private static func lengthSuffix(_ duration: TimeInterval?) -> String {
+        guard let duration, duration > 0 else { return "" }
+        return " (\(clock(duration)))"
+    }
+
+    /// `"… ~M:SS left"` once a measured countdown estimate exists; `"…
+    /// almost done…"` once elapsed has caught up to (or passed) the
+    /// estimate — never a stuck "0:00" (docs/import-progress-eta/design.md
+    /// §2). Falls back to the plain elapsed-only reading when no estimate is
+    /// available yet (first import on a machine, short file, or a model that
+    /// reports real progress instead).
+    private static func etaOrElapsedSuffix(remaining: TimeInterval?, elapsed: TimeInterval?) -> String {
+        if let remaining {
+            let rounded = remaining.rounded()
+            return rounded <= 0 ? "… almost done…" : "… ~\(clock(rounded)) left"
+        }
+        return "…" + elapsedSuffix(elapsed)
     }
 
     /// Design §3.1 + §7: "browse" fallback for non-drag users — scoped to

@@ -61,6 +61,12 @@ final class FileTranscriptionIngest: ObservableObject {
 
     enum Status: Equatable {
         case idle
+        /// Import-progress ETA (docs/import-progress-eta/design.md §3): the
+        /// transcription model isn't loaded yet — a cold ANE load (~15s,
+        /// measured) is happening before any transcribing work starts.
+        /// Distinct from `.importing` so a cold load doesn't masquerade as a
+        /// stalled transcribe; no elapsed ticker runs during this phase.
+        case preparing(filename: String)
         /// `progress`: `nil` = indeterminate (Nemotron, or any file ≤ ~15s —
         /// no honest percentage available; the UI shows a spinner + elapsed
         /// time instead, from `importElapsed`). Non-nil = a real
@@ -131,6 +137,20 @@ final class FileTranscriptionIngest: ObservableObject {
     /// `nil` whenever no job is running.
     @Published private(set) var importElapsed: TimeInterval?
 
+    /// Import-progress ETA (docs/import-progress-eta/design.md §1): total
+    /// audio length of the current import, probed up front. `nil` when no
+    /// job is running or the duration couldn't be determined. Shown
+    /// regardless of which model handles transcription — pure context, no
+    /// prediction involved.
+    @Published private(set) var importAudioDuration: TimeInterval?
+
+    /// Import-progress ETA (docs/import-progress-eta/design.md §2): measured
+    /// countdown for the indeterminate (Nemotron one-shot) import path.
+    /// `nil` until a per-machine rate has been learned from a completed
+    /// import, the file is too short to bother, or the active model already
+    /// reports real progress. Only ever counts down (see `startElapsedTicker`).
+    @Published private(set) var importRemaining: TimeInterval?
+
     private let log = Logger(subsystem: "com.jot.Jot", category: "FileTranscriptionIngest")
     private let context: ModelContext
     private let transcriberHolder: TranscriberHolder
@@ -178,6 +198,16 @@ final class FileTranscriptionIngest: ObservableObject {
     /// savedPending, via the `defer` in `run()`) and on `cancelInFlight()`.
     private var elapsedTickTask: Task<Void, Never>?
     private var importStartedAt: Date?
+    /// Import-progress ETA (docs/import-progress-eta/design.md §2): this
+    /// job's predicted total processing time, computed once at the
+    /// `.importing` transition from the learned per-machine rate. `nil` when
+    /// no rate has been learned yet, the file is too short, or the active
+    /// model already reports real progress.
+    private var estimatedImportSeconds: TimeInterval?
+    /// Import-progress ETA (docs/import-progress-eta/design.md §1): this
+    /// job's probed audio duration (raw, `0` when unknown — as opposed to
+    /// the published `importAudioDuration`, which is `nil` in that case).
+    private var currentAudioDuration: TimeInterval?
 
     /// Throttles `.importing` progress updates to ~10/sec (design §3.2) —
     /// FluidAudio's stream can emit more often than the UI needs to redraw.
@@ -198,7 +228,7 @@ final class FileTranscriptionIngest: ObservableObject {
 
     var isImporting: Bool {
         switch status {
-        case .importing, .diarizing, .pausedForDictation:
+        case .importing, .diarizing, .pausedForDictation, .preparing:
             return true
         case .idle, .success, .failure, .savedPending:
             return false
@@ -260,11 +290,13 @@ final class FileTranscriptionIngest: ObservableObject {
         generation &+= 1
         stopElapsedTicker()
         switch status {
-        case .importing:
-            // Transcription-phase interrupt: nothing saved yet (the m4a
-            // transcode happens AFTER transcription) — resume re-transcribes
-            // the original dropped URL from scratch. Jot is not sandboxed,
-            // so the URL stays readable with no security-scope handling.
+        case .importing, .preparing:
+            // Transcription-phase interrupt (including a cold-load interrupt
+            // during `.preparing` — docs/import-progress-eta/design.md §3):
+            // nothing saved yet (the m4a transcode happens AFTER
+            // transcription) — resume re-transcribes the original dropped
+            // URL from scratch. Jot is not sandboxed, so the URL stays
+            // readable with no security-scope handling.
             if let job = currentJob {
                 pendingResume = .transcribe(url: job.url, filename: job.filename)
                 status = .pausedForDictation(filename: job.filename)
@@ -433,8 +465,14 @@ final class FileTranscriptionIngest: ObservableObject {
         // mid-transcription `cancelInFlight()` can capture it for resume.
         currentJob = (url: url, filename: filename)
         currentDiarizingRecordingID = nil
-        status = .importing(filename: filename, progress: nil)
-        startElapsedTicker()
+        // Import-progress ETA (docs/import-progress-eta/design.md §3):
+        // optimistic `.preparing` so there's no flash of stale status before
+        // `run()`'s first `await` — corrected to `.importing` there once the
+        // model-readiness check resolves (immediately, if already loaded).
+        // `startElapsedTicker()` moved into `run()` at the `.importing`
+        // transition so the elapsed clock (and any rate this job learns)
+        // excludes the cold-load wait.
+        status = .preparing(filename: filename)
         currentTask = Task { @MainActor [weak self] in
             await self?.run(url: url, filename: filename, generation: gen)
         }
@@ -454,7 +492,14 @@ final class FileTranscriptionIngest: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(500))
                 guard !Task.isCancelled, let self, let startedAt = self.importStartedAt else { return }
-                self.importElapsed = Date().timeIntervalSince(startedAt)
+                let elapsed = Date().timeIntervalSince(startedAt)
+                self.importElapsed = elapsed
+                // Import-progress ETA (docs/import-progress-eta/design.md
+                // §2): only ever counts down — `max(0, ...)` clamps at zero
+                // instead of going negative once elapsed overtakes the
+                // estimate; HomePane reads a zero/near-zero remaining as
+                // "almost done…" rather than a stuck "0:00".
+                self.importRemaining = self.estimatedImportSeconds.map { max(0, $0 - elapsed) }
             }
         }
     }
@@ -464,6 +509,14 @@ final class FileTranscriptionIngest: ObservableObject {
         elapsedTickTask = nil
         importStartedAt = nil
         importElapsed = nil
+        // Import-progress ETA (docs/import-progress-eta/design.md §1/§2):
+        // job-scoped state, cleared alongside the elapsed clock so a
+        // finished job doesn't leave a stale length/estimate visible on the
+        // next idle/terminal caption.
+        importAudioDuration = nil
+        importRemaining = nil
+        estimatedImportSeconds = nil
+        currentAudioDuration = nil
     }
 
     /// Calls `transcriber.transcribeFile`, forwarding a live progress
@@ -514,6 +567,48 @@ final class FileTranscriptionIngest: ObservableObject {
         start(queue.removeFirst())
     }
 
+    // MARK: - Import-progress ETA (docs/import-progress-eta/design.md)
+
+    private static let importRateDefaultsKey = "jot.import.nemotronComputeSecPerAudioSec"
+
+    /// Per-machine measured rate (processing-seconds ÷ audio-seconds) for the
+    /// Nemotron one-shot import path, persisted across launches. `nil` until
+    /// the first sample is recorded — deliberately NO hardcoded seed (the
+    /// design's on-device measurement found the rate varies per machine), so
+    /// a fresh machine shows length + elapsed timer only (§2) until it has
+    /// learned its own rate.
+    private static func learnedImportRate() -> Double? {
+        let stored = UserDefaults.standard.double(forKey: importRateDefaultsKey)
+        return stored > 0 ? stored : nil
+    }
+
+    /// EMA-smoothed update, called once per completed Nemotron import (§2).
+    /// `sample` is sanity-checked so a fluke (near-zero audio, a stray Task
+    /// hiccup) can't poison the learned rate.
+    private static func recordImportRate(_ sample: Double) {
+        guard sample.isFinite, sample > 0, sample < 100 else { return }
+        if let prior = learnedImportRate() {
+            UserDefaults.standard.set(prior * 0.6 + sample * 0.4, forKey: importRateDefaultsKey)
+        } else {
+            UserDefaults.standard.set(sample, forKey: importRateDefaultsKey)
+        }
+    }
+
+    /// Best-effort total audio length, probed up front so the caption can
+    /// show it regardless of which model ends up handling transcription
+    /// (§1). Tries the fast sync `AudioFormat.duration` first; falls back to
+    /// `AVURLAsset.load(.duration)` for containers it can't read directly.
+    /// Never throws — returns `0` when neither can determine it (e.g. an
+    /// ffmpeg-only container `AVURLAsset` also can't open).
+    private static func probeAudioDuration(_ url: URL) async -> TimeInterval {
+        let quick = AudioFormat.duration(ofFileAt: url)
+        if quick > 0 { return quick }
+        let asset = AVURLAsset(url: url)
+        guard let duration = try? await asset.load(.duration) else { return 0 }
+        let seconds = CMTimeGetSeconds(duration)
+        return seconds.isFinite && seconds > 0 ? seconds : 0
+    }
+
     private func run(url: URL, filename: String, generation gen: Int) async {
         defer {
             // Only relinquish the slot if THIS job is still current — a late
@@ -534,6 +629,42 @@ final class FileTranscriptionIngest: ObservableObject {
             }
         }
         guard !Task.isCancelled else { return }
+
+        // Import-progress ETA (docs/import-progress-eta/design.md §1): probe
+        // the source's total length up front — known before any decode/
+        // transcribe work starts, so the caption can show it regardless of
+        // which model ends up handling this job.
+        let audioDur = await Self.probeAudioDuration(url)
+        guard !Task.isCancelled else { return }
+
+        // docs/import-progress-eta/design.md §3: a cold model load (~15s +
+        // ANE warmup, measured) must not masquerade as a stalled transcribe.
+        // `.preparing` stays up (no elapsed ticker) until the model reports
+        // ready; the later `transcribeFile` call's own internal
+        // `ensureLoaded()` is then a no-op.
+        let transcriberForLoad = transcriberHolder.transcriber
+        if !(await transcriberForLoad.isReady) {
+            status = .preparing(filename: filename)
+            try? await transcriberForLoad.ensureLoaded()
+            guard !Task.isCancelled else { return }
+        }
+
+        // docs/import-progress-eta/design.md §2: the countdown only ever
+        // applies to the indeterminate Nemotron one-shot path, only for
+        // files long enough that a countdown is useful, and only once a
+        // per-machine rate has been learned — the first import on a machine
+        // shows length + elapsed only (no hardcoded seed).
+        currentAudioDuration = audioDur
+        importAudioDuration = audioDur > 0 ? audioDur : nil
+        if audioDur >= 20, !transcriberHolder.primaryModelID.filesReportTranscriptionProgress {
+            estimatedImportSeconds = Self.learnedImportRate().map { audioDur * $0 }
+        } else {
+            estimatedImportSeconds = nil
+        }
+        status = .importing(filename: filename, progress: nil)
+        // Moved here from `start(_:)` so the elapsed clock — and any rate
+        // this job goes on to learn — excludes the cold-load pre-phase.
+        startElapsedTicker()
 
         // §8.8 F2: the ffmpeg-fallback temp WAV (if any) is unlinked the
         // instant this function returns, by ANY exit path below — success,
@@ -668,6 +799,16 @@ final class FileTranscriptionIngest: ObservableObject {
                 status = .failure(message: "Couldn't make out any speech in \"\(filename)\".")
                 scheduleClear()
                 return
+            }
+
+            // Import-progress ETA (docs/import-progress-eta/design.md §2):
+            // record this job's measured rate for future countdowns — gated
+            // exactly like the estimate itself (long enough file, Nemotron
+            // one-shot path only) so a run under different conditions can't
+            // pollute the learned rate.
+            if audioDur >= 20, !transcriberHolder.primaryModelID.filesReportTranscriptionProgress,
+               let importStartedAt {
+                Self.recordImportRate(Date().timeIntervalSince(importStartedAt) / audioDur)
             }
 
             // Design §4.1 step 3 — transcode (review C4), not copy-as-is: the
@@ -878,7 +1019,9 @@ final class FileTranscriptionIngest: ObservableObject {
             case .success, .failure, .savedPending: self.status = .idle
             // `.pausedForDictation` is non-terminal (like `.importing`) —
             // the caption stays up until the idle-hook resume replaces it.
-            case .idle, .importing, .diarizing, .pausedForDictation: break
+            // `.preparing` is likewise non-terminal (docs/import-progress-eta/
+            // design.md §3).
+            case .idle, .importing, .diarizing, .pausedForDictation, .preparing: break
             }
         }
     }

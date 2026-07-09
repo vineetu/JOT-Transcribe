@@ -243,6 +243,26 @@ public enum ParakeetModelID: String, CaseIterable, Sendable {
         }
     }
 
+    /// `true` when file-import transcription emits a determinate
+    /// processed÷total fraction (chunked Parakeet batch path). `false` for
+    /// the Nemotron one-shot models — those get the measured-countdown +
+    /// elapsed treatment instead (docs/import-progress-eta/design.md §1).
+    /// Mirrors `usesBatchAsrManager`'s exhaustive switch so a new case
+    /// forces a decision.
+    var filesReportTranscriptionProgress: Bool {
+        switch self {
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
+            return true
+        case .nemotron_en, .nemotron_multilingual, .nemotron_multilingual_latin:
+            return false
+        }
+    }
+
     /// `true` when this case should appear in current user-facing pickers.
     /// `tdt_0_6b_v3_nemotron_streaming` was demoted in v1.12 — kept as a
     /// migration anchor only.
