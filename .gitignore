@@ -106,3 +106,4 @@ tools/diarize-probe/
 tools/*/.build/
 CURRENT_DEBUG_STATE.md
 scripts/*-assets/
+.release-deny-patterns

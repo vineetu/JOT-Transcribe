@@ -337,6 +337,35 @@ done
 if [[ "${JOT_SKIP_APPCAST}" != "1" && -f "${APPCAST_DST}" ]]; then
     git add -- "${APPCAST_DST}"
 fi
+
+# Staged-content deny-list: a local, gitignored pattern file
+# (.release-deny-patterns) lists path/content regexes that must never appear
+# in a PUBLIC release commit. The allowlist above stages whole directories, so
+# an untracked stray file inside them gets committed unless something checks —
+# this is that check. Patterns live outside the repo history on purpose.
+# Flavor pushes (JOT_PUSH_REMOTES != public) skip it: flavor branches are the
+# one place those files belong.
+DENYLIST="${REPO_ROOT}/.release-deny-patterns"
+if [[ "${JOT_PUSH_REMOTES}" == *public* && -f "${DENYLIST}" ]]; then
+    while IFS= read -r pattern; do
+        [[ -z "${pattern}" || "${pattern}" == \#* ]] && continue
+        hits="$(git diff --cached --name-only | grep -iE "${pattern}" || true)"
+        if [[ -n "${hits}" ]]; then
+            echo "ABORT: staged path matches deny pattern '${pattern}':" >&2
+            echo "${hits}" >&2
+            git reset -q
+            exit 1
+        fi
+        hits="$(git diff --cached -U0 | grep -iE "^\+.*(${pattern})" | head -3 || true)"
+        if [[ -n "${hits}" ]]; then
+            echo "ABORT: staged content matches deny pattern '${pattern}':" >&2
+            echo "${hits}" >&2
+            git reset -q
+            exit 1
+        fi
+    done < "${DENYLIST}"
+fi
+
 git commit -m "Release ${TAG}"
 git tag -a "${TAG}" -m "Jot ${TAG}"
 
