@@ -31,9 +31,11 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     private var pendingNemotronFinal: String?
 
     /// True when the Nemotron final transcript is English — gates the
-    /// casing-safe English `NumberNormalizer` in `nemotronResult`. Only
-    /// meaningful for the `.nemotron` final engine; `false` for `.batch` (the
-    /// batch `Transcriber` runs its own language-gated number normalization).
+    /// English-word-driven cleanup stages (`FillerWordCleaner` +
+    /// `NumberNormalizer`) in `nemotronResult`, whose rules are
+    /// English-hardcoded. Only meaningful for the `.nemotron` final engine;
+    /// `false` for `.batch` (the batch `Transcriber` runs its own
+    /// language-gated cleanup).
     private let nemotronFinalIsEnglish: Bool
 
     /// Multilingual Parakeet v3 final transcript + Nemotron preview.
@@ -55,7 +57,7 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
 
     /// Nemotron-only path: one manager instance provides partials and the
     /// final transcript for a live recording session. `.nemotron_en` is always
-    /// English, so number normalization is always eligible here.
+    /// English, so the English cleanup stages are always eligible here.
     init(nemotron: NemotronStreamingTranscriber) {
         self.finalEngine = .nemotron(nemotron)
         self.streamingEngine = .nemotron(nemotron)
@@ -64,8 +66,8 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
 
     /// Nemotron-multilingual-only path: identical control flow to the English
     /// Nemotron path, behind the shared `NemotronStreamingEngine` protocol.
-    /// `isEnglish` gates the English number normalizer — the "latin" ship
-    /// serves English + Romance, so only the English pin is eligible.
+    /// `isEnglish` gates the English cleanup stages — the "latin" ship serves
+    /// English + Romance, so only the English pin is eligible.
     init(nemotronMultilingual: NemotronMultilingualStreamingTranscriber, isEnglish: Bool) {
         self.finalEngine = .nemotron(nemotronMultilingual)
         self.streamingEngine = .nemotron(nemotronMultilingual)
@@ -358,14 +360,16 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             )
         }
 
-        // Nemotron emits clean native punctuation + casing, but leaves spoken
-        // numbers spelled out. Run the casing-safe English number normalizer
-        // for the English pin only (the "latin" ship also serves Romance, where
-        // the English cardinal rules would mis-convert). Nemotron returns a
-        // plain string with no token timings, so paragraph segmentation is not
-        // possible on this live path.
+        // Same cleanup chain as every other model, with the English-word-driven
+        // stages gated to English (FillerWordCleaner's filler/abbreviation
+        // lists and NumberNormalizer's spelled-cardinal rules are
+        // English-hardcoded — the "latin" ship's Romance output would
+        // mis-convert, e.g. French "six cents" = 600 → "6¢"). Nemotron emits
+        // clean native punctuation + casing but leaves spoken numbers spelled
+        // out. It returns a plain string with no token timings, so paragraph
+        // segmentation is not possible on this live path.
         if isEnglish {
-            text = NumberNormalizer.normalize(text)
+            text = NumberNormalizer.normalize(FillerWordCleaner.clean(text))
         }
         return TranscriptionResult(
             text: text,

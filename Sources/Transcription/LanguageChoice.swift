@@ -270,6 +270,16 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
+    /// True only for English. Gates the English-word-driven deterministic
+    /// cleanup stages: `NumberNormalizer`'s spelled-cardinal rules would
+    /// mis-convert Romance/other Latin scripts (e.g. French "six cents" = 600
+    /// → "6¢"), and `FillerWordCleaner`'s filler + abbreviation lists are
+    /// English-hardcoded. Pause-based paragraph segmentation and
+    /// `PostProcessing` are language-agnostic and NOT gated on this.
+    /// Per-language rules are future work (jot-shared
+    /// docs/multilingual-itn-options.md).
+    public var isEnglish: Bool { self == .english }
+
     /// Whether this language's script is written **without inter-word spaces**
     /// (CJK / space-free scripts). Drives preview-only string assembly in
     /// `PreviewScheduler.join` — a spaceless language must glue the committed
@@ -281,14 +291,6 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     ///
     /// This is **preview-only**: the final batch transcript is produced by the
     /// model itself and is unaffected by this flag.
-    /// True only for English. Gates the English-specific deterministic
-    /// number normalizer (`NumberNormalizer`), whose spelled-cardinal rules
-    /// are English-only — applying them to Romance/other Latin scripts would
-    /// mis-convert (e.g. French "six cents" = 600 → "6¢"). Casing/whitespace
-    /// cleanup and pause-based paragraph segmentation are language-agnostic and
-    /// are NOT gated on this.
-    public var isEnglish: Bool { self == .english }
-
     public var isSpaceless: Bool {
         switch self {
         case .japanese, .mandarin:

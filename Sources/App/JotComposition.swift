@@ -617,6 +617,7 @@ enum JotComposition {
             pasteboard: pasteboard,
             llmConfiguration: llmConfiguration,
             modelContext: modelContainer.mainContext,
+            instructionPanel: RewriteInstructionPanelController(),
             logSink: logSink
         )
 

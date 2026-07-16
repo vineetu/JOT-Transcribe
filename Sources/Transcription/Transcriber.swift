@@ -377,12 +377,14 @@ public actor Transcriber: Transcribing {
         // Nemotron emits plain text with NO timings, so `tokenTimings` is nil
         // and it remains a single block (deterministic-only by design).
         //
-        // FillerWordCleaner's recapitalization is v2-ONLY: v2 emits rawer,
-        // under-cased text that needs it, whereas v3 already emits well-cased,
-        // filler-trimmed text and the recapitalization pass would regress its
-        // casing (e.g. up-casing after abbreviation periods). NumberNormalizer
-        // is casing-safe and English-only, so it now ALSO runs on the English
-        // cased paths (v3-English / Nemotron-paired) — see `applyEnglishNumbers`.
+        // The deterministic cleanup chain now runs for EVERY model, in one code
+        // path (owner directive, v1.18.x) — but the English-word-driven stages
+        // (FillerWordCleaner + NumberNormalizer) stay gated to English via
+        // `applyEnglishCleanup`, because their rules are English-hardcoded and
+        // would mis-convert other languages. ParagraphSegmenter is pause-based
+        // and language-agnostic (runs wherever token timings exist), and
+        // PostProcessing keeps its own per-script routing (JA/CJK passthrough)
+        // internally.
         var segmented = transcriptText
         if let timings = result.tokenTimings {
             // Bridge FluidAudio word timings into the engine-neutral
@@ -397,19 +399,7 @@ public actor Transcriber: Transcribing {
                 }
             )
         }
-        let cleaned: String
-        if modelID == .tdt_0_6b_v2_en_streaming {
-            // v2: full chain (recapitalization needed on v2's rawer text).
-            let dedupped = FillerWordCleaner.clean(segmented)
-            let normalized = NumberNormalizer.normalize(dedupped)
-            cleaned = PostProcessing.apply(normalized, language: modelID)
-        } else {
-            // v3 / Nemotron-paired / JA: casing already clean. Add ONLY the
-            // casing-safe English number normalizer, gated to English (JA and
-            // non-English European v3 fall through unchanged). Paragraph
-            // segmentation already ran above where timings exist.
-            cleaned = applyEnglishNumbers(segmented)
-        }
+        let cleaned = PostProcessing.apply(applyEnglishCleanup(segmented), language: modelID)
         return TranscriptionResult(
             text: cleaned,
             rawText: result.text,
@@ -421,17 +411,19 @@ public actor Transcriber: Transcribing {
         )
     }
 
-    /// English-only, casing-safe number normalization for the cased final
-    /// paths (v3 / Nemotron-paired / Nemotron). Returns `text` unchanged for
-    /// non-English languages — `NumberNormalizer`'s spelled-cardinal rules are
-    /// English-only and would mis-convert Romance/other Latin scripts (e.g.
-    /// French "six cents" = 600 → "6¢"). Japanese (spaceless) is left untouched
-    /// too. A `nil` active language means the English v2/Nemotron fallback
-    /// (`fluidAudioLanguage == nil` for English), so it counts as English.
-    private func applyEnglishNumbers(_ text: String) -> String {
+    /// English-only cleanup for the English-word-driven stages of the chain
+    /// (fillers + spelled-out numbers). `FillerWordCleaner`'s filler and
+    /// abbreviation lists and `NumberNormalizer`'s spelled-cardinal rules are
+    /// English-hardcoded — applying them to Romance/other Latin scripts would
+    /// mis-convert (e.g. French "six cents" = 600 → "6¢"). Japanese (spaceless)
+    /// is left untouched too. A `nil` active language means the English
+    /// v2/Nemotron fallback (`fluidAudioLanguage == nil` for English), so it
+    /// counts as English. Per-language filler/number rules are future work —
+    /// jot-shared docs/multilingual-itn-options.md.
+    private func applyEnglishCleanup(_ text: String) -> String {
         let isEnglish = language?.isEnglish ?? true
         guard isEnglish, modelID != .tdt_0_6b_ja else { return text }
-        return NumberNormalizer.normalize(text)
+        return NumberNormalizer.normalize(FillerWordCleaner.clean(text))
     }
 
     /// Lean preview decode for the live pill (batch pseudo-streaming —
@@ -508,29 +500,22 @@ public actor Transcriber: Transcribing {
             return nil
         }
 
-        // v2-gated post-processing only, matching the final path (`:220-235`).
-        // NO vocabulary rescore. v3+/JA/Nemotron emit well-cased, filler-trimmed
-        // text natively, so they pass through.
-        if modelID == .tdt_0_6b_v2_en_streaming {
-            let segmented: String
-            if let timings = result.tokenTimings {
-                segmented = ParagraphSegmenter.segment(
-                    rescoredText: result.text,
-                    tokenTimings: timings.map {
-                        JotTextPipeline.TokenTiming(
-                            token: $0.token, startTime: $0.startTime, endTime: $0.endTime
-                        )
-                    }
-                )
-            } else {
-                segmented = result.text
-            }
-            let dedupped = FillerWordCleaner.clean(segmented)
-            let normalized = NumberNormalizer.normalize(dedupped)
-            return PostProcessing.apply(normalized, language: modelID)
-        } else {
-            return result.text
+        // Same cleanup chain as the final path (one code path for every model;
+        // English-gated filler/number stages), so the live preview matches the
+        // delivered transcript. NO vocabulary rescore (vocab only runs on the
+        // final stop pass).
+        var segmented = result.text
+        if let timings = result.tokenTimings {
+            segmented = ParagraphSegmenter.segment(
+                rescoredText: segmented,
+                tokenTimings: timings.map {
+                    JotTextPipeline.TokenTiming(
+                        token: $0.token, startTime: $0.startTime, endTime: $0.endTime
+                    )
+                }
+            )
         }
+        return PostProcessing.apply(applyEnglishCleanup(segmented), language: modelID)
     }
 
     private func transcribeWithNemotron(
@@ -599,11 +584,14 @@ public actor Transcriber: Transcribing {
             corrections = gated.corrections
         }
 
-        // Nemotron emits clean native punctuation + casing, but leaves spoken
-        // numbers spelled out — so run the casing-safe English number
-        // normalizer (`.nemotron_en` is always English). No token timings on
-        // this path, so paragraph segmentation is not possible here.
-        let normalized = applyEnglishNumbers(text)
+        // Same cleanup chain as every other model (`.nemotron_en` is always
+        // English, so the English-gated stages run here). Nemotron emits clean
+        // native punctuation + casing but leaves spoken numbers spelled out;
+        // FillerWordCleaner (abbreviation-aware recap, safe on cased text) +
+        // NumberNormalizer handle fillers/numbers, and PostProcessing does the
+        // final whitespace pass. No token timings on this path, so paragraph
+        // segmentation is not possible here.
+        let normalized = PostProcessing.apply(applyEnglishCleanup(text), language: modelID)
         return TranscriptionResult(
             text: normalized,
             rawText: raw,

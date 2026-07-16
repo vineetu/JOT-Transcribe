@@ -27,6 +27,15 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 - **Affects:** `Sources/Settings/ShortcutsPane.swift`, new `Sources/Settings/Shortcuts/` subfolder
 - **Description:** The current Settings → Shortcuts pane shows three rows per action (trigger-type picker + recorder + footer) for five user-bindable actions — ~16+ control rows of vertical scroll. Almost no comparable app uses this multi-row pattern. Collapse to single binding per action with inferred trigger type, section grouping (Recording / Rewrite / Capture), visible "when this fires" badges, and a search field that scales as shortcuts grow. HTML mockup comparing four options at `/tmp/jot-shortcuts-mockups/index.html` during the design phase.
 
+### features.mac-ui-localization
+- **Status:** Planned
+- **Type:** Feature
+- **Target:** After iOS UI localization ships (owner-sequenced)
+- **Trigger:** Always — scheduled once the iOS localization loop has produced the reusable glossaries + language set
+- **Plan:** `docs/plans/mac-ui-localization.md`
+- **Affects:** `Resources/Localizable.xcstrings`, `Resources/InfoPlist.xcstrings`, `Jot.xcodeproj` (`knownRegions`/`CFBundleLocalizations` per new locale), `Sources/MenuBar/JotMenuBarController.swift`, `Sources/Overlay/PillView.swift`, `Sources/Settings/*`, `Sources/AskJot/*`, flavor override mechanism (`.flavor-*.overrides`)
+- **Description:** Localize the Mac UI into the languages Jot already dictates, **derived from the iOS master plan** (`~/code/jot-mobile/docs/plans/ios-ui-localization.md` — glossary, translator↔reviewer subagent loop, language set, pluralization, pseudo-loc + screenshot QA all transfer verbatim). **Mac-specific:** infra is already scaffolded (String Catalogs wired; `ja` locale present but 0/177 translated; `SWIFT_EMIT_LOC_STRINGS=YES`), so step 1 is *completing extraction coverage* (177 keys lag ~600+ literals), not bootstrapping. Mac-only surfaces: AppKit menu bar (already `String(localized:)`), the overlay pill (tight layout, pseudo-loc stress point), the **flavor system** (Info.plist `KEY=VALUE` overrides are locale-blind — brand names leak into translated sentences; a flavor wanting localized brand strings needs the override format extended — flag), Sparkle (ships its own `ja`/major-locale `.lproj` → free), and the English Ask `help-content.md` grounding corpus (same mixed-language risk as iOS — inherit the iOS decision). **Fonts are a non-issue on Mac** (system faces auto-substitute CJK/Cyrillic; no bundled Fraunces, unlike iOS) except cosmetic loss of New York serif for CJK Ask prose. Sequenced after iOS per owner.
+
 ### features.ai-provider-model-discovery
 - **Status:** Planned
 - **Type:** UX

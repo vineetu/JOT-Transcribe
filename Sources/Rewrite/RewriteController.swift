@@ -74,6 +74,13 @@ final class RewriteController: ObservableObject {
     /// window elapses. Named so it is trivial to tune / make a setting later.
     static let secondToggleTimeout: Duration = .seconds(10)
 
+    /// Longer idle bound that replaces the 10 s mic timer once the user starts
+    /// TYPING (which cancels the mic timer). Without it, a user who types one
+    /// character then walks away would park the continuation — and leave the
+    /// panel on screen — forever. On this timeout the flow auto-finishes: the
+    /// typed text (if any) becomes the instruction, otherwise a clean-up runs.
+    static let typedPanelIdleTimeout: Duration = .seconds(30)
+
     /// Resolver for the user-selected default Rewrite prompt. Read on every
     /// TAP (`rewrite()`) so a default chosen in Settings → Prompts (or the
     /// hold-picker's "Set as default") takes effect on the next tap without
@@ -116,6 +123,34 @@ final class RewriteController: ObservableObject {
     private var pipelineToken: VoiceInputPipeline.Token?
     private var fixedGenerationCounter: UInt64 = 0
 
+    /// Typed instruction panel. Optional so test seams can build a controller
+    /// without an AppKit panel (they pass `nil` and get the pure voice flow).
+    /// Presented on both Rewrite-with-Voice paths — the plain hotkey and a
+    /// picked prompt that needs a detail — when `RewriteTypedPanelSettings.isEnabled`.
+    private let instructionPanel: (any RewriteInstructionPresenting)?
+
+    /// How the current typed-panel run resolved, set by a panel callback just
+    /// before it resumes the parked second-toggle continuation. `nil` means the
+    /// wait resolved WITHOUT a typed decision (timeout, a second hotkey press, a
+    /// mic disconnect, or an empty ⏎ while nothing was typed) — i.e. the classic
+    /// voice/transcribe path. Consumed once per run in `runCustom`.
+    private enum TypedPanelResolution {
+        /// Non-empty typed text or a chip: skip transcription, rewrite with this.
+        case typed(String)
+        /// The user pressed ⏎ with an empty field AFTER having typed (so the mic
+        /// is paused): route to the default clean-up rather than to voice.
+        case defaultCleanup
+    }
+    private var typedResolution: TypedPanelResolution?
+    /// Set when the first keystroke lands in the panel: cancels the auto-finish
+    /// timer and stops the mic so it doesn't keep capturing while the user types.
+    private var micStoppedByTyping = false
+    /// Live mirror of the panel field's text (via the panel's `onTextChange`).
+    /// Lets a resolve that arrives WITHOUT a submit — a second hotkey press, or
+    /// the idle timeout while typed — still salvage the typed instruction
+    /// instead of throwing it away and doing a bare clean-up.
+    private var currentPanelText = ""
+
     private let pipeline: VoiceInputPipeline
     /// Direct `LLMClient` retained alongside the dispatcher path so
     /// the existing `init(llm:)` test seam keeps working — the
@@ -147,9 +182,11 @@ final class RewriteController: ObservableObject {
         modelContext: ModelContext? = nil,
         llm: LLMClient? = nil,
         permissions: (any PermissionsObserving)? = nil,
+        instructionPanel: (any RewriteInstructionPresenting)? = nil,
         logSink: any LogSink = ErrorLog.shared
     ) {
         self.pipeline = pipeline
+        self.instructionPanel = instructionPanel
         self.pasteboard = pasteboard
         self.llm = llm
         self.urlSession = urlSession
@@ -247,6 +284,12 @@ final class RewriteController: ObservableObject {
     }
 
     func cancel() async {
+        // Focus discipline: order the typed panel out FIRST so key focus
+        // returns to the target app. No paste follows a cancel, but dismissing
+        // here also covers the global-Esc-hotkey cancel path (which doesn't go
+        // through the panel's own Esc handler).
+        instructionPanel?.dismiss()
+        typedResolution = nil
         activeFlowTask?.cancel()
         activeFlowTask = nil
         takeSecondToggleContinuation()?.resume(throwing: CancellationError())
@@ -345,6 +388,19 @@ final class RewriteController: ObservableObject {
         pickedTitle: String? = nil,
         augmentHint: String? = nil
     ) async {
+        // Reset typed-panel state at run START (not only in the defer) so a
+        // stray late callback from a prior run can never bleed a stale
+        // resolution / text into this one.
+        typedResolution = nil
+        micStoppedByTyping = false
+        currentPanelText = ""
+
+        // A picked prompt supplied the system prompt and is waiting on a detail
+        // to parameterize it. The two paths disagree on what "the user gave no
+        // instruction" means — see the empty-instruction branches below — so
+        // every such branch keys off this.
+        let isAugmentRun = systemPromptOverride != nil
+
         defer {
             activeFlowTask = nil
             pipelineToken = nil
@@ -352,6 +408,12 @@ final class RewriteController: ObservableObject {
             secondToggleTimeoutTask = nil
             secondToggleContinuation = nil
             self.augmentHint = nil
+            // Belt-and-suspenders: any exit path (error, cancel) tears the panel
+            // down. The success paths already dismissed it BEFORE pasting; this
+            // is idempotent.
+            instructionPanel?.dismiss()
+            typedResolution = nil
+            micStoppedByTyping = false
         }
 
         permissions.refreshAll()
@@ -414,9 +476,90 @@ final class RewriteController: ObservableObject {
             }
             state = .recording(startedAt: Date())
 
+            // The typed panel, on both paths, when enabled. The mic stays hot
+            // (voice still works); the panel is an ADDITIVE way to type / tap a
+            // chip. Presented AFTER `captureSelection()` has run, so the target
+            // app's selection is already safely captured before the panel takes
+            // key (focus discipline §3 item 1). If the panel can't become key
+            // (rare WindowServer states), we dismiss it and fall through to the
+            // pure voice+timeout flow — the timer is armed just below.
+            presentTypedPanelIfEnabled(
+                systemPromptOverride: systemPromptOverride,
+                augmentHint: trimmedHint
+            )
+
             try await waitForSecondToggle()
 
-            guard pipeline.stillActive(token) else { return }
+            // Focus discipline §3 item 3: order the panel out FIRST — key focus
+            // returns to the target app — BEFORE any synthetic ⌘V fires below.
+            instructionPanel?.dismiss()
+
+            // Did the panel resolve this run with a typed instruction (or an
+            // explicit empty-⏎-after-typing default)? If so, the mic was
+            // already stopped on the first keystroke; skip transcription.
+            if let resolution = typedResolution {
+                typedResolution = nil
+                if pipeline.stillActive(token) {
+                    await pipeline.cancel(token: token)
+                }
+                try Task.checkCancellation()
+                switch resolution {
+                case .typed(let typedText):
+                    // The override and title MUST ride along: on an augment run
+                    // the picked prompt's body is the system prompt and the
+                    // typed text is only its parameter ("Japanese"), which alone
+                    // would read as a generic rewrite.
+                    try await runResolvedRewriteTail(
+                        selectedText: selectedText,
+                        instruction: typedText,
+                        createdAt: createdAt,
+                        systemPromptOverride: systemPromptOverride,
+                        pickedTitle: pickedTitle
+                    )
+                case .defaultCleanup:
+                    // Only the plain path has a sensible no-instruction form. A
+                    // picked prompt without its detail is the same genuine miss
+                    // as saying nothing to it — never a silent clean-up.
+                    guard !isAugmentRun else {
+                        reportMissingAugmentDetail(source: "typed")
+                        return
+                    }
+                    try await runResolvedRewriteTail(
+                        selectedText: selectedText,
+                        instruction: nil,
+                        createdAt: createdAt
+                    )
+                }
+                return
+            }
+
+            // Voice path (empty ⏎ without typing, timeout, second hotkey, or
+            // mic disconnect). If typing already stopped the mic — the user
+            // typed then pressed the hotkey again, or the idle timer fired —
+            // there's nothing to transcribe. Salvage the typed text as the
+            // instruction if the field has any; only fall to a bare clean-up
+            // when it's empty.
+            guard pipeline.stillActive(token) else {
+                if micStoppedByTyping {
+                    try Task.checkCancellation()
+                    let salvaged = currentPanelText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Same asymmetry as the ⏎ branch: an augment run that ends
+                    // with an empty field has lost its parameter, so it errors
+                    // rather than quietly cleaning the selection up.
+                    guard !(salvaged.isEmpty && isAugmentRun) else {
+                        reportMissingAugmentDetail(source: "typed-salvage")
+                        return
+                    }
+                    try await runResolvedRewriteTail(
+                        selectedText: selectedText,
+                        instruction: salvaged.isEmpty ? nil : salvaged,
+                        createdAt: createdAt,
+                        systemPromptOverride: systemPromptOverride,
+                        pickedTitle: pickedTitle
+                    )
+                }
+                return
+            }
             state = .transcribing
 
             let stopResult = try await pipeline.stopAndTranscribe(token)
@@ -607,6 +750,143 @@ final class RewriteController: ObservableObject {
             }
             state = .error("Rewrite failed: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Typed panel (Phase 2)
+
+    /// Present the typed-instruction panel for the plain path when enabled, and
+    /// wire its callbacks back into this run. A `false` (couldn't-become-key)
+    /// return dismisses the panel so we degrade cleanly to voice+timeout.
+    private func presentTypedPanelIfEnabled(systemPromptOverride: String?) {
+        guard systemPromptOverride == nil,
+              RewriteTypedPanelSettings.isEnabled,
+              let instructionPanel
+        else { return }
+
+        let becameKey = instructionPanel.present(
+            chips: Self.defaultChips(),
+            onFirstEdit: { [weak self] in self?.handlePanelFirstEdit() },
+            onTextChange: { [weak self] text in self?.currentPanelText = text },
+            onSubmit: { [weak self] text in self?.handlePanelSubmit(text) },
+            onCancel: { [weak self] in
+                Task { @MainActor [weak self] in await self?.cancel() }
+            }
+        )
+        if !becameKey {
+            instructionPanel.dismiss()
+        }
+    }
+
+    /// Canned chips shown in the panel. Translate targets the last-used
+    /// language (defaults to Spanish) — kept deliberately simple for v1.
+    private static func defaultChips() -> [RewriteInstructionChip] {
+        let language = RewriteTypedPanelSettings.lastTranslateLanguage
+        return [
+            RewriteInstructionChip(label: "Formal", instruction: "Make it more formal"),
+            RewriteInstructionChip(label: "Shorter", instruction: "Make it shorter"),
+            RewriteInstructionChip(
+                label: "Translate to \(language)",
+                instruction: "Translate to \(language)"
+            ),
+        ]
+    }
+
+    /// First keystroke in the panel: cancel the 10 s mic timer (so it can't fire
+    /// mid-type), stop the mic (typing supersedes speaking), stop the pill
+    /// claiming to be listening, and re-arm a LONGER idle timer so an abandoned
+    /// panel auto-finishes rather than parking the continuation forever. The
+    /// parked continuation otherwise stays parked until the user submits/cancels.
+    private func handlePanelFirstEdit() {
+        guard !micStoppedByTyping else { return }
+        micStoppedByTyping = true
+        // NIT 4: the mic is being paused — don't keep advertising "listening".
+        if augmentHint != nil { augmentHint = "Typing…" }
+        if let token = pipelineToken {
+            Task { @MainActor [weak self] in
+                await self?.pipeline.cancel(token: token)
+            }
+        }
+        // SHOULD-FIX 2: replace the (now-cancelled) 10 s mic timer with a longer
+        // idle bound. Reuses the `secondToggleTimeoutTask` slot, so
+        // `takeSecondToggleContinuation()` cancels it on any resolve. On this
+        // resume the mic is dead → the voice-fallback branch salvages
+        // `currentPanelText` (or cleans up if empty).
+        secondToggleTimeoutTask?.cancel()
+        secondToggleTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.typedPanelIdleTimeout)
+            guard !Task.isCancelled else { return }
+            self?.resumeSecondToggle()
+        }
+    }
+
+    /// Panel submit (⏎ or a chip). Records how the run resolved, then resumes
+    /// the parked continuation so `runCustom` proceeds to the rewrite tail.
+    private func handlePanelSubmit(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            typedResolution = .typed(trimmed)
+            // Persist the last translate language when the user submits a
+            // "Translate to <lang>" style instruction so the chip stays useful.
+            noteTranslateLanguageIfPresent(trimmed)
+        } else if micStoppedByTyping {
+            // Typed then cleared → explicit default clean-up (mic is paused).
+            typedResolution = .defaultCleanup
+        } else {
+            // Empty ⏎ with the mic still hot: fall through to the voice path so
+            // anything spoken becomes the instruction; silence → clean-up.
+            typedResolution = nil
+        }
+        resumeSecondToggle()
+    }
+
+    /// Best-effort capture of a translate target from a typed instruction like
+    /// "translate to French" so the chip reflects the user's last choice.
+    private func noteTranslateLanguageIfPresent(_ instruction: String) {
+        // Search the ORIGINAL string case-insensitively so the captured
+        // language keeps the user's casing (e.g. "French"), and so we never
+        // rely on lowercasing preserving character offsets (it doesn't for all
+        // Unicode). Everything after "translate to " is the target language.
+        guard let range = instruction.range(of: "translate to ", options: .caseInsensitive) else { return }
+        let language = instruction[range.upperBound...]
+            .trimmingCharacters(in: CharacterSet(charactersIn: " .!,;:"))
+        guard !language.isEmpty, language.count <= 40 else { return }
+        UserDefaults.standard.set(language, forKey: RewriteTypedPanelSettings.lastTranslateLanguageKey)
+    }
+
+    /// LLM rewrite + persist + paste for a resolved instruction on the plain
+    /// path, guarded by Task cancellation (the pipeline token has already been
+    /// torn down for these branches, so `stillActive` isn't the guard here —
+    /// `cancel()` cancels `activeFlowTask`, which trips `Task.checkCancellation`).
+    /// `instruction == nil` runs the default clean-up (fixed system prompt).
+    private func runResolvedRewriteTail(
+        selectedText: String,
+        instruction: String?,
+        createdAt: Date
+    ) async throws {
+        state = .rewriting
+        let service = rewriteService()
+        let modelLabel = snapshotModelLabel()
+        let rewritten = try await service.rewrite(
+            selectedText: selectedText,
+            instruction: instruction,
+            systemPromptOverride: nil
+        )
+        try Task.checkCancellation()
+
+        let isCleanup = (instruction?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        persistSession(
+            flavor: isCleanup ? "fixed" : "voice",
+            selection: selectedText,
+            instruction: isCleanup ? Self.fixedInstruction : instruction!,
+            output: rewritten,
+            modelUsed: modelLabel,
+            createdAt: createdAt
+        )
+        try Task.checkCancellation()
+        guard pasteReplacement(rewritten) else { return }
+        lastRewrite = rewritten
+        lastRewriteAt = .now
+        state = .idle
     }
 
     // MARK: - Fixed flow internals

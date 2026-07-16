@@ -36,6 +36,10 @@ struct ShortcutsPane: View {
     /// Existing bindings continue to fire — Decision #2.
     @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
 
+    /// Phase-2 typed instruction panel for Rewrite with Voice. Default ON; when
+    /// off, Rewrite with Voice stays pure voice+timeout (still fully working).
+    @AppStorage(RewriteTypedPanelSettings.enabledStorageKey) private var typedPanelEnabled: Bool = true
+
     @AppStorage("jot.hotkey.toggleRecording.singleKey") private var toggleSingleKey: SingleKey = .none
     @AppStorage("jot.hotkey.pushToTalk.singleKey") private var pushToTalkSingleKey: SingleKey = .none
     @AppStorage("jot.hotkey.pasteLastTranscription.singleKey") private var pasteLastSingleKey: SingleKey = .none
@@ -55,6 +59,8 @@ struct ShortcutsPane: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header
+
+                    typedPanelToggle
 
                     searchField
 
@@ -112,6 +118,23 @@ struct ShortcutsPane: View {
             .id("ShortcutsPane.globalShortcuts")
         }
         .padding(.bottom, 12)
+    }
+
+    @ViewBuilder
+    private var typedPanelToggle: some View {
+        Toggle(isOn: $typedPanelEnabled) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Typed instruction panel")
+                    .font(.system(size: 12, weight: .medium))
+                Text("When you press Rewrite with Voice, show a small floating field so you can type the change (or tap Formal / Shorter / Translate) — speaking still works.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .toggleStyle(.switch)
+        .padding(.vertical, 8)
+        .padding(.bottom, 4)
     }
 
     @ViewBuilder
