@@ -298,6 +298,9 @@ actor LLMClient {
         if !Self.openAIModelLikelyRejectsTemperature(model) {
             body["temperature"] = temperature
         }
+        if let effort = Self.openAIReasoningEffort(forModel: model) {
+            body["reasoning_effort"] = effort
+        }
         if stream {
             body["stream"] = true
         }
@@ -326,6 +329,25 @@ actor LLMClient {
         return false                                      // gpt-5.1–5.4, gpt-4o, locals
     }
 
+    /// First-try `reasoning_effort` for an OpenAI-compatible `model`, or nil to
+    /// omit the field. Reasoning models otherwise default to medium effort, which
+    /// is too slow for rewrite/cleanup and blows the request timeout. The effort
+    /// SCALE differs by GPT-5 generation (verified 2026-07-16 against live
+    /// OpenAI /chat/completions):
+    ///   - gpt-5.0 family (gpt-5 / gpt-5-mini / gpt-5-nano): accepts "minimal",
+    ///     rejects "none".
+    ///   - gpt-5.5 and gpt-5.6 (sol/terra/luna): accepts "none", rejects "minimal".
+    /// Sending the wrong token 400s — `performLLMRequest` self-heals by stripping
+    /// the field and retrying, so a stale entry costs one extra round-trip.
+    /// gpt-5.1–5.4, gpt-4o, o-series and local models get nil (no effort field).
+    static func openAIReasoningEffort(forModel model: String) -> String? {
+        let m = model.lowercased()
+        if m.contains("chat") { return nil }
+        if m.hasPrefix("gpt-5.5") || m.hasPrefix("gpt-5.6") { return "none" }
+        if m == "gpt-5" || m.hasPrefix("gpt-5-") { return "minimal" }
+        return nil
+    }
+
     /// True for the specific 400 OpenAI returns when a model only supports the
     /// default temperature. Drives the retry-without-temperature in
     /// `performLLMRequest`.
@@ -347,6 +369,25 @@ actor LLMClient {
               json["temperature"] != nil
         else { return nil }
         json.removeValue(forKey: "temperature")
+        guard let newBody = try? JSONSerialization.data(withJSONObject: json) else { return nil }
+        var copy = request
+        copy.httpBody = newBody
+        return copy
+    }
+
+    private func isUnsupportedReasoningEffortError(_ error: LLMError) -> Bool {
+        guard case .httpError(let status, let body) = error, status == 400 else { return false }
+        let b = body.lowercased()
+        return b.contains("reasoning_effort")
+            && (b.contains("unsupported") || b.contains("does not support"))
+    }
+
+    private static func requestStrippingReasoningEffort(_ request: URLRequest) -> URLRequest? {
+        guard let data = request.httpBody,
+              var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              json["reasoning_effort"] != nil
+        else { return nil }
+        json.removeValue(forKey: "reasoning_effort")
         guard let newBody = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         var copy = request
         copy.httpBody = newBody
@@ -445,6 +486,24 @@ actor LLMClient {
             // `requestStrippingTemperature` returns nil and we surface the
             // original error unchanged.
             guard let retry = Self.requestStrippingTemperature(request) else {
+                logLLMError(error, provider: provider, request: request, streaming: useStreaming)
+                throw error
+            }
+            do {
+                return try await sendLLMRequest(provider: provider, request: retry, useStreaming: useStreaming)
+            } catch {
+                let mapped = mapError(error)
+                logLLMError(mapped, provider: provider, request: retry, streaming: useStreaming)
+                throw mapped
+            }
+        } catch let error as LLMError where isUnsupportedReasoningEffortError(error) {
+            // The model rejects the `reasoning_effort` token we sent (the effort
+            // scale flipped between GPT-5 generations — 5.0 wants "minimal",
+            // 5.5/5.6 want "none"). Rather than track a per-model list we
+            // self-heal: strip `reasoning_effort` and retry once. If the body
+            // had no field to strip, `requestStrippingReasoningEffort` returns
+            // nil and we surface the original error unchanged.
+            guard let retry = Self.requestStrippingReasoningEffort(request) else {
                 logLLMError(error, provider: provider, request: request, streaming: useStreaming)
                 throw error
             }

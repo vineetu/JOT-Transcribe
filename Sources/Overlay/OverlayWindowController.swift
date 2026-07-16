@@ -618,15 +618,6 @@ final class OverlayWindowController {
             // lockstep with the SwiftUI capsule bound or the drawn pill and the
             // drag/hit region separate into a click-through dead zone.
             return Self.streamingPillWidth
-        case .repairingModel(let modelName, _, let isError):
-            // Persistent self-heal pill: text-driven width so the progress /
-            // failure copy isn't truncated. The width is capped at
-            // `expandedPillWidth` inside `errorPillWidth`, so a long
-            // model name won't blow out the layout.
-            let label = isError
-                ? "Couldn’t download \(modelName) — open Settings"
-                : "Repairing transcription model — downloading \(modelName)… 100%"
-            return errorPillWidth(for: label)
         case .askCorrection:
             // Slice D: the ask is an expanded multi-line rounded-rect; its size
             // is resolved directly in `pillSize(for:)` (fixed expanded width +

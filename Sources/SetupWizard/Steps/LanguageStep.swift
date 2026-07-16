@@ -19,9 +19,17 @@ struct LanguageStep: View {
     @ObservedObject private var permissions = PermissionsService.shared
 
     /// True while the resolved model is downloading. Only one in-flight at a
-    /// time — `startDownload()` no-ops while another is running.
+    /// time — `startDownload()` no-ops while another is running. Stays `true`
+    /// through the post-100% "Preparing" phase so the advance gate holds until
+    /// the model is actually loadable.
     @State private var isDownloading: Bool = false
-    @State private var downloadProgress: Double = 0
+    /// Rich progress (bytes / speed / ETA) for the shared status component,
+    /// derived from FluidAudio's bare fraction via `SpeedMeter`. `nil`
+    /// pre-first-byte; carries the `.preparing` phase after 100%.
+    @State private var progress: ModelDownloadProgress?
+    /// True during the post-100% CoreML-compile / load step (previously a silent
+    /// `ensureLoaded` dead-air) so the "Preparing" phase is surfaced.
+    @State private var isPreparing: Bool = false
     @State private var downloadError: String?
 
     // Optional Parakeet CTC 110M boost bundle used by the Vocabulary feature.
@@ -43,6 +51,8 @@ struct LanguageStep: View {
         Binding(
             get: { holder.activeLanguage },
             set: { lang in
+                // Gated languages are shown disabled; never route one to a switch.
+                guard !LanguageChoice.isHardwareGated(lang) else { return }
                 Task {
                     await holder.setLanguage(lang)
                     await MainActor.run {
@@ -67,8 +77,15 @@ struct LanguageStep: View {
 
             VStack(alignment: .leading, spacing: 12) {
                 Picker("Language", selection: languageBinding) {
-                    ForEach(LanguageChoice.presentationOrder) { lang in
-                        Text(lang.displayName).tag(lang)
+                    ForEach(LanguageChoice.presentationEntries()) { entry in
+                        // Hardware-gated languages stay visible but disabled, with
+                        // the reason inline (a menu row can't hold a subtitle), so
+                        // the list is never silently incomplete.
+                        Text(entry.isHardwareGated
+                             ? "\(entry.language.displayName) — \(LanguageChoice.hardwareGateNote().lowercased())"
+                             : entry.language.displayName)
+                            .tag(entry.language)
+                            .disabled(entry.isHardwareGated)
                     }
                 }
                 .pickerStyle(.menu)
@@ -118,15 +135,27 @@ struct LanguageStep: View {
 
     @ViewBuilder
     private var downloadStatus: some View {
-        if isDownloading {
-            HStack(spacing: 8) {
-                ProgressView(value: downloadProgress)
-                    .frame(width: 160)
-                Text("\(Int(downloadProgress * 100))%")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
+        if isPreparing {
+            // Post-100% CoreML compile / load — indeterminate LINEAR pulse, never
+            // silent dead-air.
+            ModelDownloadStatusView(
+                state: .working(
+                    title: "Preparing the \(holder.activeLanguage.displayName) model…",
+                    symbol: .preparing,
+                    subtext: "Almost ready — optimizing for the Neural Engine."
+                ),
+                style: .inline
+            )
+        } else if isDownloading {
+            ModelDownloadStatusView(state: downloadingState, style: .inline)
+        } else if let downloadError {
+            // The taxonomy already hands us a clean, honest message — render it
+            // as an error card with a real Retry, never as raw text.
+            ModelDownloadStatusView(
+                state: .failed(message: downloadError),
+                style: .inline,
+                onRetry: { startDownload() }
+            )
         } else if isResolvedInstalled {
             HStack(spacing: 4) {
                 Image(systemName: "checkmark.circle.fill")
@@ -139,13 +168,20 @@ struct LanguageStep: View {
             Button("Download") { startDownload() }
                 .controlSize(.regular)
         }
+    }
 
-        if let downloadError {
-            Text(downloadError)
-                .font(.system(size: 11))
-                .foregroundStyle(.red)
-                .fixedSize(horizontal: false, vertical: true)
+    private var downloadingState: ModelDownloadStatusView.State {
+        let title = "Downloading \(holder.activeLanguage.displayName) model"
+        guard let progress else {
+            // Pre-first-byte: indeterminate LINEAR pulse.
+            return .working(title: title, symbol: .downloading, subtext: nil)
         }
+        return .downloading(
+            title: title,
+            meta: progress.metaLine,
+            fraction: progress.fraction,
+            subtext: nil
+        )
     }
 
     /// Optional vocabulary-boost bundle. Lives at the bottom as a quiet
@@ -250,31 +286,52 @@ struct LanguageStep: View {
         guard !isDownloading else { return }
         let model = resolvedModel
         isDownloading = true
-        downloadProgress = 0
+        isPreparing = false
+        progress = nil
         downloadError = nil
         updateChrome()
 
         Task {
             let downloader = ModelDownloader()
+            // Derive bytes / speed / ETA from FluidAudio's bare fraction so the
+            // wizard's bar matches the banner's rich meta line.
+            let meter = SpeedMeter(bytesTotal: model.approxBytes)
             do {
                 try await downloader.downloadIfMissing(model) { fraction in
-                    Task { @MainActor in downloadProgress = fraction }
+                    // Touch the meter only on the MainActor (it isn't internally
+                    // synchronized); the closure captures the Sendable fraction.
+                    Task { @MainActor in progress = meter.record(fraction: fraction) }
                 }
                 await MainActor.run {
-                    isDownloading = false
-                    downloadProgress = 1.0
+                    // Bytes landed — surface the "Preparing" phase instead of the
+                    // old silent dead-air while CoreML compiles / the model loads.
+                    progress = .preparing(bytesTotal: model.approxBytes)
+                    isPreparing = true
                     // Holder owns the canonical `installedModelIDs` set that
                     // `coordinator.canAdvance(from: .model)` reads.
                     holder.refreshInstalled()
-                    // Warm the now-installed model so the Test step is ready.
-                    Task { try? await holder.transcriber.ensureLoaded() }
+                    updateChrome()
+                }
+                // Warm the now-installed model so the Test step is ready — this is
+                // exactly the compile/load step the "Preparing" phase names, so we
+                // await it (advance stays gated on `isDownloading` meanwhile).
+                try? await holder.transcriber.ensureLoaded()
+                await MainActor.run {
+                    isDownloading = false
+                    isPreparing = false
+                    progress = nil
                     updateChrome()
                 }
             } catch {
                 await ErrorLog.shared.error(component: "SetupWizard", message: "Parakeet model download failed", context: ["modelID": model.rawValue, "error": ErrorLog.redactedAppleError(error)])
                 await MainActor.run {
                     isDownloading = false
-                    downloadError = "Download failed: \(error.localizedDescription)"
+                    isPreparing = false
+                    progress = nil
+                    // Show the taxonomy's clean, honest message — never a raw
+                    // error body (a HuggingFace HTML 504 page used to leak here).
+                    downloadError = (error as? ModelDownloadError)?.errorDescription
+                        ?? "The model download didn't complete. Please try again."
                     updateChrome()
                 }
             }

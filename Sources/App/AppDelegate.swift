@@ -124,6 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         DockActivationPolicyTests.runAll()
         AdvancedFlagTests.runAll()
         WebVTTExporterTests.runAll()
+        ModelSwitchTests.runAll()
+        DownloadRetryTests.runAll()
+        ModelPickerDisplayTests.runAll()
+        LanguageVisibilityTests.runAll()
+        ChipTierTests.runAll()
         #endif
 
         ResetActions.processPendingHardReset()

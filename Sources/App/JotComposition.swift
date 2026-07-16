@@ -393,7 +393,8 @@ enum JotComposition {
                         nemotronMultilingual: NemotronMultilingualStreamingTranscriber(
                             bundleDirectory: variantURL,
                             languageCode: language.nemotronLanguageCode
-                        )
+                        ),
+                        isEnglish: language.isEnglish
                     )
                 case .tdt_0_6b_ja:
                     // Japanese: batch final transcript + batch-pseudo-streaming
@@ -655,15 +656,16 @@ enum JotComposition {
         )
 
         // Startup self-heal routing (design §Phase 3): the holder routes the
-        // user to Settings → Transcription on detection / failure, and the
-        // persistent repairing pill routes there on tap. Both go through the
-        // menu bar's `openTranscriptionSettings(...)` deep-link so the window
-        // is opened (or re-selected) from any launch state — hotkey-only users
-        // included. Captured weakly so neither closure retains the menu bar.
+        // user to Settings → Transcription on detection / failure via the menu
+        // bar's `openTranscriptionSettings(...)` deep-link so the window is
+        // opened (or re-selected) from any launch state — hotkey-only users
+        // included. Captured weakly so the closure doesn't retain the menu bar.
+        //
+        // NOTE (model-download UX): the status pill no longer renders the
+        // repair/download state, so its former `onRepairPillTap` wiring was
+        // removed. Repair progress + the "Retry" affordance now live in the
+        // main-window banner and Settings → General (via `ModelDownloadStatusView`).
         transcriberHolder.routeToSettings = { [weak menuBar] in
-            menuBar?.openTranscriptionSettings()
-        }
-        overlay.pillViewModel.onRepairPillTap = { [weak menuBar] in
             menuBar?.openTranscriptionSettings()
         }
 

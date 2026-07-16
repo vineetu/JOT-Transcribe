@@ -10,12 +10,14 @@ import Foundation
 /// to gate — `HardwareTier` exists purely to answer "may this Mac run
 /// Nemotron?".
 ///
-/// The gate is a firm product decision, not a measurement TODO: Nemotron is
-/// offered ONLY on chip tier ≥ M2 Pro **AND** RAM ≥ 16 GB. All M1 (incl.
-/// Pro/Max/Ultra), all base M2/M3/M4, and anything < 16 GB are walled out and
-/// fall back to their per-language default. A future on-device RTF probe (v2)
-/// would only ever *widen* eligibility (chiefly to base M3/M4); it never
-/// narrows what this gate ships. See `nemotronEligible` below.
+/// The gate is a firm product decision, not a pure measurement TODO: Nemotron
+/// is offered on chips that clear an **M2 Pro-class throughput bar** — any
+/// Pro/Max/Ultra from M2 on, plus base chips from M4 on (base silicon crossed
+/// that bar at gen 4) — **AND** RAM ≥ 16 GB. All M1 (incl. Pro/Max/Ultra),
+/// base M2/M3, and anything < 16 GB are walled out and fall back to their
+/// per-language default. A future on-device RTF probe (v2) would only ever
+/// *widen* eligibility (chiefly to base M2/M3); it never narrows what this
+/// gate ships. See `nemotronEligible` below.
 ///
 /// Resolve membership at recording start, never mid-session, to avoid a
 /// visible model swap (jot-mobile invariant).
@@ -26,8 +28,9 @@ public enum HardwareTier {
     /// Whether Nemotron may be offered/auto-selected on this machine.
     ///
     /// Both halves are required:
-    ///  * **chip tier ≥ M2 Pro** — a Pro/Max/Ultra suffix on an M2-or-newer
-    ///    chip (`chipClearsNemotronTier`), guarded by `isAppleSilicon`.
+    ///  * **chip clears the M2 Pro-class bar** — any Pro/Max/Ultra from M2 on,
+    ///    or a base chip from M4 on (`chipClearsNemotronTier`), guarded by
+    ///    `isAppleSilicon`.
     ///  * **RAM ≥ 16 GB** — the same class threshold once used to gate the
     ///    (since-removed) Sortformer diarization pipeline.
     ///
@@ -47,8 +50,8 @@ public enum HardwareTier {
     ///    **≥ 24 GB** — we only push the heavier model onto users with comfortable
     ///    headroom, since the swap is unsolicited (the user never asked for it).
     ///
-    /// The chip bar is identical (≥ M2 Pro via `chipClearsNemotronTier`); only
-    /// the memory floor differs. A 16–24 GB English user can still *manually*
+    /// The chip bar is identical (via `chipClearsNemotronTier`); only the
+    /// memory floor differs. A 16–24 GB English user can still *manually*
     /// pick Nemotron (they clear `nemotronEligible`); they just won't be
     /// auto-swapped.
     public static var autoUpgradeToNemotronEligible: Bool {
@@ -58,19 +61,25 @@ public enum HardwareTier {
     /// Whether this Mac is allowed to run the **Nemotron 3.5 Multilingual**
     /// model — a *capability* gate, deliberately distinct from
     /// `autoUpgradeToNemotronEligible` (an auto-*swap policy* gate) even though
-    /// both currently resolve to ≥ 24 GB + ≥ M2 Pro. They mean different things:
-    /// this answers "can the hardware run the 640 MB multilingual model?", the
+    /// they resolve differently (capability ≥ 16 GB measured; auto-swap ≥ 24 GB
+    /// politeness). They mean different things:
+    /// this answers "can the hardware run the multilingual model?", the
     /// other answers "should we silently swap an unsuspecting English user?".
     /// Routing/migration/picker code MUST consult this one — not the auto-swap
     /// gate — so a future change to auto-swap headroom never silently moves the
     /// capability wall.
     ///
-    /// ⚠️ The 24 GB floor is a **conservative ship bar, not a measured one**:
-    /// it was chosen for unsolicited-auto-swap headroom on the *English*
-    /// Nemotron, and we have no real-time-throughput eval of the heavier
-    /// multilingual model on a 16–24 GB Mac. A later RTF probe can lower it.
+    /// The floor is **16 GB, measured** (2026-07-14, tools/nemotron-memprobe on
+    /// M2 Pro/32 GB): the full multilingual ship streams at **33× realtime**
+    /// with a working footprint in the ~1.2–1.5 GB class — the same class as
+    /// nemotron_en, which the wizard already places on 16 GB Macs. The original
+    /// 24 GB bar was an unmeasured launch guess inherited from the auto-swap
+    /// gate; capability and swap-politeness now diverge exactly as this
+    /// comment always promised they could (auto-swap stays ≥ 24 GB above —
+    /// nobody gets an unsolicited 600 MB download on a small machine; they
+    /// just may now *choose* these languages).
     public static var nemotronMultilingualEligible: Bool {
-        isAppleSilicon && hasTwentyFourGBOrMore && chipClearsNemotronTier(chipBrandString)
+        isAppleSilicon && hasSixteenGBOrMore && chipClearsNemotronTier(chipBrandString)
     }
 
     // MARK: - Raw detected facts (also useful for diagnostics / logging)
@@ -109,26 +118,41 @@ public enum HardwareTier {
         physicalMemoryBytes >= UInt64(24) * 1_073_741_824
     }
 
-    /// Chip half of the Nemotron gate: a Pro/Max/Ultra tier on an M2-or-newer
-    /// generation (i.e. ≥ M2 Pro).
+    /// Chip half of the Nemotron gate: does this chip clear an **M2 Pro-class
+    /// ANE/CPU throughput bar**?
     ///
-    /// Keyed off the chip-name suffix rather than a board-ID lookup table
-    /// (the device-ID table jot-mobile explicitly rejected). Known v1 edge:
-    /// **base M3/M4 carry no Pro/Max suffix and are therefore excluded here**,
-    /// even though they may match/exceed M2 Pro — the deliberate conservative
-    /// call (never ship a model that can't keep up). The deferred v2 RTF probe
-    /// is what would later admit them.
+    ///  * **Pro/Max/Ultra** clear from generation 2 on — the original M2 Pro
+    ///    floor, unchanged.
+    ///  * **Base** chips clear from generation 4 on. Base silicon crossed the
+    ///    M2-Pro-class bar at gen 4 (a base M4 out-throughputs the M2 Pro that
+    ///    already passes), so the earlier "no Pro/Max suffix ⇒ excluded" call is
+    ///    now wrong for M4+ — it walled out real users (e.g. the base-M5
+    ///    MacBook Air owner who reported the miss). Base M2/M3 keep failing:
+    ///    that's a measured-caution call, deliberately left in place here.
     ///
-    /// Any M1 string fails the generation check, so all M1 (base *and*
-    /// Pro/Max/Ultra) are excluded without needing the unverified bare
-    /// `"Apple M1"` form.
+    /// Keyed off the chip-name string rather than a board-ID lookup table (the
+    /// device-ID table jot-mobile explicitly rejected). The generation is parsed
+    /// as a full integer after the "M" (see `appleSiliconGeneration`), so a
+    /// future "M12" reads as 12 — not as a substring hit on "M1".
+    ///
+    /// Any M1 string (generation 1) fails both arms, so all M1 (base *and*
+    /// Pro/Max/Ultra) stay excluded.
     public static func chipClearsNemotronTier(_ brand: String?) -> Bool {
-        guard let brand, brand.contains("Apple M") else { return false }
+        guard let brand, let generation = appleSiliconGeneration(from: brand) else { return false }
         let hasProTier = brand.contains("Pro") || brand.contains("Max") || brand.contains("Ultra")
-        // Extend this list as new generations ship.
-        let gen2Plus = brand.contains("M2") || brand.contains("M3")
-            || brand.contains("M4") || brand.contains("M5")
-        return hasProTier && gen2Plus
+        return hasProTier ? generation >= 2 : generation >= 4
+    }
+
+    /// The Apple-silicon generation number in a CPU brand string — the run of
+    /// digits immediately after the "M" in `"Apple M<N>"` (`"Apple M4"` → 4,
+    /// `"Apple M2 Pro"` → 2, a hypothetical `"Apple M12"` → 12). `nil` for any
+    /// string without the `"Apple M<digits>"` shape (Intel, empty, Rosetta-
+    /// mangled). Parses the whole digit run instead of `contains("M2")`-style
+    /// substring checks so "M12" never collides with "M1".
+    static func appleSiliconGeneration(from brand: String) -> Int? {
+        guard let range = brand.range(of: "Apple M") else { return nil }
+        let digits = brand[range.upperBound...].prefix { $0.isNumber }
+        return Int(digits)
     }
 
     // MARK: - sysctl helpers

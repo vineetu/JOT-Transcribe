@@ -1,6 +1,10 @@
 # Nemotron 3.5 Multilingual — adopt, bump FluidAudio, retire Qwen
 
-Status: **research validated, decisions locked, integration plan — pre-implementation.** Empirical eval done; a broad/adaptation tier sample is still running. No code changed yet.
+Status: **SHIPPED in v1.17** (`nemotron_multilingual` + `nemotron_multilingual_latin`, auto-routed
+by language on ≥24 GB / ≥M2 Pro Macs; Qwen retired). This doc is the historical design record —
+the earlier "pre-implementation" status line went stale after the ship and caused real confusion
+(the product owner believed multilingual was never built); keep status lines current when a
+design lands.
 
 ## Decisions locked (2026-06-29, user)
 

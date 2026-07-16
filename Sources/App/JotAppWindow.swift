@@ -209,8 +209,15 @@ struct JotAppWindow: View {
         }
         .environment(\.helpNavigator, helpNavigator)
         .environmentObject(llmConfiguration)
-        .safeAreaInset(edge: .top) {
+        // Download/switch/repair status floats as a compact card in the
+        // bottom-right corner (≈¼ width) rather than a full-width top strip —
+        // it's an ambient status, not a modal that should eat the whole header.
+        .overlay(alignment: .bottomTrailing) {
             migrationDownloadBanner
+                .frame(maxWidth: 360)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+                .padding(16)
         }
         .onAppear {
             navHistory.bind(selection: $selection)
@@ -287,74 +294,129 @@ struct JotAppWindow: View {
 
     @ViewBuilder
     private var migrationDownloadBanner: some View {
-        // Startup self-heal banner (design §Phase 3 / G4): render directly off
-        // `repairState`, sharing the migration banner's styling. Checked first
-        // so an in-flight heal is always visible when the window is open;
-        // self-heal defers when a migration download is pending, so the two
-        // producers don't fight for the banner in practice.
+        // Every download/repair state renders through the single shared
+        // `ModelDownloadStatusView` (design: docs/plans/model-download-ux-
+        // mockup.html) — ONE determinate/indeterminate LINEAR bar, never a
+        // circular spinner, and never in the status pill. Priority order: an
+        // in-flight self-heal repair is shown first (it defers behind a
+        // migration, so the two never fight in practice), then a user-initiated
+        // manual/language switch, then the background migration download.
         if let repair = transcriberHolder.repairState {
-            repairBanner(repair)
+            ModelDownloadStatusView(
+                state: repairStatus(repair),
+                style: .banner,
+                onRetry: repairRetryAction(for: repair)
+            )
+        } else if let pending = transcriberHolder.pendingSwitch {
+            ModelDownloadStatusView(
+                state: pendingSwitchStatus(pending),
+                style: .banner,
+                onRetry: pendingSwitchRetryAction(for: pending),
+                onCancel: { transcriberHolder.cancelPendingSwitch() }
+            )
         } else if let progress = transcriberHolder.migrationDownloadProgress {
-            HStack(spacing: 10) {
-                ProgressView(value: progress)
-                    .frame(width: 120)
-                Text("Downloading transcription model \(Int(progress * 100))%")
-                    .font(.system(size: 12, weight: .medium))
-                    .monospacedDigit()
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.regularMaterial)
+            ModelDownloadStatusView(
+                state: .downloading(
+                    title: "Downloading transcription model",
+                    meta: "",
+                    fraction: progress,
+                    subtext: nil
+                ),
+                style: .banner
+            )
         } else if let error = transcriberHolder.migrationDownloadError {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text("Model download failed: \(error)")
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(2)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.regularMaterial)
+            ModelDownloadStatusView(
+                state: .failed(message: "Model download failed. \(error)"),
+                style: .banner
+            )
         }
     }
 
-    @ViewBuilder
-    private func repairBanner(_ repair: TranscriberHolder.RepairState) -> some View {
+    // MARK: - Download/repair status mapping (→ ModelDownloadStatusView.State)
+
+    /// Map the manual/language switch producer onto the shared component. The
+    /// user keeps dictating in the active language the whole time (design: the
+    /// "Keep dictating in <lang>…" reassurance line).
+    private func pendingSwitchStatus(
+        _ pending: TranscriberHolder.PendingSwitch
+    ) -> ModelDownloadStatusView.State {
+        let keepDictating =
+            "Keep dictating in \(transcriberHolder.activeLanguage.displayName) — Jot switches over when this finishes."
+        switch pending {
+        case .downloading(let target, _, let language, let progress):
+            let label = switchLanguageLabel(target: target, language: language)
+            guard let progress else {
+                // Pre-first-byte: indeterminate LINEAR pulse.
+                return .working(title: "Downloading \(label)", symbol: .downloading, subtext: keepDictating)
+            }
+            if progress.phase == .preparing {
+                return .working(
+                    title: "Preparing the \(label)…",
+                    symbol: .preparing,
+                    subtext: "Almost ready — optimizing for the Neural Engine."
+                )
+            }
+            return .downloading(
+                title: "Downloading \(label)",
+                meta: progress.metaLine,
+                fraction: progress.fraction,
+                subtext: keepDictating
+            )
+        case .retrying(_, _, _, let error, let nextRetryAt):
+            return .retrying(
+                message: error.errorDescription ?? "The model download didn’t complete.",
+                nextRetryAt: nextRetryAt,
+                subtext: "You can keep dictating in \(transcriberHolder.activeLanguage.displayName) meanwhile."
+            )
+        case .failed(_, _, _, let error):
+            return .failed(message: error.errorDescription ?? "The model download didn’t complete.")
+        }
+    }
+
+    /// "Arabic model" for a language switch; the model display name for a
+    /// model-only menu-bar switch (no language attached).
+    private func switchLanguageLabel(target: ParakeetModelID, language: LanguageChoice?) -> String {
+        if let language { return "\(language.displayName) model" }
+        return target.displayName
+    }
+
+    /// Retry wiring for the switch producer. `retryPendingSwitch()` re-attempts
+    /// without changing the live model.
+    private func pendingSwitchRetryAction(
+        for pending: TranscriberHolder.PendingSwitch
+    ) -> (() -> Void)? {
+        switch pending {
+        case .downloading:
+            return nil
+        case .retrying, .failed:
+            return { transcriberHolder.retryPendingSwitch() }
+        }
+    }
+
+    /// Map the self-heal repair producer onto the shared component. `repairState`
+    /// carries only a bare `Double?` fraction (no bytes/speed), so the meta line
+    /// is empty here — if the integrator upgrades `repairState` to
+    /// `ModelDownloadProgress` it would populate exactly like the switch path.
+    private func repairStatus(_ repair: TranscriberHolder.RepairState) -> ModelDownloadStatusView.State {
         switch repair {
         case .downloading(let modelName, let progress):
-            HStack(spacing: 10) {
-                if let progress {
-                    ProgressView(value: progress)
-                        .frame(width: 120)
-                    Text("Repairing transcription model — downloading \(modelName)… \(Int(progress * 100))%")
-                        .font(.system(size: 12, weight: .medium))
-                        .monospacedDigit()
-                } else {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Repairing transcription model — downloading \(modelName)…")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                Spacer()
+            guard let progress else {
+                return .working(title: "Repairing \(modelName)…", symbol: .downloading, subtext: nil)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.regularMaterial)
+            return .downloading(title: "Repairing \(modelName)", meta: "", fraction: progress, subtext: nil)
         case .failed(let modelName, _):
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text("Couldn’t finish downloading \(modelName). Open Settings → General to retry.")
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(2)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.regularMaterial)
+            return .failed(message: "Couldn’t finish downloading \(modelName).")
+        }
+    }
+
+    /// A failed repair retries the ACTIVE model through `runManualRepair`, the
+    /// same choke point Settings → General uses.
+    private func repairRetryAction(for repair: TranscriberHolder.RepairState) -> (() -> Void)? {
+        switch repair {
+        case .downloading:
+            return nil
+        case .failed:
+            return { Task { await transcriberHolder.runManualRepair(transcriberHolder.primaryModelID) } }
         }
     }
 

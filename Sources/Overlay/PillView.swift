@@ -1,6 +1,12 @@
 import AppKit
 import SwiftUI
 
+/// The pill's live-signal tint (waveform trail + state dots). Ink-grey by
+/// owner decision (2026-07-16): a fully monochrome pill — neutral silver on
+/// the black body — instead of `Color.accentColor`, whose hue followed the
+/// user's macOS accent setting and could read as any system color.
+let pillSignalTint = Color(white: 0.82)
+
 /// Carries the ask-before-paste pill's measured ideal height up to the window
 /// controller so the panel can grow vertically to fit (never clip the buttons).
 struct AskHeightKey: PreferenceKey {
@@ -174,11 +180,6 @@ struct PillView: View {
                 pillBody {
                     HoldProgressContent(progress: progress, reduceMotion: reduceMotion)
                 }
-            case .repairingModel(let modelName, let progress, let isError):
-                pillBody(maxWidth: PillView.expandedPillWidth) {
-                    RepairingContent(modelName: modelName, progress: progress, isError: isError)
-                }
-                .onTapGesture { model.invokeRepairPillTap() }
             case .askCorrection(let original, let term, let contextBefore, let contextAfter, let applied):
                 // Expanded multi-line ask — modeled on the expanded recording
                 // body (rounded-rect, roomy), NOT the 36pt capsule. This is the
@@ -584,7 +585,7 @@ private struct AmplitudeTrail: View {
         Group {
             if reduceMotion {
                 Circle()
-                    .fill(Color.accentColor)
+                    .fill(pillSignalTint)
                     .frame(width: 4, height: 4)
                     .opacity(0.3 + 0.7 * Double(amp.history.last ?? 0))
             } else {
@@ -614,7 +615,7 @@ private struct AmplitudeTrail: View {
                         }
                         ctx.stroke(
                             path,
-                            with: .color(Color.accentColor),
+                            with: .color(pillSignalTint),
                             style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round)
                         )
                     }
@@ -817,7 +818,7 @@ private struct RewritingContent: View {
     var body: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(Color.accentColor)
+                .fill(pillSignalTint)
                 .frame(width: 7, height: 7)
             ThreeDotLoader(reduceMotion: reduceMotion)
             Spacer(minLength: 4)
@@ -846,7 +847,7 @@ private struct CondensingContent: View {
     var body: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(Color.accentColor)
+                .fill(pillSignalTint)
                 .frame(width: 7, height: 7)
             ThreeDotLoader(reduceMotion: reduceMotion)
             Spacer(minLength: 4)
@@ -1008,10 +1009,13 @@ private struct AskCorrectionContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Header: amber "needs your call" dot + label + Jot tag.
+            // Header: dot + label + Jot tag. The dot follows the pill's
+            // monochrome signal tint (owner, 2026-07-16) — the ONLY warm
+            // accent on the ask card is the highlighted word itself, so the
+            // eye has exactly one colored target.
             HStack(spacing: 8) {
                 Circle()
-                    .fill(Color(nsColor: .systemOrange))
+                    .fill(pillSignalTint)
                     .frame(width: 7, height: 7)
                 Text("Check this word")
                     .font(.system(size: 12, weight: .semibold))
@@ -1143,54 +1147,6 @@ private struct CountdownRing: View {
     }
 }
 
-
-// MARK: - Repairing model (startup self-heal)
-
-/// Rendered for `PillState.repairingModel` (design §Phase 3). Persistent —
-/// shows download progress while the active transcription model re-downloads
-/// after a failed launch integrity probe, or a failure affordance once the
-/// heal could not complete. Tapping routes to Settings → Transcription.
-private struct RepairingContent: View {
-    let modelName: String
-    let progress: Double?
-    let isError: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if isError {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color(nsColor: .systemOrange))
-            } else {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color(nsColor: .systemBlue))
-            }
-            Text(label)
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .monospacedDigit()
-                .frame(maxWidth: PillView.errorTextMaxWidth, alignment: .leading)
-            Image(systemName: "arrow.up.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.6))
-        }
-        .accessibilityLabel(label + ". Click to open Settings.")
-        .transition(.opacity.animation(.easeOut(duration: 0.14)))
-    }
-
-    private var label: String {
-        if isError {
-            return "Couldn’t download \(modelName) — open Settings"
-        }
-        if let progress {
-            return "Repairing transcription model — downloading \(modelName)… \(Int(progress * 100))%"
-        }
-        return "Repairing transcription model — downloading \(modelName)…"
-    }
-}
 
 // MARK: - Error
 

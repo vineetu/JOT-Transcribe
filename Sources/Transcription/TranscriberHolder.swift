@@ -90,6 +90,123 @@ final class TranscriberHolder: ObservableObject {
     @Published private(set) var migrationDownloadProgress: Double?
     @Published private(set) var migrationDownloadError: String?
 
+    /// A **manual** model/language switch whose target model isn't on disk yet
+    /// (menu bar "Switch model" or the Settings language picker). Sibling to the
+    /// migration and repair producers, deliberately kept OFF the shared
+    /// `migrationDownloadProgress` banner state: a manual switch is
+    /// user-initiated and interactive, so it must not silently defer behind a
+    /// background migration the way the migration paths defer behind each other.
+    ///
+    /// The invariant matches the migration paths' download-first-then-flip
+    /// (`startPendingNemotronUpgradeIfNeeded` §:312-317): the user keeps
+    /// dictating on their CURRENT model the whole time the target downloads —
+    /// `primaryModelID` / `activeLanguage` are NOT touched until the target's
+    /// bytes are on disk, and no old model file is ever deleted on a switch.
+    enum PendingSwitch {
+        /// Downloading `target` while `from` stays the live, usable model.
+        /// `language` is non-nil for a Settings language switch (so the picker
+        /// can keep showing the user's chosen language mid-download) and nil for
+        /// a model-only menu-bar switch. `progress` is `nil` until the first
+        /// byte fraction lands, then carries the rich `ModelDownloadProgress`
+        /// (bytes / speed / ETA, plus the terminal `.preparing` phase while
+        /// CoreML compiles / loads so 100% doesn't dead-air).
+        case downloading(target: ParakeetModelID, from: ParakeetModelID,
+                         language: LanguageChoice?, progress: ModelDownloadProgress?)
+        /// A retriable failure (host outage / transient corrupt fetch): the app
+        /// stayed on `from` and is dictating normally while Jot auto-retries the
+        /// download with backoff. `error` is the classified reason (for the UI
+        /// message); `nextRetryAt` is when the next automatic attempt fires
+        /// (`nil` while an attempt is actually in flight).
+        case retrying(target: ParakeetModelID, from: ParakeetModelID,
+                      language: LanguageChoice?, error: ModelDownloadError,
+                      nextRetryAt: Date?)
+        /// A non-retriable failure (offline / disk full / unclassified): the app
+        /// stayed on `from`. The persisted intent survives, so a relaunch or a
+        /// "Retry" tap re-attempts; there is no automatic backoff loop here.
+        case failed(target: ParakeetModelID, from: ParakeetModelID,
+                    language: LanguageChoice?, error: ModelDownloadError)
+
+        /// The model being switched TO, carried by every case.
+        var target: ParakeetModelID {
+            switch self {
+            case .downloading(let target, _, _, _),
+                 .retrying(let target, _, _, _, _),
+                 .failed(let target, _, _, _): return target
+            }
+        }
+
+        /// The live model the user keeps dictating with meanwhile.
+        var from: ParakeetModelID {
+            switch self {
+            case .downloading(_, let from, _, _),
+                 .retrying(_, let from, _, _, _),
+                 .failed(_, let from, _, _): return from
+            }
+        }
+
+        /// The deferred language (Settings language switch), if any.
+        var language: LanguageChoice? {
+            switch self {
+            case .downloading(_, _, let language, _),
+                 .retrying(_, _, let language, _, _),
+                 .failed(_, _, let language, _): return language
+            }
+        }
+
+        /// The classified failure reason for the `.retrying` / `.failed` cases;
+        /// `nil` while actively downloading.
+        var error: ModelDownloadError? {
+            switch self {
+            case .downloading: return nil
+            case .retrying(_, _, _, let error, _),
+                 .failed(_, _, _, let error): return error
+            }
+        }
+    }
+
+    @Published private(set) var pendingSwitch: PendingSwitch?
+
+    /// Monotonic token so a later manual switch supersedes an in-flight one:
+    /// every `beginPendingSwitch` / `cancelPendingSwitch` bumps this, and the
+    /// download Task's success/failure block is a no-op when its captured
+    /// generation is stale. The superseded download still runs to completion in
+    /// `DownloadCoordinator` (its bytes are cached for later); we simply stop
+    /// acting on its result.
+    private var switchGeneration = 0
+
+    /// The running download-then-flip (and auto-retry) loop for the current
+    /// pending switch. Held so `cancelPendingSwitch` / a superseding switch can
+    /// cancel its in-flight download and (crucially) its backoff sleep. `nil`
+    /// when no switch is in flight.
+    private var switchTask: Task<Void, Never>?
+
+    /// Re-entrancy guard for the cross-launch intent re-arm's async
+    /// "already-cached, flip now" branch, where `pendingSwitch` stays `nil`
+    /// across the await and so can't gate a second re-arm on its own.
+    private var intentRearmInFlight = false
+
+    /// Speed/ETA meter for the current switch download attempt. Held on the
+    /// MainActor (not captured into the `@Sendable` progress closure — `SpeedMeter`
+    /// isn't `Sendable`) so the closure captures only `[weak self]` and reads the
+    /// meter back through `self` on its MainActor hop. Reset each attempt.
+    private var switchMeter: SpeedMeter?
+
+    /// The language a Settings language switch is downloading TO, so the picker
+    /// can keep showing the user's choice while the model downloads instead of
+    /// snapping back to the still-active language. Only `.downloading` drives
+    /// this — a `.failed` switch leaves the picker honestly on the old language.
+    var pendingLanguage: LanguageChoice? {
+        switch pendingSwitch {
+        case .downloading(_, _, let language, _),
+             .retrying(_, _, let language, _, _):
+            // Both "in flight" states keep the picker on the user's chosen
+            // language; only a terminal `.failed` lets it snap back honestly.
+            return language
+        default:
+            return nil
+        }
+    }
+
     private let cache: ModelCache
     private let defaults: UserDefaults
     /// Factory takes both the model id AND the active language so the
@@ -113,6 +230,14 @@ final class TranscriberHolder: ObservableObject {
     /// one-shot language migration. `jot.defaultModelID` remains the model
     /// source of truth.
     static let languageKey = "jot.transcriptionLanguage"
+
+    /// Persisted **intent** for a manual model/language switch whose download
+    /// hasn't finished (design: download-retry §4). Written when a background
+    /// download-then-flip starts, cleared only on success or an explicit cancel
+    /// — NOT on failure — so "the user asked for this model" survives a relaunch
+    /// and Jot resumes the download when the network returns. Stored under
+    /// domain `com.jot.Jot`.
+    static let pendingIntentKey = "jot.pendingModelDownloadIntent"
 
     init(
         cache: ModelCache = .shared,
@@ -168,6 +293,12 @@ final class TranscriberHolder: ObservableObject {
         Task {
             await coordinator.addSuccessObserver(onDownloadSuccess)
         }
+
+        // Cross-launch resume (design: download-retry §4): if a prior session
+        // asked to switch to a model whose download never finished, pick the
+        // background download-then-flip back up now. Deferred behind migration
+        // markers and re-tried from `refreshInstalled` when they retire.
+        rearmPendingDownloadIntentIfNeeded()
     }
 
     /// The model that should actually be loaded/used: the explicit stored
@@ -193,8 +324,13 @@ final class TranscriberHolder: ObservableObject {
         try? await new.ensureLoaded()
     }
 
-    /// Switch the active transcription **language** (design §5.4). This is the
-    /// write path behind the Setup Wizard / Settings language picker.
+    /// Switch the active transcription **language** (design §5.4), flipping the
+    /// model **immediately** even if it must download. This is the write path
+    /// behind the **Setup Wizard** `LanguageStep`, which drives its own in-step
+    /// download UI + an advance gate keyed on `primaryModelID` and so relies on
+    /// the immediate flip. The **Settings** language picker instead routes
+    /// through `requestLanguageSwitch(_:)`, which keeps the current model live
+    /// and download-then-flips; it delegates the no-download cases back here.
     ///
     /// It persists `jot.transcriptionLanguage` and resolves the language to a
     /// model, but with a **no-clobber guard** so re-confirming a language that
@@ -238,11 +374,366 @@ final class TranscriberHolder: ObservableObject {
         await setPrimary(resolved)
     }
 
+    // MARK: - Manual switch (download-then-flip)
+
+    /// Single choke point for a **manual model switch** (menu bar "Switch
+    /// model"). Closes the gap where picking a not-yet-downloaded model flipped
+    /// `primaryModelID` immediately and stranded the user on a broken
+    /// transcriber for the length of a multi-hundred-MB download:
+    ///
+    /// - Target already installed → flip immediately via `setPrimary` (the
+    ///   original behavior; every menu row is an installed model today).
+    /// - Target not installed → KEEP the current model live and download in the
+    ///   background (`beginPendingSwitch`), flipping only when the bytes land.
+    ///
+    /// No language change on this path — the active language is preserved.
+    /// Re-selecting the current primary cancels any in-flight pending switch.
+    func requestSwitch(to id: ParakeetModelID) async {
+        guard id != primaryModelID else { cancelPendingSwitch(); return }
+        if cache.isCached(id) {
+            cancelPendingSwitch()
+            await setPrimary(id)
+            return
+        }
+        beginPendingSwitch(to: id, language: nil)
+    }
+
+    /// Single choke point for a **Settings language switch** (General pane
+    /// picker). The Settings equivalent of `requestSwitch(to:)`: it resolves
+    /// exactly like `setLanguage` for the no-download cases (no-clobber English,
+    /// same-model hint rebuild, already-installed target — all delegated so the
+    /// guard logic keeps one owner), but when the resolved model isn't on disk
+    /// it does NOT flip. It keeps the current model + language live and
+    /// downloads in the background, applying the new language only when the
+    /// bytes land.
+    ///
+    /// The Setup Wizard's `LanguageStep` deliberately keeps calling
+    /// `setLanguage` directly, not this: it drives its own in-step download UI
+    /// and an advance gate keyed on `primaryModelID`, both of which rely on
+    /// `setLanguage`'s immediate flip.
+    func requestLanguageSwitch(_ lang: LanguageChoice) async {
+        let resolved = lang.modelID()
+        let needsDownload = Self.languageSwitchNeedsDownload(
+            lang: lang,
+            resolved: resolved,
+            primary: primaryModelID,
+            isResolvedInstalled: cache.isCached(resolved))
+
+        // No-download cases resolve identically to `setLanguage` — delegate so
+        // the no-clobber guard + hint-rebuild logic isn't duplicated.
+        guard needsDownload else {
+            cancelPendingSwitch()
+            await setLanguage(lang)
+            return
+        }
+
+        // Target model not installed: download-then-flip, applying the language
+        // only on success so the current (working) model + hint stay live.
+        beginPendingSwitch(to: resolved, language: lang)
+    }
+
+    /// Pure routing predicate for a Settings language switch: does the resolved
+    /// model need a download-then-flip, or can it flip immediately? Extracted
+    /// static so the decision — the exact thing that was flipping too early —
+    /// is unit-testable without the cache/async machinery. Mirrors the
+    /// no-download cases `setLanguage` already handles:
+    /// - English re-picked on an English-only stored model (Nemotron / v2):
+    ///   no-clobber, model untouched → no download.
+    /// - The resolved model already IS the primary → hint rebuild only.
+    /// - The resolved model is installed → immediate flip.
+    /// Otherwise (resolved differs AND isn't on disk) → download-then-flip.
+    nonisolated static func languageSwitchNeedsDownload(
+        lang: LanguageChoice,
+        resolved: ParakeetModelID,
+        primary: ParakeetModelID,
+        isResolvedInstalled: Bool
+    ) -> Bool {
+        if lang == .english,
+           primary == .nemotron_en || primary == .tdt_0_6b_v2_en_streaming {
+            return false
+        }
+        if resolved == primary { return false }
+        return !isResolvedInstalled
+    }
+
+    /// Abandon any in-flight pending switch: bump the generation so its
+    /// download Task's success/failure block no-ops when it lands, cancel the
+    /// loop (including any backoff sleep), clear the persisted intent (explicit
+    /// user cancel), and clear the banner. The underlying `DownloadCoordinator`
+    /// task keeps running (its bytes are cached for a later switch); we just
+    /// stop caring about it. No model files are removed.
+    func cancelPendingSwitch() {
+        switchGeneration &+= 1
+        switchTask?.cancel()
+        switchTask = nil
+        switchMeter = nil
+        clearPendingIntent()
+        pendingSwitch = nil
+    }
+
+    /// Re-attempt the current pending switch **immediately**, skipping any
+    /// remaining backoff wait. Drives the UI "Retry" / "Retry now" affordance on
+    /// the `.retrying` and `.failed` banners. A bare `.downloading` switch is
+    /// already in flight, so this is a no-op there.
+    func retryPendingSwitch() {
+        guard let pending = pendingSwitch else { return }
+        switch pending {
+        case .downloading:
+            return
+        case .retrying(let target, _, let language, _, _),
+             .failed(let target, _, let language, _):
+            // Restart the loop from a fresh attempt (backoff resets). This
+            // cancels the sleeping retry loop via the generation bump + task
+            // cancel inside `beginPendingSwitch`, so no duplicate loop runs.
+            beginPendingSwitch(to: target, language: language)
+        }
+    }
+
+    /// Human-readable name for a model — used by switch banners for the
+    /// "keep dictating in <from>" / target labels. Thin passthrough to the
+    /// model's own `displayName` so callers don't need to import the enum's
+    /// naming surface.
+    static func displayName(for id: ParakeetModelID) -> String {
+        id.displayName
+    }
+
+    /// Backoff schedule for auto-retry of a retriable download failure:
+    /// 30 → 60 → 120 → 240 → capped at 300 seconds. `attempt` is 1-based.
+    static func retryDelay(attempt: Int) -> TimeInterval {
+        let base = 30.0 * pow(2.0, Double(max(0, attempt - 1)))
+        return min(300.0, base)
+    }
+
+    /// Shared download-then-flip core for `requestSwitch` / `requestLanguage-
+    /// Switch` / cross-launch resume. Keeps `primaryModelID` / `activeLanguage`
+    /// untouched until the target bundle is fully on disk, then flips — the same
+    /// "no window where the active model is uninstalled" invariant the migration
+    /// paths hold (§:312-317). `language` non-nil also applies the deferred
+    /// language on success so the FluidAudio hint matches the new model.
+    ///
+    /// Retriable failures (host outage / transient corrupt fetch) do NOT dead-end
+    /// to `.failed`: the loop publishes `.retrying` and re-attempts with backoff
+    /// while the user keeps dictating on the current model — the current model is
+    /// never uninstalled or altered. Non-retriable failures (offline / disk full)
+    /// land in `.failed`; the persisted intent survives either way so a relaunch
+    /// resumes. The whole loop respects `switchGeneration` supersession and is
+    /// cancellable via `cancelPendingSwitch`.
+    private func beginPendingSwitch(to id: ParakeetModelID, language: LanguageChoice?) {
+        switchGeneration &+= 1
+        let generation = switchGeneration
+        let from = primaryModelID
+        // Persist intent so a relaunch resumes this switch (cleared on success /
+        // explicit cancel only). Written before the first byte so an immediate
+        // crash still leaves the intent recorded.
+        persistPendingIntent(model: id, language: language)
+        pendingSwitch = .downloading(target: id, from: from, language: language, progress: nil)
+
+        switchTask?.cancel()
+        switchTask = Task { @MainActor [weak self] in
+            await self?.runPendingSwitchLoop(
+                id: id, from: from, language: language, generation: generation)
+        }
+    }
+
+    /// The download-then-flip + auto-retry loop. Runs on the MainActor; each
+    /// iteration is one full download attempt (byte-level resume is out of
+    /// scope). Exits on success, a non-retriable failure, cancellation, or
+    /// supersession by a newer switch.
+    private func runPendingSwitchLoop(
+        id: ParakeetModelID,
+        from: ParakeetModelID,
+        language: LanguageChoice?,
+        generation: Int
+    ) async {
+        var attempt = 0
+        while true {
+            guard switchGeneration == generation, !Task.isCancelled else { return }
+
+            // Fresh speed meter per attempt (a retry re-downloads from the
+            // start, so byte/ETA accounting restarts too). Held on `self`, not
+            // captured into the `@Sendable` closure below.
+            switchMeter = SpeedMeter(bytesTotal: id.approxBytes)
+            pendingSwitch = .downloading(target: id, from: from, language: language, progress: nil)
+
+            let downloader = downloaderFactory(cache)
+            // @Sendable progress closure with its own independent `[weak self]`,
+            // matching the migration paths' Swift 6 idiom. The generation guard
+            // drops progress from a superseded switch; the meter is read back
+            // through `self` (it isn't `Sendable`, so it can't be captured).
+            let progressBinding: @Sendable (Double) -> Void = { [weak self] fraction in
+                Task { @MainActor in
+                    guard let self, self.switchGeneration == generation,
+                          let progress = self.switchMeter?.record(fraction: fraction) else { return }
+                    self.pendingSwitch = .downloading(
+                        target: id, from: from, language: language, progress: progress)
+                }
+            }
+
+            do {
+                try await downloader.downloadIfMissing(id, progress: progressBinding)
+                guard switchGeneration == generation, !Task.isCancelled else { return }
+                // Retire the meter so a late progress straggler can't clobber the
+                // terminal state below back to `.downloading`.
+                switchMeter = nil
+
+                // PREPARING: bytes have landed; CoreML compile / model load can
+                // take seconds. Publish the indeterminate `.preparing` sentinel
+                // so the UI shows "Preparing…" instead of dead-air at 100%.
+                pendingSwitch = .downloading(
+                    target: id, from: from, language: language,
+                    progress: .preparing(bytesTotal: id.approxBytes))
+
+                // Apply the deferred language first (if any) so `setPrimary`
+                // rebuilds the transcriber with the matching hint, mirroring
+                // `setLanguage`'s installed-model path.
+                if let language {
+                    defaults.set(language.rawValue, forKey: Self.languageKey)
+                    activeLanguage = language
+                }
+                await setPrimary(id)
+                guard switchGeneration == generation else { return }
+
+                // SUCCESS: the model is now primary. Clear intent + banner.
+                clearPendingIntent()
+                pendingSwitch = nil
+                switchTask = nil
+                refreshInstalled()
+                return
+            } catch {
+                guard switchGeneration == generation, !Task.isCancelled else { return }
+                // Retire the meter (see success path) before publishing the
+                // retry/failed banner so no straggler resurrects `.downloading`.
+                switchMeter = nil
+                let classified = ModelDownloadError.classify(error)
+                await ErrorLog.shared.error(
+                    component: "TranscriberHolder",
+                    message: "Manual model switch download failed",
+                    context: [
+                        "modelID": id.rawValue,
+                        "reason": classified.logTag,
+                        "error": ErrorLog.redactedAppleError(error),
+                    ]
+                )
+
+                guard classified.isRetriable else {
+                    // Non-retriable (offline / disk full / unclassified): stay on
+                    // the old model. Intent survives so a relaunch or "Retry"
+                    // resumes; no automatic backoff loop for these.
+                    pendingSwitch = .failed(
+                        target: id, from: from, language: language, error: classified)
+                    switchTask = nil
+                    refreshInstalled()
+                    return
+                }
+
+                // Retriable: keep the current (working) model live and auto-retry
+                // with backoff. The current model is never uninstalled or altered.
+                attempt += 1
+                let delay = Self.retryDelay(attempt: attempt)
+                pendingSwitch = .retrying(
+                    target: id, from: from, language: language,
+                    error: classified, nextRetryAt: Date().addingTimeInterval(delay))
+
+                // Interruptible backoff: a supersede / cancel / "Retry now"
+                // cancels this Task, waking the sleep; the top-of-loop guard then
+                // returns (for supersede/cancel) or a fresh loop takes over.
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                // Loop for the next automatic attempt.
+            }
+        }
+    }
+
+    // MARK: - Persisted switch intent (cross-launch resume)
+
+    /// Codable payload for `pendingIntentKey` — the desired model plus the
+    /// optional deferred language, both stored as their stable raw values.
+    private struct PendingDownloadIntent: Codable, Equatable {
+        let model: String
+        let language: String?
+    }
+
+    private func persistPendingIntent(model: ParakeetModelID, language: LanguageChoice?) {
+        let intent = PendingDownloadIntent(model: model.rawValue, language: language?.rawValue)
+        if let data = try? JSONEncoder().encode(intent) {
+            defaults.set(data, forKey: Self.pendingIntentKey)
+        }
+    }
+
+    private func clearPendingIntent() {
+        defaults.removeObject(forKey: Self.pendingIntentKey)
+    }
+
+    private func loadPendingIntent() -> PendingDownloadIntent? {
+        guard let data = defaults.data(forKey: Self.pendingIntentKey) else { return nil }
+        return try? JSONDecoder().decode(PendingDownloadIntent.self, from: data)
+    }
+
+    /// Resume a manual switch persisted by a prior session (or reactivated when
+    /// the network returns): if the intent's model still isn't the primary,
+    /// flip to it now (if its bytes are already on disk) or restart the
+    /// background download-then-flip. Never blocks dictation and never removes an
+    /// installed engine. Safe to call repeatedly — guarded on `pendingSwitch`
+    /// (a live switch already owns the intent) and the migration markers (defer
+    /// while a migration/self-heal download owns the shared machinery).
+    func rearmPendingDownloadIntentIfNeeded() {
+        guard pendingSwitch == nil, !intentRearmInFlight else { return }
+        guard let intent = loadPendingIntent() else { return }
+        guard let model = ParakeetModelID(rawValue: intent.model) else {
+            // Corrupt / stale payload — retire it.
+            clearPendingIntent()
+            return
+        }
+        let language = intent.language.flatMap(LanguageChoice.init(rawValue:))
+
+        // Already satisfied (the intent model is live) → retire the intent.
+        if model == primaryModelID {
+            clearPendingIntent()
+            return
+        }
+
+        // Defer while a migration / self-heal download is pending, mirroring the
+        // launch arbitration those paths use. `refreshInstalled` re-runs this
+        // once the markers retire.
+        guard !defaults.bool(forKey: ModelChoiceMigration.fourOptionDownloadPendingKey),
+              !defaults.bool(forKey: NemotronAutoUpgradeMigration.autoUpgradePendingKey),
+              !defaults.bool(forKey: QwenRetirementMigration.multilingualUpgradePendingKey) else {
+            return
+        }
+
+        if cache.isCached(model) {
+            // Bytes already on disk (an earlier/racing fetch landed them):
+            // complete the deferred flip now — no re-download, no banner flash.
+            intentRearmInFlight = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let language {
+                    self.defaults.set(language.rawValue, forKey: Self.languageKey)
+                    self.activeLanguage = language
+                }
+                await self.setPrimary(model)
+                self.clearPendingIntent()
+                self.intentRearmInFlight = false
+                self.refreshInstalled()
+            }
+            return
+        }
+
+        // Still missing → resume the background download-then-flip (which
+        // re-persists the same intent and clears it on success).
+        beginPendingSwitch(to: model, language: language)
+    }
+
     /// Re-scan the model cache directory and update `installedModelIDs`.
     /// Call after a download or removal so the Settings/Wizard "Downloaded"
     /// indicator reflects the disk state.
     func refreshInstalled() {
         installedModelIDs = Self.scan(cache: cache)
+        // A model appearing on disk (or a migration retiring its marker) is
+        // exactly the "things have settled / the network came back" moment to
+        // resume a persisted deferred switch. Guarded internally so an in-flight
+        // switch or a cleared intent makes this a no-op — and so the re-arm's own
+        // success path (which calls `refreshInstalled`) can't recurse.
+        rearmPendingDownloadIntentIfNeeded()
     }
 
     /// Consumes the post-migration one-shot download marker and downloads the
@@ -848,5 +1339,27 @@ final class TranscriberHolder: ObservableObject {
 
     private static func scan(cache: ModelCache) -> Set<ParakeetModelID> {
         Set(ParakeetModelID.allCases.filter { cache.isCached($0) })
+    }
+}
+
+// MARK: - PendingSwitch Equatable
+
+/// Hand-written conformance because `ModelDownloadError` isn't `Equatable` (its
+/// `.unknown(any Error)` payload can't be). We compare the error by its stable,
+/// log-safe `logTag` — two states that render the same message compare equal,
+/// which is exactly what SwiftUI diffing needs. All other associated values are
+/// natively `Equatable`.
+extension TranscriberHolder.PendingSwitch: Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        switch (lhs, rhs) {
+        case let (.downloading(lt, lf, ll, lp), .downloading(rt, rf, rl, rp)):
+            return lt == rt && lf == rf && ll == rl && lp == rp
+        case let (.retrying(lt, lf, ll, le, ln), .retrying(rt, rf, rl, re, rn)):
+            return lt == rt && lf == rf && ll == rl && le.logTag == re.logTag && ln == rn
+        case let (.failed(lt, lf, ll, le), .failed(rt, rf, rl, re)):
+            return lt == rt && lf == rf && ll == rl && le.logTag == re.logTag
+        default:
+            return false
+        }
     }
 }

@@ -69,6 +69,7 @@ final class JotMenuBarController: NSObject {
     private var transcriptCancellable: AnyCancellable?
     private var primaryModelCancellable: AnyCancellable?
     private var installedModelsCancellable: AnyCancellable?
+    private var pendingSwitchCancellable: AnyCancellable?
     #if JOT_FLAVOR_1
     private var flavor1StateCancellable: AnyCancellable?
     #endif
@@ -131,6 +132,16 @@ final class JotMenuBarController: NSObject {
                 self?.rebuildModelSwitchSection()
             }
         installedModelsCancellable = transcriberHolder.$installedModelIDs
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.rebuildModelSwitchSection()
+            }
+        // Reflect an in-flight manual switch (from the menu OR the Settings
+        // language picker) so the tray shows a "Downloading <target>…" row
+        // while the active model stays checked, then reverts once the flip
+        // lands (which also fires the `primaryModelID` / `installedModelIDs`
+        // publishers above).
+        pendingSwitchCancellable = transcriberHolder.$pendingSwitch
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.rebuildModelSwitchSection()
@@ -335,7 +346,24 @@ final class JotMenuBarController: NSObject {
         modelSwitchSectionItems.removeAll(keepingCapacity: true)
 
         let installed = transcriberHolder.installedModelIDs
-        guard installed.count >= 2 else { return }
+        // A pending manual switch keeps the section visible even for a
+        // single-model user, so its status row shows while the (only) active
+        // model finishes the swap — or retries / fails. Since the pill no
+        // longer renders download state, this tray row is the ONLY place a
+        // background retry/failure surfaces when the main window is closed.
+        struct PendingRow { let target: ParakeetModelID; let title: String; let isFailed: Bool }
+        let pendingRow: PendingRow?
+        switch transcriberHolder.pendingSwitch {
+        case .downloading(let target, _, _, _):
+            pendingRow = PendingRow(target: target, title: String(localized: "Downloading \(target.displayName)…"), isFailed: false)
+        case .retrying(let target, _, _, _, _):
+            pendingRow = PendingRow(target: target, title: String(localized: "Retrying \(target.displayName) download…"), isFailed: false)
+        case .failed(let target, _, _, _):
+            pendingRow = PendingRow(target: target, title: String(localized: "\(target.displayName) download failed — retry"), isFailed: true)
+        case .none:
+            pendingRow = nil
+        }
+        guard installed.count >= 2 || pendingRow != nil else { return }
 
         let primary = transcriberHolder.primaryModelID
 
@@ -365,6 +393,22 @@ final class JotMenuBarController: NSObject {
             item.target = self
             item.representedObject = model.rawValue
             modelSwitchSubmenu.addItem(item)
+        }
+
+        // Status row for a pending manual switch whose target isn't installed
+        // yet (the checkmark stays on the active model above). Downloading /
+        // retrying rows are status-only (disabled); a FAILED row is clickable
+        // and re-attempts via the download-then-flip choke point, so a
+        // window-closed user can recover from the tray.
+        if let pendingRow, !installed.contains(pendingRow.target) {
+            let row = NSMenuItem(
+                title: pendingRow.title,
+                action: pendingRow.isFailed ? #selector(retryPendingDownload) : nil,
+                keyEquivalent: ""
+            )
+            row.target = pendingRow.isFailed ? self : nil
+            row.isEnabled = pendingRow.isFailed
+            modelSwitchSubmenu.addItem(row)
         }
 
         let parent = NSMenuItem(
@@ -647,8 +691,15 @@ final class JotMenuBarController: NSObject {
               let id = ParakeetModelID(rawValue: raw)
         else { return }
         Task { @MainActor in
-            await transcriberHolder.setPrimary(id)
+            // Route through the download-then-flip choke point. Every menu row
+            // is an installed model today, so this flips immediately as before;
+            // routing keeps the invariant if a not-installed row is ever added.
+            await transcriberHolder.requestSwitch(to: id)
         }
+    }
+
+    @objc private func retryPendingDownload() {
+        Task { @MainActor in transcriberHolder.retryPendingSwitch() }
     }
 
     @objc private func quitApp() {

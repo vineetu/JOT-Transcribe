@@ -17,10 +17,14 @@ enum ModelCatalog {
     static func options(for provider: LLMProvider) -> [String] {
         switch provider {
         case .openai:
-            // gpt-5.6 (Sol/Terra/Luna) was announced GA 2026-07-09 but is
-            // NOT yet served on real accounts (404 verified against a live
-            // key the same day) — do not list it until /v1/models shows it.
-            return ["gpt-5.4-mini", "gpt-5.5"]
+            // gpt-5.6 (Sol/Terra/Luna) — the current generation. Verified against
+            // a live OpenAI /v1/models AND a real gpt-5.6-terra chat/completions
+            // call on 2026-07-16 (HTTP 200, reasoning_effort:"none"). luna (cheap)
+            // and terra (higher tier) are surfaced; sol is omitted as a curation
+            // choice. gpt-5.6 wants reasoning_effort:"none" (see
+            // LLMClient.openAIReasoningEffort). Older 5.4/5.5 dropped from the
+            // picker; a user's stored older id still works (catalog is honored).
+            return ["gpt-5.6-luna", "gpt-5.6-terra"]
         case .anthropic:
             // claude-sonnet-5 is the canonical dateless ID (GA 2026-06-30).
             return ["claude-sonnet-5", "claude-haiku-4-5-20251001"]

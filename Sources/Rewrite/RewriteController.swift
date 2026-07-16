@@ -53,6 +53,27 @@ final class RewriteController: ObservableObject {
     /// have a stable human-readable instruction column.
     static let fixedInstruction = "Rewrite this"
 
+    /// Default guidance shown on the capture pill for the plain
+    /// `.rewriteWithVoice` hotkey when no Prompt-Picker hint is supplied.
+    /// Without this the capture pill was visually identical to ordinary
+    /// dictation, so users froze ("what's happening?"). It both states what
+    /// to say and surfaces the empty-input escape hatch (say nothing → the
+    /// selection is just cleaned up).
+    static let defaultRewriteVoiceHint =
+        "Say a change — e.g. “make it formal” — or nothing to just clean it up."
+
+    /// Upper bound on how long the mic stays open waiting for the user to
+    /// finish the spoken instruction before we auto-stop and transcribe.
+    /// Replaces the previous INDEFINITE wait, which left a frozen user staring
+    /// at a pill that never resolved. On timeout we stop and transcribe
+    /// whatever was captured: non-empty speech becomes the instruction (this
+    /// alone fixes the "spoke but never pressed stop again" failure mode),
+    /// silence falls through to the default clean-up rewrite. A second hotkey
+    /// press, Esc, or a mic disconnect still resolves earlier; a user with
+    /// long-form instructions can still press the hotkey to finish before the
+    /// window elapses. Named so it is trivial to tune / make a setting later.
+    static let secondToggleTimeout: Duration = .seconds(10)
+
     /// Resolver for the user-selected default Rewrite prompt. Read on every
     /// TAP (`rewrite()`) so a default chosen in Settings → Prompts (or the
     /// hold-picker's "Set as default") takes effect on the next tap without
@@ -86,6 +107,10 @@ final class RewriteController: ObservableObject {
     private var activeFlowTask: Task<Void, Never>?
     private var activeFixedFlowTask: Task<Void, Never>?
     private var secondToggleContinuation: CheckedContinuation<Void, Error>?
+    /// Fires `resumeSecondToggle()` after `secondToggleTimeout` so the mic
+    /// wait is bounded. Cancelled the instant the continuation is taken by any
+    /// path (user toggle, Esc/cancel, disconnect) so it never resumes twice.
+    private var secondToggleTimeoutTask: Task<Void, Never>?
     // Kept through the rewrite tail so Esc can still invalidate generation
     // and suppress a late paste after the voice phase has finished.
     private var pipelineToken: VoiceInputPipeline.Token?
@@ -323,6 +348,8 @@ final class RewriteController: ObservableObject {
         defer {
             activeFlowTask = nil
             pipelineToken = nil
+            secondToggleTimeoutTask?.cancel()
+            secondToggleTimeoutTask = nil
             secondToggleContinuation = nil
             self.augmentHint = nil
         }
@@ -370,8 +397,21 @@ final class RewriteController: ObservableObject {
             guard pipeline.stillActive(token) else { return }
             // Surface the per-use augment hint (if any) BEFORE flipping to
             // `.recording` so the pill can show it the instant the mic opens.
+            // On the plain `.rewriteWithVoice` hotkey path (no picker override,
+            // no supplied hint) we now inject a default instructional hint so
+            // the capture pill explains what to say — the Phase-0 fix for
+            // "I pressed the key and froze because nothing told me it wanted an
+            // instruction about my selection." Empty input still just cleans it
+            // up (see the empty-instruction branch below), so the hint mentions
+            // that escape hatch too.
             let trimmedHint = augmentHint?.trimmingCharacters(in: .whitespacesAndNewlines)
-            self.augmentHint = (trimmedHint?.isEmpty == false) ? trimmedHint : nil
+            if let trimmedHint, !trimmedHint.isEmpty {
+                self.augmentHint = trimmedHint
+            } else if systemPromptOverride == nil {
+                self.augmentHint = Self.defaultRewriteVoiceHint
+            } else {
+                self.augmentHint = nil
+            }
             state = .recording(startedAt: Date())
 
             try await waitForSecondToggle()
@@ -383,11 +423,53 @@ final class RewriteController: ObservableObject {
             let instruction = stopResult.text
 
             guard pipeline.stillActive(token) else { return }
-            guard !instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            // Empty instruction is NOT a dead end. If the user pressed the
+            // hotkey and said nothing understandable, "just rewrite it" was
+            // almost certainly the intent — so we fall back to the fixed-
+            // prompt default rewrite (instruction: nil → the no-instruction
+            // system-prompt fallback) instead of erroring. This is the
+            // Phase-0 fix for the "I froze and got an error" complaint.
+            // Only the plain hotkey path defaults; a Prompt-Picker augment run
+            // (systemPromptOverride present) still needs its spoken detail, so
+            // an empty instruction there remains a genuine miss.
+            let instructionIsEmpty = instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if instructionIsEmpty && systemPromptOverride == nil {
+                Task {
+                    await self.logSink.info(
+                        component: "Rewrite",
+                        message: "Empty instruction — defaulting to fixed rewrite",
+                        context: ["flow": "custom"]
+                    )
+                }
+                state = .rewriting
+                let service = rewriteService()
+                let modelLabel = snapshotModelLabel()
+                let rewritten = try await service.rewrite(
+                    selectedText: selectedText,
+                    instruction: nil,
+                    systemPromptOverride: nil
+                )
+                guard pipeline.stillActive(token) else { return }
+                persistSession(
+                    flavor: "fixed",
+                    selection: selectedText,
+                    instruction: Self.fixedInstruction,
+                    output: rewritten,
+                    modelUsed: modelLabel,
+                    createdAt: createdAt
+                )
+                guard pasteReplacement(rewritten) else { return }
+                guard pipeline.stillActive(token) else { return }
+                lastRewrite = rewritten
+                lastRewriteAt = .now
+                state = .idle
+                return
+            }
+            guard !instructionIsEmpty else {
                 Task {
                     await self.logSink.warn(
                         component: "Rewrite",
-                        message: "Empty instruction after transcription",
+                        message: "Empty instruction after transcription (augment path)",
                         context: ["flow": "custom"]
                     )
                 }
@@ -780,6 +862,18 @@ final class RewriteController: ObservableObject {
     private func waitForSecondToggle() async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             secondToggleContinuation = continuation
+            // Bound the wait. Auto-finish is identical to the user pressing the
+            // hotkey again — `resumeSecondToggle` funnels through
+            // `takeSecondToggleContinuation`, which atomically nils the
+            // continuation, so whichever of {timeout, toggle, disconnect,
+            // cancel} lands first wins and the rest are no-ops. Everything runs
+            // on the MainActor, so there is no interleaving between the
+            // isCancelled check and the nil-out.
+            secondToggleTimeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.secondToggleTimeout)
+                guard !Task.isCancelled else { return }
+                self?.resumeSecondToggle()
+            }
         }
     }
 
@@ -788,6 +882,8 @@ final class RewriteController: ObservableObject {
     }
 
     private func takeSecondToggleContinuation() -> CheckedContinuation<Void, Error>? {
+        secondToggleTimeoutTask?.cancel()
+        secondToggleTimeoutTask = nil
         let continuation = secondToggleContinuation
         secondToggleContinuation = nil
         return continuation

@@ -168,6 +168,13 @@ struct GeneralPane: View {
                 // section as Input device, directly beneath it, with no
                 // separate "Transcription language" section heading.
                 transcriptionLanguageRows
+
+                // Advanced-only manual model override, directly under the
+                // language field. Hidden when Advanced is off — hiding it never
+                // changes the active model or any stored setting.
+                if advancedEnabled {
+                    transcriptionModelRows
+                }
             }
 
             // Speaker labels lives entirely in its own Advanced-gated sidebar
@@ -497,13 +504,95 @@ struct GeneralPane: View {
         languageModelStatusRow
     }
 
-    /// Two-way binding over the active language. Reads `holder.activeLanguage`;
-    /// writes route through `holder.setLanguage(_:)` which owns the no-clobber
-    /// guard and the resolved-model download (design §5.4.1).
+    // MARK: - Transcription model (Advanced-only manual override)
+
+    /// The download target of an in-flight manual switch, so the picker can keep
+    /// showing the user's chosen model mid-download instead of snapping back to
+    /// the still-active one. Only `.downloading` drives this; a `.failed` switch
+    /// stayed on the old model, so the picker honestly reflects that.
+    private var pendingModelTarget: ParakeetModelID? {
+        if case .downloading(let target, _, _, _) = holder.pendingSwitch { return target }
+        return nil
+    }
+
+    /// Advanced-only "Transcription model" override. Models are normally chosen
+    /// automatically from the language; this control lets a power user pin a
+    /// specific model. Selection routes through `holder.requestSwitch(to:)` — the
+    /// download-then-flip choke point — so picking a not-yet-downloaded model
+    /// keeps the current one dictating (with the `pendingSwitch` banner) until
+    /// the bytes land. The active model may be one auto-routed by language and
+    /// absent from `visibleCases`; when so it's shown as an extra row plus a
+    /// caption rather than being silently dropped.
+    @ViewBuilder
+    private var transcriptionModelRows: some View {
+        let display = ModelPickerDisplay.resolve(
+            active: holder.activeModelID,
+            pendingTarget: pendingModelTarget,
+            language: holder.activeLanguage
+        )
+        HStack {
+            LabeledContent("Transcription model") {
+                Picker("", selection: modelBinding) {
+                    // The active-but-auto-routed model isn't a normal selectable
+                    // row; surface it so the menu can display the real active pick.
+                    if display.selectedIsAutoRouted {
+                        Text(display.selectedID.displayName).tag(display.selectedID)
+                    }
+                    ForEach(ParakeetModelID.visibleCases, id: \.self) { model in
+                        Text(modelRowLabel(model)).tag(model)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+            InfoPopoverButton(
+                title: "Transcription model",
+                body: "Jot normally picks the transcription model automatically from your language. This override is for testing a specific model. Switching downloads it in the background and never interrupts dictation — you keep using the current model until the new one finishes downloading. Turning Advanced off just hides this control; it never changes the active model."
+            )
+        }
+        if let caption = display.autoRouteCaption {
+            Text(caption)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Two-way binding over the model override. Getter mirrors the language
+    /// picker's `pendingLanguage`-first resolution via `ModelPickerDisplay`;
+    /// writes route through the download-then-flip choke point.
+    private var modelBinding: Binding<ParakeetModelID> {
+        Binding(
+            get: {
+                ModelPickerDisplay.resolve(
+                    active: holder.activeModelID,
+                    pendingTarget: pendingModelTarget,
+                    language: holder.activeLanguage
+                ).selectedID
+            },
+            set: { id in Task { await holder.requestSwitch(to: id) } }
+        )
+    }
+
+    /// Model row label with the existing badges rendered subtly. The deprecated
+    /// marker is already baked into `displayName` (e.g. "Parakeet v2 + live
+    /// preview (deprecated)"), so only the recommended badge is appended to avoid
+    /// a doubled "(deprecated)".
+    private func modelRowLabel(_ model: ParakeetModelID) -> String {
+        model.isRecommended ? "\(model.displayName) (Recommended)" : model.displayName
+    }
+
+    /// Two-way binding over the active language. Writes route through
+    /// `holder.requestLanguageSwitch(_:)` — the download-then-flip choke point
+    /// that keeps the current model live while a not-installed target downloads
+    /// (owns the no-clobber guard + resolved-model download, design §5.4.1).
+    /// The getter prefers `pendingLanguage` so the picker keeps showing the
+    /// user's chosen language mid-download instead of snapping back to the
+    /// still-active one; it falls back to `activeLanguage` in steady state.
     private var languageBinding: Binding<LanguageChoice> {
         Binding(
-            get: { holder.activeLanguage },
-            set: { lang in Task { await holder.setLanguage(lang) } }
+            get: { holder.pendingLanguage ?? holder.activeLanguage },
+            set: { lang in Task { await holder.requestLanguageSwitch(lang) } }
         )
     }
 
@@ -517,92 +606,94 @@ struct GeneralPane: View {
         let repair = holder.repairState
 
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(languageStatusSubtitle(model: model, installed: installed, state: state, repair: repair))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if let repair {
-                    repairTrailing(repair)
-                } else if state.isDownloading {
-                    HStack(spacing: 6) {
-                        ProgressView(value: state.progress)
-                            .frame(width: 100)
-                        Text("\(Int(state.progress * 100))%")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
+            if let repair {
+                // Active-model self-heal renders through the shared component so
+                // the download bar and a real Retry button match the main-window
+                // banner and the wizard. This deletes the old circular
+                // `ProgressView()` spinner that sat in `repairTrailing` (the
+                // "spinner on top of a bar" HIG violation).
+                ModelDownloadStatusView(
+                    state: repairStatus(repair),
+                    style: .inline,
+                    onRetry: repairRetryAction(for: repair)
+                )
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(languageStatusSubtitle(model: model, installed: installed, state: state))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if state.isDownloading {
+                        HStack(spacing: 6) {
+                            // Determinate LINEAR bar (already HIG-clean — not a
+                            // circular spinner).
+                            ProgressView(value: state.progress)
+                                .frame(width: 100)
+                            Text("\(Int(state.progress * 100))%")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    } else if installed {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text("Downloaded")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.green)
+                        }
+                    } else {
+                        Button("Download") { startDownload(model) }
+                            .controlSize(.small)
                     }
-                } else if installed {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Downloaded")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.green)
-                    }
-                } else {
-                    Button("Download") { startDownload(model) }
-                        .controlSize(.small)
                 }
-            }
-            if let repair, case .failed = repair {
-                Text("Couldn’t finish downloading \(repair.modelName). It will retry on next launch, or use Download above.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if let error = state.error, repair == nil {
-                Text(error)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if repair == nil && !installed && !state.isDownloading {
-                Text("Download required.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.orange)
+                if let error = state.error {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !installed && !state.isDownloading {
+                    Text("Download required.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                }
             }
         }
     }
 
-    @ViewBuilder
-    private func repairTrailing(_ repair: TranscriberHolder.RepairState) -> some View {
+    /// Map the self-heal repair producer onto the shared component. `repairState`
+    /// carries only a bare `Double?` fraction (no bytes/speed), so the meta line
+    /// is empty here.
+    private func repairStatus(_ repair: TranscriberHolder.RepairState) -> ModelDownloadStatusView.State {
         switch repair {
-        case .downloading(_, let progress):
-            HStack(spacing: 6) {
-                if let progress {
-                    ProgressView(value: progress)
-                        .frame(width: 100)
-                    Text("\(Int(progress * 100))%")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                } else {
-                    ProgressView()
-                        .controlSize(.small)
-                }
+        case .downloading(let modelName, let progress):
+            guard let progress else {
+                return .working(title: "Repairing \(modelName)…", symbol: .downloading, subtext: nil)
             }
+            return .downloading(title: "Repairing \(modelName)", meta: "", fraction: progress, subtext: nil)
+        case .failed(let modelName, _):
+            return .failed(message: "Couldn’t finish downloading \(modelName).")
+        }
+    }
+
+    /// A failed repair retries the ACTIVE model through `runManualRepair`, the
+    /// same choke point the old `repairTrailing` "Retry" button used.
+    private func repairRetryAction(for repair: TranscriberHolder.RepairState) -> (() -> Void)? {
+        switch repair {
+        case .downloading:
+            return nil
         case .failed:
-            Button("Retry") { startDownload(holder.primaryModelID) }
-                .controlSize(.small)
+            return { startDownload(holder.primaryModelID) }
         }
     }
 
     private func languageStatusSubtitle(
         model: ParakeetModelID,
         installed: Bool,
-        state: RowState,
-        repair: TranscriberHolder.RepairState?
+        state: RowState
     ) -> String {
         let footprint = footprintLabel(for: model)
-        if let repair {
-            switch repair {
-            case .downloading:
-                return "Repairing — downloading… · \(footprint)"
-            case .failed:
-                return "Repair failed · \(footprint)"
-            }
-        }
         if state.isDownloading {
             return "Downloading… · \(footprint)"
         }

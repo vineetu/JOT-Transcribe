@@ -105,7 +105,7 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         }
         switch self {
         case .appleIntelligence: return ""
-        case .openai:       return "gpt-5.4-mini"
+        case .openai:       return "gpt-5.6-luna"
         case .anthropic:    return "claude-haiku-4-5-20251001"
         case .gemini:       return "gemini-3.1-flash-lite"
         case .ollama:       return "gemma4:31b-cloud"

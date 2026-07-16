@@ -281,6 +281,14 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     ///
     /// This is **preview-only**: the final batch transcript is produced by the
     /// model itself and is unaffected by this flag.
+    /// True only for English. Gates the English-specific deterministic
+    /// number normalizer (`NumberNormalizer`), whose spelled-cardinal rules
+    /// are English-only — applying them to Romance/other Latin scripts would
+    /// mis-convert (e.g. French "six cents" = 600 → "6¢"). Casing/whitespace
+    /// cleanup and pause-based paragraph segmentation are language-agnostic and
+    /// are NOT gated on this.
+    public var isEnglish: Bool { self == .english }
+
     public var isSpaceless: Bool {
         switch self {
         case .japanese, .mandarin:
@@ -302,23 +310,69 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
-    /// Picker presentation order: every language sorted alphabetically by its
-    /// ENGLISH name. With type-to-search in the picker, a single predictable
-    /// alphabetical list beats hand-pinned groupings (the user can always type
-    /// to jump). Experimental languages are interleaved alphabetically and
-    /// marked with a badge, not segregated.
+    /// The **selectable** presentation set: every language sorted alphabetically
+    /// by its ENGLISH name, with the Nemotron-only languages dropped on hardware
+    /// that can't run them. Use this where you must never offer a language the
+    /// user can't actually pick (e.g. the MRU/recents eligible set). Pickers that
+    /// want to *show* gated languages as disabled use `presentationEntries`
+    /// instead. Derived from `presentationEntries` so the ordering stays in sync.
     public static var presentationOrder: [LanguageChoice] {
-        let multilingualEligible = HardwareTier.nemotronMultilingualEligible
-        return LanguageChoice.allCases
-            .filter { lang in
-                // Nemotron-only languages have no backend below 24 GB; hide them
-                // there rather than offer a language that can't transcribe.
-                if lang.requiresNemotronMultilingual && !multilingualEligible { return false }
-                return true
-            }
+        presentationEntries().filter { !$0.isHardwareGated }.map(\.language)
+    }
+
+    /// One picker entry: a language plus whether the *current* Mac can run it.
+    /// Gated entries are the Nemotron-multilingual-only languages on a Mac below
+    /// the 24 GB / M2-Pro bar — surfaced (greyed, disabled) rather than hidden so
+    /// a user searching for e.g. Arabic learns *why* it's unavailable instead of
+    /// getting an empty result.
+    public struct MenuEntry: Identifiable, Sendable, Equatable {
+        public let language: LanguageChoice
+        public let isHardwareGated: Bool
+        public var id: String { language.id }
+    }
+
+    /// Short, self-explanatory reason a gated language can't be selected here.
+    ///
+    /// Two honest variants, because a Mac can miss the ≥24 GB **and**
+    /// M2-Pro-class-chip bar for either reason independently: a base-M2 32 GB
+    /// Mac is *chip*-gated, not RAM-gated, and the old flat "24 GB memory" line
+    /// misdescribed it. Chip failure leads (it's the harder wall — no RAM
+    /// upgrade fixes an old chip), so a machine that fails the chip check gets
+    /// the chip note regardless of its RAM; only chip-passing-but-RAM-short Macs
+    /// see the memory note. `chipClearsTier` is injectable for the DEBUG harness.
+    public static func hardwareGateNote(
+        chipClearsTier: Bool = HardwareTier.chipClearsNemotronTier(HardwareTier.chipBrandString)
+    ) -> String {
+        chipClearsTier
+            ? "Needs a Mac with 16 GB memory or more"
+            : "Needs a newer Apple Silicon chip (M2 Pro or M4 and later)"
+    }
+
+    /// Whether `lang` is present in the picker but not selectable on this Mac —
+    /// a Nemotron-only language with no backend below the measured 16 GB / chip-tier bar. Pure
+    /// presentation gating; routing/eligibility/models are unchanged. The
+    /// eligibility is injectable for the DEBUG harness.
+    public static func isHardwareGated(
+        _ lang: LanguageChoice,
+        multilingualEligible: Bool = HardwareTier.nemotronMultilingualEligible
+    ) -> Bool {
+        lang.requiresNemotronMultilingual && !multilingualEligible
+    }
+
+    /// Every surfaced language in alphabetical (English-name) order, each tagged
+    /// with whether the current hardware can run it. Unlike `presentationOrder`
+    /// this NEVER drops a language — gated ones come back with
+    /// `isHardwareGated == true` so pickers can render them disabled + explained.
+    /// Type-to-search over this set still finds gated languages (that's the
+    /// point: the explanation replaces an empty result).
+    public static func presentationEntries(
+        multilingualEligible: Bool = HardwareTier.nemotronMultilingualEligible
+    ) -> [MenuEntry] {
+        LanguageChoice.allCases
             .sorted {
                 $0.englishName.localizedCaseInsensitiveCompare($1.englishName) == .orderedAscending
             }
+            .map { MenuEntry(language: $0, isHardwareGated: isHardwareGated($0, multilingualEligible: multilingualEligible)) }
     }
 
     /// Languages that ONLY the Nemotron multilingual ship can transcribe (no
