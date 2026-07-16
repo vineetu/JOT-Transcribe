@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import FluidAudio
 import Foundation
+import JotTextPipeline
 import os.log
 
 /// Jot's wrapper around FluidAudio's `AsrManager`.
@@ -382,9 +383,16 @@ public actor Transcriber: Transcribing {
         // casing.
         var segmented = transcriptText
         if let timings = result.tokenTimings {
+            // Bridge FluidAudio word timings into the engine-neutral
+            // TokenTiming the shared text pipeline consumes ($0 infers as
+            // FluidAudio's type; the package type is module-qualified).
             segmented = ParagraphSegmenter.segment(
                 rescoredText: segmented,
-                tokenTimings: timings
+                tokenTimings: timings.map {
+                    JotTextPipeline.TokenTiming(
+                        token: $0.token, startTime: $0.startTime, endTime: $0.endTime
+                    )
+                }
             )
         }
         let cleaned: String
@@ -488,7 +496,11 @@ public actor Transcriber: Transcribing {
             if let timings = result.tokenTimings {
                 segmented = ParagraphSegmenter.segment(
                     rescoredText: result.text,
-                    tokenTimings: timings
+                    tokenTimings: timings.map {
+                        JotTextPipeline.TokenTiming(
+                            token: $0.token, startTime: $0.startTime, endTime: $0.endTime
+                        )
+                    }
                 )
             } else {
                 segmented = result.text

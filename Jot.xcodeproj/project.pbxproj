@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A000000000000000000000B1 /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = A000000000000000000000A1 /* FluidAudio */; };
 		A000000000000000000000B2 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = A000000000000000000000A2 /* KeyboardShortcuts */; };
+		A000000000000000000000EE5 /* JotTextPipeline in Frameworks */ = {isa = PBXBuildFile; productRef = A000000000000000000000A5 /* JotTextPipeline */; };
 		A000000000000000000000B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* Assets.xcassets */; };
 		A000000000000000000000B4 /* help-content.md in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* help-content.md */; };
 		A000000000000000000000B5 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* Localizable.xcstrings */; };
@@ -111,6 +112,7 @@
 			files = (
 				A000000000000000000000B1 /* FluidAudio in Frameworks */,
 				A000000000000000000000B2 /* KeyboardShortcuts in Frameworks */,
+				A000000000000000000000EE5 /* JotTextPipeline in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -241,6 +243,7 @@
 				A000000000000000000000A2 /* KeyboardShortcuts */,
 				A000000000000000000000A3 /* Sparkle */,
 				A000000000000000000000A4 /* CoreMLLLM */,
+				A000000000000000000000A5 /* JotTextPipeline */,
 			);
 			productName = Jot;
 			productReference = A00000000000000000000001 /* Jot.app */;
@@ -280,6 +283,7 @@
 				A000000000000000000000C2 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
 				A000000000000000000000C3 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				A000000000000000000000C4 /* XCRemoteSwiftPackageReference "CoreML-LLM" */,
+				A000000000000000000000C5 /* XCLocalSwiftPackageReference "jot-shared" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A00000000000000000000041 /* Products */;
@@ -737,6 +741,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		A000000000000000000000C5 /* XCLocalSwiftPackageReference "jot-shared" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../jot-shared;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A000000000000000000000C1 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -773,6 +784,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A000000000000000000000A5 /* JotTextPipeline */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A000000000000000000000C5 /* XCLocalSwiftPackageReference "jot-shared" */;
+			productName = JotTextPipeline;
+		};
 		A000000000000000000000A1 /* FluidAudio */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A000000000000000000000C1 /* XCRemoteSwiftPackageReference "FluidAudio" */;

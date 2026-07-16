@@ -52,6 +52,12 @@ Sources/
   Home/           ← Landing pane + full recordings browser
   Recording/      ← AVAudioEngine capture, converter, hotkey routing
   Transcription/  ← FluidAudio wrapper, post-processing, model I/O
+                    (the deterministic cleanup chain — NumberNormalizer /
+                    ParagraphSegmenter / FillerWordCleaner — lives in the
+                    shared `JotTextPipeline` package at `../jot-shared`,
+                    a local-path dependency shared with Jot for iPhone;
+                    behavior changes go in the package + its fixtures,
+                    never as Mac-side forks)
   LLM/            ← Provider-neutral HTTP client + AppleIntelligenceClient + prompts + classifier
   Rewrite/        ← Selection-capture + paste-back controller (fixed and voice-instruction variants)
   Permissions/    ← Mic / input-monitoring / accessibility capability modelling
