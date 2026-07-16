@@ -171,8 +171,8 @@ struct PromptPickerView: View {
                      text: "You **held** \(key) to open this — **tap** it instead to apply your default prompt.")
             coachRow(icon: "text.cursor",
                      text: "Pick a prompt — it rewrites the text you had selected in your app.")
-            coachRow(icon: "mic.fill",
-                     text: "Some prompts let you **speak** a detail: pick one, speak, then press \(key) again to finish.")
+            coachRow(icon: "keyboard",
+                     text: "Some prompts need a detail: pick one, then **type or say** it and press ⏎.")
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
@@ -198,11 +198,13 @@ struct PromptPickerView: View {
     private var operandStrip: some View {
         HStack(spacing: 8) {
             // When the focused prompt is parameterized (carries a
-            // voiceAugmentHint), tell the user that picking it will ask them to
-            // speak a detail — so the voice capture isn't a surprise. Otherwise
-            // show the standing "refining your selection" hint.
+            // voiceAugmentHint), tell the user that picking it will ask for a
+            // detail — so the follow-up prompt isn't a surprise. The panel it
+            // opens takes typing OR speech, hence the trailing mechanism note;
+            // it sits after the Spacer so the hint keeps the truncating space.
+            // Otherwise show the standing "refining your selection" hint.
             if let hint = focusedAugmentHint {
-                Image(systemName: "mic.fill")
+                Image(systemName: "keyboard")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Text(hint)
@@ -210,14 +212,19 @@ struct PromptPickerView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                Spacer(minLength: 8)
+                Text("type or say it")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .layoutPriority(1)
             } else {
                 Text("Refining your selected text — pick a prompt to apply.")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 18)
         .padding(.bottom, 8)

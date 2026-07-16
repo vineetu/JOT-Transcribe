@@ -13,10 +13,10 @@ struct RewriteInstructionChip: Identifiable, Equatable {
     let instruction: String
 }
 
-/// Feature flag + last-used translation language for the Phase-2 typed panel.
-/// The flag defaults ON for the plain `.rewriteWithVoice` path; flipping it
-/// off restores the pure Phase-0/1 voice+timeout behavior (which stays fully
-/// functional either way — the panel is additive, not a replacement).
+/// Feature flag + last-used translation language for the typed panel.
+/// The flag defaults ON for every Rewrite-with-Voice path; flipping it off
+/// restores the pure voice+timeout behavior (which stays fully functional
+/// either way — the panel is additive, not a replacement).
 enum RewriteTypedPanelSettings {
     static let enabledStorageKey = "jot.rewrite.typedPanelEnabled"
     static let lastTranslateLanguageKey = "jot.rewrite.lastTranslateLanguage"

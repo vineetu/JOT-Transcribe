@@ -62,6 +62,13 @@ final class RewriteController: ObservableObject {
     static let defaultRewriteVoiceHint =
         "Say a change — e.g. “make it formal” — or nothing to just clean it up."
 
+    /// What the typed panel's field asks for on the plain `.rewriteWithVoice`
+    /// path. Mirrors `defaultRewriteVoiceHint` in surfacing the empty-input
+    /// escape hatch. An augment run overrides this with the picked prompt's own
+    /// hint, since only that prompt knows which detail it is missing.
+    static let defaultPanelPlaceholder =
+        "Describe the change — or just press ⏎ to clean it up"
+
     /// Upper bound on how long the mic stays open waiting for the user to
     /// finish the spoken instruction before we auto-stop and transcribe.
     /// Replaces the previous INDEFINITE wait, which left a frozen user staring
@@ -460,12 +467,11 @@ final class RewriteController: ObservableObject {
             // Surface the per-use augment hint (if any) BEFORE flipping to
             // `.recording` so the pill can show it the instant the mic opens.
             // On the plain `.rewriteWithVoice` hotkey path (no picker override,
-            // no supplied hint) we now inject a default instructional hint so
-            // the capture pill explains what to say — the Phase-0 fix for
-            // "I pressed the key and froze because nothing told me it wanted an
-            // instruction about my selection." Empty input still just cleans it
-            // up (see the empty-instruction branch below), so the hint mentions
-            // that escape hatch too.
+            // no supplied hint) a default instructional hint stands in, because
+            // an otherwise-bare capture pill is indistinguishable from ordinary
+            // dictation and never says it wants an instruction. Empty input
+            // still just cleans the selection up (see the empty-instruction
+            // branch below), so the hint mentions that escape hatch too.
             let trimmedHint = augmentHint?.trimmingCharacters(in: .whitespacesAndNewlines)
             if let trimmedHint, !trimmedHint.isEmpty {
                 self.augmentHint = trimmedHint
@@ -534,49 +540,83 @@ final class RewriteController: ObservableObject {
             }
 
             // Voice path (empty ⏎ without typing, timeout, second hotkey, or
-            // mic disconnect). If typing already stopped the mic — the user
-            // typed then pressed the hotkey again, or the idle timer fired —
-            // there's nothing to transcribe. Salvage the typed text as the
-            // instruction if the field has any; only fall to a bare clean-up
-            // when it's empty.
-            guard pipeline.stillActive(token) else {
-                if micStoppedByTyping {
-                    try Task.checkCancellation()
-                    let salvaged = currentPanelText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    // Same asymmetry as the ⏎ branch: an augment run that ends
-                    // with an empty field has lost its parameter, so it errors
-                    // rather than quietly cleaning the selection up.
-                    guard !(salvaged.isEmpty && isAugmentRun) else {
-                        reportMissingAugmentDetail(source: "typed-salvage")
-                        return
-                    }
-                    try await runResolvedRewriteTail(
-                        selectedText: selectedText,
-                        instruction: salvaged.isEmpty ? nil : salvaged,
-                        createdAt: createdAt,
-                        systemPromptOverride: systemPromptOverride,
-                        pickedTitle: pickedTitle
-                    )
+            // mic disconnect). Typing supersedes speaking, so if a keystroke
+            // stopped the mic there is by definition nothing worth
+            // transcribing: salvage whatever is in the field instead.
+            //
+            // This is checked BEFORE `stillActive` deliberately.
+            // `handlePanelFirstEdit` cancels the mic from a detached Task, and
+            // the pipeline only invalidates the token AFTER the engine finishes
+            // tearing down — so a resume landing inside that window would see
+            // `stillActive == true`, transcribe a dead mic, and throw the typed
+            // text away.
+            if micStoppedByTyping {
+                try Task.checkCancellation()
+                let salvaged = currentPanelText.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Same asymmetry as the ⏎ branch: an augment run that ends with
+                // an empty field has lost its parameter, so it errors rather
+                // than quietly cleaning the selection up.
+                guard !(salvaged.isEmpty && isAugmentRun) else {
+                    reportMissingAugmentDetail(source: "typed-salvage")
+                    return
                 }
+                try await runResolvedRewriteTail(
+                    selectedText: selectedText,
+                    instruction: salvaged.isEmpty ? nil : salvaged,
+                    createdAt: createdAt,
+                    systemPromptOverride: systemPromptOverride,
+                    pickedTitle: pickedTitle
+                )
                 return
             }
+            guard pipeline.stillActive(token) else { return }
             state = .transcribing
 
-            let stopResult = try await pipeline.stopAndTranscribe(token)
-            let instruction = stopResult.text
+            let instruction: String
+            do {
+                instruction = try await pipeline.stopAndTranscribe(token).text
+            } catch VoiceInputPipeline.PipelineError.audioTooShort(let recording)
+                where !shortRecordingLooksLikeMicRedirect(for: recording) {
+                // Sub-second audio means the user gave no spoken instruction —
+                // which is exactly what the plain path invites ("…or nothing to
+                // just clean it up", and the panel's ⏎ placeholder). Erroring
+                // here would punish the gesture we documented, so it lands on
+                // the same no-instruction handling as an empty transcript.
+                //
+                // The `where` clause keeps the mic-redirect signature (wall
+                // clock says they spoke, but no audio arrived) on the error
+                // path below, where surfacing the diagnostic is the whole point.
+                if isAugmentRun {
+                    reportMissingAugmentDetail(source: "audio-too-short")
+                    return
+                }
+                Task {
+                    await self.logSink.info(
+                        component: "Rewrite",
+                        message: "No instruction audio — defaulting to clean-up",
+                        context: ["flow": "custom"]
+                    )
+                }
+                try await runResolvedRewriteTail(
+                    selectedText: selectedText,
+                    instruction: nil,
+                    createdAt: createdAt
+                )
+                return
+            }
 
             guard pipeline.stillActive(token) else { return }
             // Empty instruction is NOT a dead end. If the user pressed the
             // hotkey and said nothing understandable, "just rewrite it" was
             // almost certainly the intent — so we fall back to the fixed-
             // prompt default rewrite (instruction: nil → the no-instruction
-            // system-prompt fallback) instead of erroring. This is the
-            // Phase-0 fix for the "I froze and got an error" complaint.
+            // system-prompt fallback) instead of stranding them on an error.
             // Only the plain hotkey path defaults; a Prompt-Picker augment run
-            // (systemPromptOverride present) still needs its spoken detail, so
-            // an empty instruction there remains a genuine miss.
+            // still needs its detail, so an empty instruction there remains a
+            // genuine miss — and does so identically whether the user was
+            // speaking or typing (see the panel-resolution branches above).
             let instructionIsEmpty = instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            if instructionIsEmpty && systemPromptOverride == nil {
+            if instructionIsEmpty && !isAugmentRun {
                 Task {
                     await self.logSink.info(
                         component: "Rewrite",
@@ -609,14 +649,7 @@ final class RewriteController: ObservableObject {
                 return
             }
             guard !instructionIsEmpty else {
-                Task {
-                    await self.logSink.warn(
-                        component: "Rewrite",
-                        message: "Empty instruction after transcription (augment path)",
-                        context: ["flow": "custom"]
-                    )
-                }
-                state = .error("Could not understand the instruction.")
+                reportMissingAugmentDetail(source: "transcription")
                 return
             }
 
@@ -752,19 +785,37 @@ final class RewriteController: ObservableObject {
         }
     }
 
-    // MARK: - Typed panel (Phase 2)
+    // MARK: - Typed panel
 
-    /// Present the typed-instruction panel for the plain path when enabled, and
-    /// wire its callbacks back into this run. A `false` (couldn't-become-key)
-    /// return dismisses the panel so we degrade cleanly to voice+timeout.
-    private func presentTypedPanelIfEnabled(systemPromptOverride: String?) {
-        guard systemPromptOverride == nil,
-              RewriteTypedPanelSettings.isEnabled,
-              let instructionPanel
-        else { return }
+    /// Present the typed-instruction panel when enabled, and wire its callbacks
+    /// back into this run. A `false` (couldn't-become-key) return dismisses the
+    /// panel so we degrade cleanly to voice+timeout.
+    ///
+    /// Serves both paths, which want different things from the field:
+    ///   * plain — a free-form instruction, plus the canned chips.
+    ///   * augment — only the picked prompt's missing detail. Its own hint is
+    ///     the placeholder (nothing else says what to supply), and the chips are
+    ///     suppressed: "Make it shorter" would fight the prompt's own body.
+    private func presentTypedPanelIfEnabled(
+        systemPromptOverride: String?,
+        augmentHint: String?
+    ) {
+        guard RewriteTypedPanelSettings.isEnabled, let instructionPanel else { return }
+
+        let isAugmentRun = systemPromptOverride != nil
+        let hint = augmentHint?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // A hintless picked prompt is applied silently by the picker (it never
+        // reaches this flow at all), so this should be unreachable — but a panel
+        // that can't say what it wants is worse than no panel, so if a caller
+        // ever does route one here, fall back to the pure voice path.
+        guard !isAugmentRun || !hint.isEmpty else {
+            log.warning("Typed panel suppressed — augment run with no hint")
+            return
+        }
 
         let becameKey = instructionPanel.present(
-            chips: Self.defaultChips(),
+            chips: isAugmentRun ? [] : Self.defaultChips(),
+            placeholder: isAugmentRun ? hint : Self.defaultPanelPlaceholder,
             onFirstEdit: { [weak self] in self?.handlePanelFirstEdit() },
             onTextChange: { [weak self] text in self?.currentPanelText = text },
             onSubmit: { [weak self] text in self?.handlePanelSubmit(text) },
@@ -799,15 +850,15 @@ final class RewriteController: ObservableObject {
     private func handlePanelFirstEdit() {
         guard !micStoppedByTyping else { return }
         micStoppedByTyping = true
-        // NIT 4: the mic is being paused — don't keep advertising "listening".
+        // The mic is being paused — don't keep advertising "listening".
         if augmentHint != nil { augmentHint = "Typing…" }
         if let token = pipelineToken {
             Task { @MainActor [weak self] in
                 await self?.pipeline.cancel(token: token)
             }
         }
-        // SHOULD-FIX 2: replace the (now-cancelled) 10 s mic timer with a longer
-        // idle bound. Reuses the `secondToggleTimeoutTask` slot, so
+        // Replace the (now-cancelled) 10 s mic timer with a longer idle
+        // bound. Reuses the `secondToggleTimeoutTask` slot, so
         // `takeSecondToggleContinuation()` cancels it on any resolve. On this
         // resume the mic is dead → the voice-fallback branch salvages
         // `currentPanelText` (or cleans up if empty).
@@ -853,15 +904,38 @@ final class RewriteController: ObservableObject {
         UserDefaults.standard.set(language, forKey: RewriteTypedPanelSettings.lastTranslateLanguageKey)
     }
 
-    /// LLM rewrite + persist + paste for a resolved instruction on the plain
-    /// path, guarded by Task cancellation (the pipeline token has already been
-    /// torn down for these branches, so `stillActive` isn't the guard here —
+    /// A parameterized prompt run that ended with no detail — nothing spoken,
+    /// nothing typed. Its body was written expecting one, so there is no
+    /// sensible rewrite to run and inventing one would silently discard the
+    /// prompt the user picked. `source` distinguishes the routes in the log.
+    private func reportMissingAugmentDetail(source: String) {
+        Task { [source] in
+            await self.logSink.warn(
+                component: "Rewrite",
+                message: "Empty instruction on augment path",
+                context: ["flow": "custom", "source": source]
+            )
+        }
+        state = .error("Could not understand the instruction.")
+    }
+
+    /// LLM rewrite + persist + paste for an instruction resolved by the panel,
+    /// guarded by Task cancellation (the pipeline token has already been torn
+    /// down for these branches, so `stillActive` isn't the guard here —
     /// `cancel()` cancels `activeFlowTask`, which trips `Task.checkCancellation`).
     /// `instruction == nil` runs the default clean-up (fixed system prompt).
+    ///
+    /// `systemPromptOverride` / `pickedTitle` carry a picked prompt through from
+    /// `runCustom`, and must stay in lockstep with the voice tail above: the
+    /// override IS the system prompt (verbatim) and the resolved text is only
+    /// its `<instruction>` parameter. Defaulting them to nil keeps the plain
+    /// path's call sites reading as they did.
     private func runResolvedRewriteTail(
         selectedText: String,
         instruction: String?,
-        createdAt: Date
+        createdAt: Date,
+        systemPromptOverride: String? = nil,
+        pickedTitle: String? = nil
     ) async throws {
         state = .rewriting
         let service = rewriteService()
@@ -869,15 +943,23 @@ final class RewriteController: ObservableObject {
         let rewritten = try await service.rewrite(
             selectedText: selectedText,
             instruction: instruction,
-            systemPromptOverride: nil
+            systemPromptOverride: systemPromptOverride
         )
         try Task.checkCancellation()
 
         let isCleanup = (instruction?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        // Label a picked run "<title> — <detail>" (e.g. "Translate — Japanese")
+        // exactly as the voice tail does, so Home reads the same whether the
+        // detail was spoken or typed.
+        let instructionLabel: String = {
+            guard let instruction, !isCleanup else { return Self.fixedInstruction }
+            guard let pickedTitle, !pickedTitle.isEmpty else { return instruction }
+            return "\(pickedTitle) — \(instruction)"
+        }()
         persistSession(
             flavor: isCleanup ? "fixed" : "voice",
             selection: selectedText,
-            instruction: isCleanup ? Self.fixedInstruction : instruction!,
+            instruction: instructionLabel,
             output: rewritten,
             modelUsed: modelLabel,
             createdAt: createdAt

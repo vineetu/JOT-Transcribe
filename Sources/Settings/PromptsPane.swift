@@ -712,7 +712,7 @@ private struct BuiltInPromptDetailSheet: View {
 
                 if let hint = nonEmpty(prompt.voiceAugmentHint) {
                     Section {
-                        Text("💡 Voice hint: \(hint)")
+                        Text("💡 Asks for a detail: \(hint)")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
