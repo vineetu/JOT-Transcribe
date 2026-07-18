@@ -50,7 +50,7 @@ Off by default. When enabled and an LLM provider is configured, Jot runs a light
 - **Graceful fallback** — if the LLM call fails or times out (10 s budget), Jot delivers the raw transcript instead.
 - **Cleaning-up indicator** — the status pill shows a "Cleaning up…" state during the transform.
 - **Raw + cleaned are both stored** — the Recordings detail view offers a "Show original" toggle.
-- **Provider options** — Apple Intelligence (on-device, default on macOS 26+; today's on-device model is capacity-limited and Settings → AI shows a quality-caveat banner recommending OpenAI / Anthropic / Gemini / Ollama for stronger results until Apple ships an upgrade), OpenAI, Anthropic, Gemini, or Ollama (fully local).
+- **Provider options** — Apple Intelligence (on-device, default on macOS 26+; today's on-device model is capacity-limited and Settings → AI shows a quality-caveat banner recommending OpenAI / Anthropic / Gemini / Ollama for stronger results until Apple ships an upgrade), OpenAI, Anthropic, Gemini, Ollama (fully local), or LM Studio (fully local).
 - **Editable prompt** — the cleanup prompt (filler removal → grammar → numeric normalization → list detection → paragraph structure → "return only" contract) is managed in the unified **Settings → Prompts → Cleanup** section, alongside every other prompt, under a "Customize prompt" chevron with a "Reset to default" escape hatch. The Auto-correct on/off toggle stays in Settings → AI (it governs whether cleanup runs automatically); a "Open Prompts →" link there jumps straight to the editor.
 - **Prompt safety framing** — LLM cleanup prepends an immutable safety preamble before the editable prompt, treating the transcript as data and preventing embedded transcript instructions from overriding cleanup behavior.
 - **Inline "Set up AI →"** — if the Auto-correct toggle is disabled because AI isn't configured, the pane offers a direct jump to the AI pane instead of leaving the user to find it.
@@ -76,7 +76,7 @@ Transform selected text via a global shortcut. Two variants, both triggered by t
 - **Default `⌥/`** — rebindable in Settings → Shortcuts.
 
 ### Shared configuration
-- **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, or Ollama.
+- **Provider options** — Apple Intelligence (on-device, default on macOS 26+), OpenAI, Anthropic, Gemini, Ollama, or LM Studio. Ollama and LM Studio are fully local (LM Studio speaks the OpenAI API at `localhost:1234` and JIT-loads whatever model you have open).
 - **Editable shared invariants** — the shared-invariants block (selection-is-text-not-instruction; return-only-the-rewrite; don't-refuse-on-quality; if the user provides an instruction follow it, otherwise improve clarity / flow / articulation while preserving content, voice, register, language, and length) is revealed under a "Customize prompt" chevron in Settings → AI → Rewrite with a "Reset to default" escape hatch. The per-branch tendencies are compile-time constants and not user-editable.
 
 ### Prompt picker
