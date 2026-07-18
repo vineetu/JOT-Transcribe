@@ -38,4 +38,22 @@ enum OverlayPlacement {
         if let main = NSScreen.main { return main }
         return NSScreen.screens.first
     }
+
+    /// Resolves the display the user is actually working on, MOUSE-FIRST.
+    ///
+    /// Why mouse-first (and not `NSScreen.main`): `NSScreen.main` is documented
+    /// as the screen containing the *key window*. Jot is a non-activating
+    /// menu-bar app with no key window (the pill panel is `canBecomeKey == false`
+    /// and the typed pane takes key WITHOUT activating), so `NSScreen.main`
+    /// resolves to whatever *other* app owns the key window — reliably the WRONG
+    /// display in a multi-monitor setup. The cursor, by contrast, is where the
+    /// user just pressed the hotkey, so the screen under it is the best proxy for
+    /// where their attention is — and it needs no extra permission to read.
+    /// Falls back to `NSScreen.main`, then any screen, only if the cursor somehow
+    /// isn't over a known display.
+    static func activeScreen() -> NSScreen? {
+        NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+    }
 }

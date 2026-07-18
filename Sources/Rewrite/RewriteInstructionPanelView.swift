@@ -17,8 +17,16 @@ import SwiftUI
 ///   • first keystroke → `onFirstEdit()` (pause the mic + cancel the timer).
 ///   • Esc           → `onCancel()` (order out, no paste).
 struct RewriteInstructionPanelView: View {
+    /// Picked prompt's name, shown as a tinted pill in the header. `nil` on the
+    /// plain path, which keeps the generic "Rewrite selection" title. Its
+    /// presence is also what marks the pane as an augment run — it drives the
+    /// "leave empty to apply as-is" footer note.
+    let title: String?
     let chips: [RewriteInstructionChip]
-    /// Prompt text for the empty field — tells the user what detail is wanted.
+    /// A prompt-specific question rendered above the field ("Say the target
+    /// language"). `nil` on the plain path, where the field alone suffices.
+    let questionLine: String?
+    /// Placeholder for the empty field — a bare example on the augment path.
     let placeholder: String
     let onFirstEdit: @MainActor () -> Void
     let onTextChange: @MainActor (String) -> Void
@@ -33,6 +41,12 @@ struct RewriteInstructionPanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
+            if let questionLine, !questionLine.isEmpty {
+                Text(questionLine)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             field
             chipRow
         }
@@ -65,8 +79,19 @@ struct RewriteInstructionPanelView: View {
             Image(systemName: "wand.and.stars")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.tint)
-            Text("Rewrite selection")
-                .font(.system(size: 13, weight: .semibold))
+            if let title, !title.isEmpty {
+                // Picked-prompt pane wears the prompt's name as a tinted pill so
+                // the user sees which prompt they're feeding a detail into.
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 9)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+            } else {
+                Text("Rewrite selection")
+                    .font(.system(size: 13, weight: .semibold))
+            }
             Spacer(minLength: 8)
             micAffordance
         }
@@ -162,7 +187,12 @@ struct RewriteInstructionPanelView: View {
                 .contentShape(Capsule())
             }
             Spacer(minLength: 8)
-            Text("⏎ to run · esc to cancel")
+            // On a picked-prompt pane the detail is optional — no detail applies
+            // the prompt as-is — so the footer says so; the plain pane keeps the
+            // terse key hint.
+            Text(title != nil
+                 ? "⏎ run · esc cancel · leave empty to apply as-is"
+                 : "⏎ to run · esc to cancel")
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
         }

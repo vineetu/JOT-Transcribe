@@ -75,7 +75,8 @@ final class RewriteController: ObservableObject {
     /// at a pill that never resolved. On timeout we stop and transcribe
     /// whatever was captured: non-empty speech becomes the instruction (this
     /// alone fixes the "spoke but never pressed stop again" failure mode),
-    /// silence falls through to the default clean-up rewrite. A second hotkey
+    /// silence runs with no detail (a clean-up on the plain path, or the picked
+    /// prompt applied as-is when one supplied the system prompt). A second hotkey
     /// press, Esc, or a mic disconnect still resolves earlier; a user with
     /// long-form instructions can still press the hotkey to finish before the
     /// window elapses. Named so it is trivial to tune / make a setting later.
@@ -85,7 +86,8 @@ final class RewriteController: ObservableObject {
     /// TYPING (which cancels the mic timer). Without it, a user who types one
     /// character then walks away would park the continuation — and leave the
     /// panel on screen — forever. On this timeout the flow auto-finishes: the
-    /// typed text (if any) becomes the instruction, otherwise a clean-up runs.
+    /// typed text (if any) becomes the detail, otherwise the run proceeds
+    /// without one.
     static let typedPanelIdleTimeout: Duration = .seconds(30)
 
     /// Resolver for the user-selected default Rewrite prompt. Read on every
@@ -145,8 +147,8 @@ final class RewriteController: ObservableObject {
         /// Non-empty typed text or a chip: skip transcription, rewrite with this.
         case typed(String)
         /// The user pressed ⏎ with an empty field AFTER having typed (so the mic
-        /// is paused): route to the default clean-up rather than to voice.
-        case defaultCleanup
+        /// is paused): run with no detail rather than falling back to voice.
+        case noDetail
     }
     private var typedResolution: TypedPanelResolution?
     /// Set when the first keystroke lands in the panel: cancels the auto-finish
@@ -384,12 +386,16 @@ final class RewriteController: ObservableObject {
     // MARK: - Rewrite with Voice internals
 
     /// The Rewrite-with-Voice flow. When `systemPromptOverride` is nil (the
-    /// plain `.rewriteWithVoice` hotkey path) it behaves exactly as before:
-    /// the spoken text is the instruction and the classifier-driven system
-    /// prompt governs. When a picked prompt supplies an override + title +
-    /// optional hint (the Prompt Picker augment path), the override becomes the
-    /// LLM system prompt verbatim, the picked title is persisted as the row's
-    /// instruction label, and the hint is surfaced on the pill during capture.
+    /// plain `.rewriteWithVoice` hotkey path) the spoken or typed text is the
+    /// instruction and the classifier-driven system prompt governs. When a
+    /// picked prompt supplies an override + title + hint (the Prompt Picker
+    /// augment path), the override becomes the LLM system prompt verbatim, the
+    /// detail rides in as the `<instruction>`, the picked title labels the
+    /// persisted row, and the hint is surfaced on the pill + the typed panel.
+    ///
+    /// Supplying no detail is valid on BOTH paths and never errors: the plain
+    /// path cleans the selection up, and a picked prompt is simply applied as-is
+    /// — the same result as picking a prompt that carries no hint at all.
     private func runCustom(
         systemPromptOverride: String? = nil,
         pickedTitle: String? = nil,
@@ -401,12 +407,6 @@ final class RewriteController: ObservableObject {
         typedResolution = nil
         micStoppedByTyping = false
         currentPanelText = ""
-
-        // A picked prompt supplied the system prompt and is waiting on a detail
-        // to parameterize it. The two paths disagree on what "the user gave no
-        // instruction" means — see the empty-instruction branches below — so
-        // every such branch keys off this.
-        let isAugmentRun = systemPromptOverride != nil
 
         defer {
             activeFlowTask = nil
@@ -491,6 +491,7 @@ final class RewriteController: ObservableObject {
             // pure voice+timeout flow — the timer is armed just below.
             presentTypedPanelIfEnabled(
                 systemPromptOverride: systemPromptOverride,
+                pickedTitle: pickedTitle,
                 augmentHint: trimmedHint
             )
 
@@ -509,12 +510,15 @@ final class RewriteController: ObservableObject {
                     await pipeline.cancel(token: token)
                 }
                 try Task.checkCancellation()
+                // The override and title ride along on both branches: the picked
+                // prompt's body is the system prompt, and the typed text (if
+                // any) is only its parameter ("Japanese"), which alone would
+                // read as a generic rewrite. With them threaded through,
+                // `instruction: nil` is already right for either path — a plain
+                // run has no override so it cleans up, a picked run applies the
+                // prompt as picked.
                 switch resolution {
                 case .typed(let typedText):
-                    // The override and title MUST ride along: on an augment run
-                    // the picked prompt's body is the system prompt and the
-                    // typed text is only its parameter ("Japanese"), which alone
-                    // would read as a generic rewrite.
                     try await runResolvedRewriteTail(
                         selectedText: selectedText,
                         instruction: typedText,
@@ -522,18 +526,14 @@ final class RewriteController: ObservableObject {
                         systemPromptOverride: systemPromptOverride,
                         pickedTitle: pickedTitle
                     )
-                case .defaultCleanup:
-                    // Only the plain path has a sensible no-instruction form. A
-                    // picked prompt without its detail is the same genuine miss
-                    // as saying nothing to it — never a silent clean-up.
-                    guard !isAugmentRun else {
-                        reportMissingAugmentDetail(source: "typed")
-                        return
-                    }
+                case .noDetail:
+                    logNoDetailRun(source: "typed")
                     try await runResolvedRewriteTail(
                         selectedText: selectedText,
                         instruction: nil,
-                        createdAt: createdAt
+                        createdAt: createdAt,
+                        systemPromptOverride: systemPromptOverride,
+                        pickedTitle: pickedTitle
                     )
                 }
                 return
@@ -553,13 +553,7 @@ final class RewriteController: ObservableObject {
             if micStoppedByTyping {
                 try Task.checkCancellation()
                 let salvaged = currentPanelText.trimmingCharacters(in: .whitespacesAndNewlines)
-                // Same asymmetry as the ⏎ branch: an augment run that ends with
-                // an empty field has lost its parameter, so it errors rather
-                // than quietly cleaning the selection up.
-                guard !(salvaged.isEmpty && isAugmentRun) else {
-                    reportMissingAugmentDetail(source: "typed-salvage")
-                    return
-                }
+                if salvaged.isEmpty { logNoDetailRun(source: "typed-salvage") }
                 try await runResolvedRewriteTail(
                     selectedText: selectedText,
                     instruction: salvaged.isEmpty ? nil : salvaged,
@@ -578,118 +572,57 @@ final class RewriteController: ObservableObject {
             } catch VoiceInputPipeline.PipelineError.audioTooShort(let recording)
                 where !shortRecordingLooksLikeMicRedirect(for: recording) {
                 // Sub-second audio means the user gave no spoken instruction —
-                // which is exactly what the plain path invites ("…or nothing to
-                // just clean it up", and the panel's ⏎ placeholder). Erroring
-                // here would punish the gesture we documented, so it lands on
-                // the same no-instruction handling as an empty transcript.
+                // exactly what the pill and the panel's ⏎ placeholder invite.
+                // Erroring would punish the gesture we documented, so it lands
+                // on the same no-detail handling as an empty transcript.
                 //
                 // The `where` clause keeps the mic-redirect signature (wall
                 // clock says they spoke, but no audio arrived) on the error
                 // path below, where surfacing the diagnostic is the whole point.
-                if isAugmentRun {
-                    reportMissingAugmentDetail(source: "audio-too-short")
-                    return
-                }
-                Task {
-                    await self.logSink.info(
-                        component: "Rewrite",
-                        message: "No instruction audio — defaulting to clean-up",
-                        context: ["flow": "custom"]
-                    )
-                }
+                //
+                // The pipeline sets `phase = .idle` here WITHOUT bumping its
+                // generation, so this token is still live — same as the
+                // empty-transcript route below, and it needs the same guard.
+                logNoDetailRun(source: "audio-too-short")
                 try await runResolvedRewriteTail(
                     selectedText: selectedText,
                     instruction: nil,
-                    createdAt: createdAt
+                    createdAt: createdAt,
+                    systemPromptOverride: systemPromptOverride,
+                    pickedTitle: pickedTitle,
+                    activeToken: token
                 )
                 return
             }
 
             guard pipeline.stillActive(token) else { return }
-            // Empty instruction is NOT a dead end. If the user pressed the
-            // hotkey and said nothing understandable, "just rewrite it" was
-            // almost certainly the intent — so we fall back to the fixed-
-            // prompt default rewrite (instruction: nil → the no-instruction
-            // system-prompt fallback) instead of stranding them on an error.
-            // Only the plain hotkey path defaults; a Prompt-Picker augment run
-            // still needs its detail, so an empty instruction there remains a
-            // genuine miss — and does so identically whether the user was
-            // speaking or typing (see the panel-resolution branches above).
-            let instructionIsEmpty = instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            if instructionIsEmpty && !isAugmentRun {
-                Task {
-                    await self.logSink.info(
-                        component: "Rewrite",
-                        message: "Empty instruction — defaulting to fixed rewrite",
-                        context: ["flow": "custom"]
-                    )
-                }
-                state = .rewriting
-                let service = rewriteService()
-                let modelLabel = snapshotModelLabel()
-                let rewritten = try await service.rewrite(
+            // Empty instruction is NOT a dead end. Saying nothing means "just
+            // apply what I picked": on the plain path that's the no-instruction
+            // clean-up the pill advertises, and on a picker run it applies the
+            // picked prompt with no detail — identical to picking a prompt that
+            // carries no hint at all, which has always worked. Erroring here
+            // would strand the user for taking the escape hatch we offered.
+            if instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                logNoDetailRun(source: "transcription")
+                try await runResolvedRewriteTail(
                     selectedText: selectedText,
                     instruction: nil,
-                    systemPromptOverride: nil
+                    createdAt: createdAt,
+                    systemPromptOverride: systemPromptOverride,
+                    pickedTitle: pickedTitle,
+                    activeToken: token
                 )
-                guard pipeline.stillActive(token) else { return }
-                persistSession(
-                    flavor: "fixed",
-                    selection: selectedText,
-                    instruction: Self.fixedInstruction,
-                    output: rewritten,
-                    modelUsed: modelLabel,
-                    createdAt: createdAt
-                )
-                guard pasteReplacement(rewritten) else { return }
-                guard pipeline.stillActive(token) else { return }
-                lastRewrite = rewritten
-                lastRewriteAt = .now
-                state = .idle
-                return
-            }
-            guard !instructionIsEmpty else {
-                reportMissingAugmentDetail(source: "transcription")
                 return
             }
 
-            state = .rewriting
-            let service = rewriteService()
-            let modelLabel = snapshotModelLabel()
-            // When a picked prompt supplied an override its body IS the system
-            // prompt (verbatim) and the spoken text rides in the `<instruction>`
-            // block; when nil this is the classic classifier-driven path.
-            let rewritten = try await service.rewrite(
+            try await runResolvedRewriteTail(
                 selectedText: selectedText,
                 instruction: instruction,
-                systemPromptOverride: systemPromptOverride
+                createdAt: createdAt,
+                systemPromptOverride: systemPromptOverride,
+                pickedTitle: pickedTitle,
+                activeToken: token
             )
-
-            guard pipeline.stillActive(token) else { return }
-            // Persist BEFORE paste so a paste failure doesn't lose the
-            // row — Home becomes the recovery affordance for the rare
-            // paste-failure case (plan §6). For a picker-augment run, label
-            // the row with the picked title + the spoken detail (e.g.
-            // "Translate — to Japanese") so Home reads meaningfully; the
-            // plain hotkey path keeps persisting the raw spoken instruction.
-            let instructionLabel: String = {
-                guard let pickedTitle, !pickedTitle.isEmpty else { return instruction }
-                return "\(pickedTitle) — \(instruction)"
-            }()
-            persistSession(
-                flavor: "voice",
-                selection: selectedText,
-                instruction: instructionLabel,
-                output: rewritten,
-                modelUsed: modelLabel,
-                createdAt: createdAt
-            )
-            guard pasteReplacement(rewritten) else { return }
-
-            guard pipeline.stillActive(token) else { return }
-            lastRewrite = rewritten
-            lastRewriteAt = .now
-            state = .idle
         } catch is CancellationError {
             return
         } catch let error as RewriteError {
@@ -793,11 +726,12 @@ final class RewriteController: ObservableObject {
     ///
     /// Serves both paths, which want different things from the field:
     ///   * plain — a free-form instruction, plus the canned chips.
-    ///   * augment — only the picked prompt's missing detail. Its own hint is
-    ///     the placeholder (nothing else says what to supply), and the chips are
-    ///     suppressed: "Make it shorter" would fight the prompt's own body.
+    ///   * augment — the pane wears the picked prompt's name, poses its hint as
+    ///     a question above the field, seeds the field with just the example,
+    ///     and suppresses the chips (which would fight the prompt's own body).
     private func presentTypedPanelIfEnabled(
         systemPromptOverride: String?,
+        pickedTitle: String?,
         augmentHint: String?
     ) {
         guard RewriteTypedPanelSettings.isEnabled, let instructionPanel else { return }
@@ -813,9 +747,17 @@ final class RewriteController: ObservableObject {
             return
         }
 
+        // Split the augment hint into the question line + field placeholder so
+        // "Say the target language (e.g. "to Japanese")" reads as a prompt
+        // above an "e.g. to Japanese" field, not as text to delete.
+        let parts = isAugmentRun ? RewriteHintFormatter.split(hint) : nil
         let becameKey = instructionPanel.present(
+            title: isAugmentRun ? pickedTitle : nil,
             chips: isAugmentRun ? [] : Self.defaultChips(),
-            placeholder: isAugmentRun ? hint : Self.defaultPanelPlaceholder,
+            questionLine: parts?.question,
+            placeholder: isAugmentRun
+                ? RewriteHintFormatter.fieldPlaceholder(for: hint)
+                : Self.defaultPanelPlaceholder,
             onFirstEdit: { [weak self] in self?.handlePanelFirstEdit() },
             onTextChange: { [weak self] text in self?.currentPanelText = text },
             onSubmit: { [weak self] text in self?.handlePanelSubmit(text) },
@@ -880,11 +822,11 @@ final class RewriteController: ObservableObject {
             // "Translate to <lang>" style instruction so the chip stays useful.
             noteTranslateLanguageIfPresent(trimmed)
         } else if micStoppedByTyping {
-            // Typed then cleared → explicit default clean-up (mic is paused).
-            typedResolution = .defaultCleanup
+            // Typed then cleared → explicitly run with no detail (mic is paused).
+            typedResolution = .noDetail
         } else {
             // Empty ⏎ with the mic still hot: fall through to the voice path so
-            // anything spoken becomes the instruction; silence → clean-up.
+            // anything spoken becomes the detail; silence runs with none.
             typedResolution = nil
         }
         resumeSecondToggle()
@@ -904,38 +846,48 @@ final class RewriteController: ObservableObject {
         UserDefaults.standard.set(language, forKey: RewriteTypedPanelSettings.lastTranslateLanguageKey)
     }
 
-    /// A parameterized prompt run that ended with no detail — nothing spoken,
-    /// nothing typed. Its body was written expecting one, so there is no
-    /// sensible rewrite to run and inventing one would silently discard the
-    /// prompt the user picked. `source` distinguishes the routes in the log.
-    private func reportMissingAugmentDetail(source: String) {
+    /// Trace a run that resolved with NO detail — the four routes that reach the
+    /// tail with `instruction: nil`. These are the runs a user is most likely to
+    /// report as "it didn't do what I asked", and after the fact the log is the
+    /// only way to tell which route produced one; `source` names it.
+    private func logNoDetailRun(source: String) {
         Task { [source] in
-            await self.logSink.warn(
+            await self.logSink.info(
                 component: "Rewrite",
-                message: "Empty instruction on augment path",
+                message: "No detail supplied — applying without one",
                 context: ["flow": "custom", "source": source]
             )
         }
-        state = .error("Could not understand the instruction.")
     }
 
-    /// LLM rewrite + persist + paste for an instruction resolved by the panel,
-    /// guarded by Task cancellation (the pipeline token has already been torn
-    /// down for these branches, so `stillActive` isn't the guard here —
-    /// `cancel()` cancels `activeFlowTask`, which trips `Task.checkCancellation`).
-    /// `instruction == nil` runs the default clean-up (fixed system prompt).
+    /// The single LLM rewrite + persist + paste tail for EVERY Rewrite-with-Voice
+    /// route — typed, chip, salvaged, spoken, and no-detail-at-all. It is one
+    /// function on purpose: when the routes had their own copies, one of them
+    /// hardcoded `systemPromptOverride: nil` and silently discarded the prompt
+    /// the user had picked.
+    ///
+    /// `instruction == nil` is the no-detail case, and needs no special-casing
+    /// by path: with no override it runs the shared prompt's no-instruction
+    /// clean-up, and with one it applies the picked prompt exactly as the silent
+    /// picker path (`runFixed`) does.
     ///
     /// `systemPromptOverride` / `pickedTitle` carry a picked prompt through from
-    /// `runCustom`, and must stay in lockstep with the voice tail above: the
-    /// override IS the system prompt (verbatim) and the resolved text is only
-    /// its `<instruction>` parameter. Defaulting them to nil keeps the plain
-    /// path's call sites reading as they did.
+    /// `runCustom`: the override IS the system prompt (verbatim) and the resolved
+    /// text is only its `<instruction>` parameter.
+    ///
+    /// Cancellation: `cancel()` cancels `activeFlowTask`, so `checkCancellation`
+    /// covers every route. `activeToken` additionally guards the routes that
+    /// arrive with a LIVE pipeline token — the pipeline goes `.idle` once
+    /// transcription lands, so another owner can claim it during the LLM call
+    /// and that stale run must not paste. Panel-resolved routes pass nil: their
+    /// token is already torn down, so it would be a meaningless guard.
     private func runResolvedRewriteTail(
         selectedText: String,
         instruction: String?,
         createdAt: Date,
         systemPromptOverride: String? = nil,
-        pickedTitle: String? = nil
+        pickedTitle: String? = nil,
+        activeToken: VoiceInputPipeline.Token? = nil
     ) async throws {
         state = .rewriting
         let service = rewriteService()
@@ -946,18 +898,26 @@ final class RewriteController: ObservableObject {
             systemPromptOverride: systemPromptOverride
         )
         try Task.checkCancellation()
+        if let activeToken, !pipeline.stillActive(activeToken) { return }
 
-        let isCleanup = (instruction?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-        // Label a picked run "<title> — <detail>" (e.g. "Translate — Japanese")
-        // exactly as the voice tail does, so Home reads the same whether the
-        // detail was spoken or typed.
+        let detail = instruction?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasDetail = !(detail?.isEmpty ?? true)
+        let title = pickedTitle.flatMap { $0.isEmpty ? nil : $0 }
+        // Home has to say which prompt ran and with what. A no-detail picked run
+        // labels by title alone — matching what `runFixed` persists for the
+        // silent picker path — never "Rewrite this", which would erase the fact
+        // that the user picked Translate.
         let instructionLabel: String = {
-            guard let instruction, !isCleanup else { return Self.fixedInstruction }
-            guard let pickedTitle, !pickedTitle.isEmpty else { return instruction }
-            return "\(pickedTitle) — \(instruction)"
+            guard hasDetail, let instruction else { return title ?? Self.fixedInstruction }
+            guard let title else { return instruction }
+            return "\(title) — \(instruction)"
         }()
+        // Persist BEFORE paste so a paste failure doesn't lose the row — Home
+        // becomes the recovery affordance for the rare paste-failure case
+        // (plan §6). A no-detail run is a `fixed`-flavored row for the same
+        // reason `runFixed` calls it that: no spoken/typed instruction shaped it.
         persistSession(
-            flavor: isCleanup ? "fixed" : "voice",
+            flavor: hasDetail ? "voice" : "fixed",
             selection: selectedText,
             instruction: instructionLabel,
             output: rewritten,
@@ -966,6 +926,7 @@ final class RewriteController: ObservableObject {
         )
         try Task.checkCancellation()
         guard pasteReplacement(rewritten) else { return }
+        if let activeToken, !pipeline.stillActive(activeToken) { return }
         lastRewrite = rewritten
         lastRewriteAt = .now
         state = .idle

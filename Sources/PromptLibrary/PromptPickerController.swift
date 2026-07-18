@@ -220,11 +220,13 @@ final class PromptPickerController {
     }
 
     private func preferredScreen() -> NSScreen {
-        // Prefer the screen with the active key window (host app).
-        if let keyWindow = NSApp.windows.first(where: { $0.isKeyWindow }), let screen = keyWindow.screen {
-            return screen
-        }
-        return NSScreen.main ?? (NSScreen.screens.first ?? NSScreen())
+        // Single source of truth for "which display?": the shared mouse-first
+        // resolver, also used by the pill (`OverlayWindowController`) and the
+        // typed pane (`RewriteInstructionPanel`). The cursor is where the user
+        // just held the rewrite hotkey, so the screen under it is the best proxy
+        // for their attention — the old key-window lookup was unreliable for a
+        // non-activating menu-bar app and landed the picker on a random display.
+        return OverlayPlacement.activeScreen() ?? NSScreen.main ?? NSScreen.screens.first ?? NSScreen()
     }
 }
 

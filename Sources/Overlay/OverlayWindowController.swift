@@ -49,6 +49,13 @@ final class OverlayWindowController {
     /// expanded / awaiting-ask pill never self-dismisses it.
     private var isDraggingWindow = false
 
+    /// Screen-targeting: tracks whether the previous published `$state` was
+    /// `.hidden`, so `replaceOnActiveScreenIfNeeded()` fires exactly once on the
+    /// hidden→visible edge (a NEW session appearing) and never on the per-second
+    /// `.recording(elapsed:)` tick. The initial pill state is `.hidden`, so `true`
+    /// is the correct seed.
+    private var wasHidden = true
+
     /// Drives per-cursor click-through. A borderless panel only lets clicks reach
     /// the app beneath when `ignoresMouseEvents == true`; returning nil from
     /// `hitTest` merely SWALLOWS the click. So while the pill is visible we poll
@@ -222,7 +229,13 @@ final class OverlayWindowController {
         stateCancellable = model.$state
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                self?.applyClickThrough(for: state)
+                guard let self else { return }
+                let isHidden: Bool = { if case .hidden = state { return true } else { return false } }()
+                if self.wasHidden && !isHidden {
+                    self.replaceOnActiveScreenIfNeeded()
+                }
+                self.wasHidden = isHidden
+                self.applyClickThrough(for: state)
             }
         // Expand/collapse only (un)installs the outside-click monitors that
         // dismiss the expanded pill. No reframe: the expanded recording capsule
@@ -436,6 +449,29 @@ final class OverlayWindowController {
     }
 
     // MARK: - Placement
+
+    /// When a NEW pill session appears (hidden → visible), migrate the canvas to
+    /// the display the user is actually on (mouse-first), but ONLY if that differs
+    /// from the pill's current display. Same-display sessions are left untouched so
+    /// a committed drag delta survives across dictations. Never fires on the
+    /// per-second recording tick — only on the hidden→visible edge (see the $state
+    /// sink) — so the v3 stable-canvas snap-back guarantee is preserved.
+    @MainActor
+    private func replaceOnActiveScreenIfNeeded() {
+        guard let panel else { return }
+        if isDraggingWindow { return }
+        guard let active = OverlayPlacement.activeScreen() else { return }
+        let activeNum = Self.screenNumber(of: active)
+        let currentNum = panel.screen.flatMap(Self.screenNumber(of:))
+        guard currentNum != activeNum else { return }   // same display → preserve any drag, do nothing
+        // Different display: the committed delta belongs to the OLD screen — drop it
+        // (mirrors the screen-change reset in updateFrame) and place the canvas
+        // naturally (top-center) on the active screen.
+        committedDelta = .zero
+        dragOffsetScreenNumber = nil
+        let frame = OverlayPlacement.frame(for: canvasWindowSize, on: active)
+        panel.setFrame(frame, display: true, animate: false)
+    }
 
     /// Movable pill (v2, MEDIUM 1/2): resolve the screen the pill currently
     /// occupies, NOT the "current" (focused-window) screen. `windowDidMove`

@@ -34,6 +34,61 @@ enum RewriteTypedPanelSettings {
     }
 }
 
+/// A voice-augment hint split into the two things the panel shows separately:
+/// a `question` line above the field ("Say the target language") and an
+/// `example` that seeds the field's placeholder ("to Japanese"). Kept apart
+/// because a whole hint stuffed into a text field reads as instruction text the
+/// user must delete, not as a gentle example.
+struct RewriteHintParts: Equatable {
+    let question: String
+    let example: String?
+}
+
+/// Pure helpers that turn a prompt's `voiceAugmentHint` into panel copy. Split
+/// out of the view so the parsing is unit-testable — see `RewriteHintFormatterTests`.
+enum RewriteHintFormatter {
+    /// Parse `<question> (e.g. "<example>")` into its parts. The example is the
+    /// text inside the `(e.g. …)` parenthesis with surrounding quotes stripped.
+    /// A hint with no `(e.g.` marker (e.g. "Add priority, labels, or constraints")
+    /// is all question, no example — the whole string becomes the question line.
+    static func split(_ raw: String) -> RewriteHintParts {
+        let hint = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let marker = hint.range(of: "(e.g.", options: .caseInsensitive) else {
+            return RewriteHintParts(question: hint, example: nil)
+        }
+
+        let question = hint[..<marker.lowerBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // The example lives between the marker and the LAST closing paren, so a
+        // stray ')' inside the example itself wouldn't truncate it early.
+        var inner = hint[marker.upperBound...]
+        if let close = inner.range(of: ")", options: .backwards) {
+            inner = inner[..<close.lowerBound]
+        }
+        // Strip wrapping whitespace and straight/curly quotes, leaving the bare
+        // example phrase.
+        let example = inner.trimmingCharacters(
+            in: CharacterSet(charactersIn: " \t\"“”'’")
+        )
+
+        return RewriteHintParts(
+            question: question.isEmpty ? hint : question,
+            example: example.isEmpty ? nil : example
+        )
+    }
+
+    /// Field placeholder for a hint: the example phrase with an "e.g. " lead-in
+    /// when the hint carries one, else a quiet generic that names both input
+    /// modes so an example-less prompt still says the field is usable.
+    static func fieldPlaceholder(for hint: String) -> String {
+        if let example = split(hint).example {
+            return "e.g. \(example)"
+        }
+        return "Type or say it"
+    }
+}
+
 /// Abstraction over the typed-instruction panel so `RewriteController` can be
 /// constructed without an AppKit panel in tests (the seam passes `nil`). The
 /// live app injects `RewriteInstructionPanelController`.
@@ -46,11 +101,15 @@ protocol RewriteInstructionPresenting: AnyObject {
     /// pure voice+timeout path (rare WindowServer states where a nonactivating
     /// panel can't take key).
     ///
+    /// - `title`: the picked prompt's name, shown as a tinted pill in the
+    ///   header so the pane carries the prompt's identity. `nil` on the plain
+    ///   path, where the header shows the generic "Rewrite selection".
     /// - `chips`: canned instructions. Empty when the run already has a system
     ///   prompt of its own (a picked prompt), since generic chips would fight it.
-    /// - `placeholder`: what the field asks for. The caller varies this per run
-    ///   — a free-form prompt on the plain path, the picked prompt's own
-    ///   augment hint when it needs a specific detail.
+    /// - `questionLine`: a short prompt-specific question rendered above the
+    ///   field ("Say the target language"). `nil` on the plain path.
+    /// - `placeholder`: what the empty field shows — a bare example on the
+    ///   augment path ("e.g. to Japanese"), the free-form prompt on the plain one.
     /// - `onFirstEdit`: fired once, on the first keystroke into the field, so
     ///   the caller can pause the mic + cancel the auto-finish timer.
     /// - `onTextChange`: fired on every edit with the field's current text, so
@@ -61,7 +120,9 @@ protocol RewriteInstructionPresenting: AnyObject {
     /// - `onCancel`: Esc — abort with no paste.
     @discardableResult
     func present(
+        title: String?,
         chips: [RewriteInstructionChip],
+        questionLine: String?,
         placeholder: String,
         onFirstEdit: @escaping @MainActor () -> Void,
         onTextChange: @escaping @MainActor (String) -> Void,
@@ -149,7 +210,9 @@ final class RewriteInstructionPanelController: RewriteInstructionPresenting {
 
     @discardableResult
     func present(
+        title: String?,
         chips: [RewriteInstructionChip],
+        questionLine: String?,
         placeholder: String,
         onFirstEdit: @escaping @MainActor () -> Void,
         onTextChange: @escaping @MainActor (String) -> Void,
@@ -163,7 +226,9 @@ final class RewriteInstructionPanelController: RewriteInstructionPresenting {
         panel.onCancel = onCancel
 
         let root = RewriteInstructionPanelView(
+            title: title,
             chips: chips,
+            questionLine: questionLine,
             placeholder: placeholder,
             onFirstEdit: onFirstEdit,
             onTextChange: onTextChange,
@@ -203,9 +268,11 @@ final class RewriteInstructionPanelController: RewriteInstructionPresenting {
     }
 
     private func positionPanel(_ panel: RewriteInstructionPanel, size: NSSize) {
-        let screen = NSScreen.main
-            ?? NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) }
-            ?? NSScreen.screens.first
+        // Resolve the display the user is actually on (mouse-first). `NSScreen.main`
+        // is the key-window's screen and unreliable for this non-activating app —
+        // see `OverlayPlacement.activeScreen()`. Shared with the notch pill so both
+        // surfaces land on the same display.
+        let screen = OverlayPlacement.activeScreen()
         guard let frame = screen?.visibleFrame else { return }
         let x = frame.midX - size.width / 2
         // Sit in the upper third — un-obtrusive, near where the pill lives, but

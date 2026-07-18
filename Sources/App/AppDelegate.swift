@@ -129,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         ModelPickerDisplayTests.runAll()
         LanguageVisibilityTests.runAll()
         ChipTierTests.runAll()
+        RewriteHintFormatterTests.runAll()
         #endif
 
         ResetActions.processPendingHardReset()
