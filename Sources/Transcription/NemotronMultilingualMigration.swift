@@ -27,9 +27,10 @@ enum NemotronMultilingualMigration {
 
     /// Languages that ship in the Nemotron "latin" bundle and should upgrade on
     /// eligible hardware. (The ex-Qwen "multilingual" ship is handled by
-    /// `QwenRetirementMigration`.)
-    static let latinLanguages: Set<String> = [
-        "english", "spanish", "french", "german", "italian", "portuguese",
+    /// `QwenRetirementMigration`.) Compared via `baseLanguage`, so the locale
+    /// variants (englishUK, spanishSpain, …) qualify with their base language.
+    static let latinLanguages: Set<LanguageChoice> = [
+        .english, .spanish, .french, .german, .italian, .portuguese,
     ]
 
     @discardableResult
@@ -46,7 +47,8 @@ enum NemotronMultilingualMigration {
 
         // Active language must be one the latin ship covers.
         guard let raw = defaults.string(forKey: TranscriberHolder.languageKey),
-              latinLanguages.contains(raw) else { return false }
+              let lang = LanguageChoice(rawValue: raw),
+              latinLanguages.contains(lang.baseLanguage) else { return false }
 
         // A user already on a multilingual ship needs no upgrade.
         let stored = defaults.string(forKey: TranscriberHolder.defaultsKey)

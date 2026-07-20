@@ -98,7 +98,7 @@ extension LanguageChoice {
     /// `CommonWords.empty` (guard skipped) until per-language lists are bundled.
     var bcp47CommonWordsCode: String {
         switch self {
-        case .english:    return "en"
+        case .english, .englishUK: return "en"
         case .japanese:   return "ja"
         case .mandarin:   return "zh"
         case .vietnamese: return "vi"
@@ -106,11 +106,11 @@ extension LanguageChoice {
         case .korean:     return "ko"
         case .turkish:    return "tr"
         case .hindi:      return "hi"
-        case .spanish:    return "es"
-        case .french:     return "fr"
-        case .german:     return "de"
-        case .italian:    return "it"
-        case .portuguese: return "pt"
+        case .spanish, .spanishSpain:          return "es"
+        case .french, .frenchCanada:           return "fr"
+        case .german:                          return "de"
+        case .italian:                         return "it"
+        case .portuguese, .portuguesePortugal: return "pt"
         case .romanian:   return "ro"
         case .polish:     return "pl"
         case .czech:      return "cs"

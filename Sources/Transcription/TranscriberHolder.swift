@@ -350,7 +350,7 @@ final class TranscriberHolder: ObservableObject {
         let resolved = lang.modelID()
 
         // No-clobber rule for English-only stored models (Nemotron / v2).
-        if lang == .english,
+        if lang.baseLanguage == .english,
            primaryModelID == .nemotron_en || primaryModelID == .tdt_0_6b_v2_en_streaming {
             // Language metadata updates; MODEL is untouched. We still rebuild
             // the transcriber so the (English → nil) hint is reflected, but
@@ -448,7 +448,7 @@ final class TranscriberHolder: ObservableObject {
         primary: ParakeetModelID,
         isResolvedInstalled: Bool
     ) -> Bool {
-        if lang == .english,
+        if lang.baseLanguage == .english,
            primary == .nemotron_en || primary == .tdt_0_6b_v2_en_streaming {
             return false
         }
@@ -1309,7 +1309,7 @@ final class TranscriberHolder: ObservableObject {
     ) -> ParakeetModelID? {
         let preference: [ParakeetModelID]
         switch language {
-        case .english:
+        case .english, .englishUK:
             preference = [
                 .tdt_0_6b_v2_en_streaming,
                 .nemotron_en,
@@ -1324,7 +1324,8 @@ final class TranscriberHolder: ObservableObject {
             // Only the Nemotron multilingual ship serves these; no Parakeet
             // fallback exists.
             preference = []
-        case .spanish, .french, .german, .italian, .portuguese, .romanian,
+        case .spanish, .spanishSpain, .french, .frenchCanada, .german, .italian,
+             .portuguese, .portuguesePortugal, .romanian,
              .polish, .czech, .slovak, .slovenian, .croatian, .bosnian,
              .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
              .danish, .dutch, .finnish, .greek, .hungarian, .swedish, .latvian:

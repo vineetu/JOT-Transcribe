@@ -82,10 +82,11 @@ enum NemotronAutoUpgradeMigration {
 
         // 2. Active language must be English. Read the seeded key directly;
         //    LanguageMigration runs before us, so a grandfathered English user
-        //    already has `jot.transcriptionLanguage == "english"`.
+        //    already has `jot.transcriptionLanguage == "english"` (locale
+        //    variants qualify via `baseLanguage`).
         let language = defaults.string(forKey: TranscriberHolder.languageKey)
             .flatMap(LanguageChoice.init(rawValue:))
-        guard language == .english else { return false }
+        guard language?.baseLanguage == .english else { return false }
 
         // 3. Stored model must resolve to a NON-Nemotron model. A user already
         //    on Nemotron needs no upgrade.

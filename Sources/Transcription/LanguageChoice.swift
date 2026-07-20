@@ -33,7 +33,11 @@ import Foundation
 /// don't get the script filter.
 public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     // English — routed to Parakeet v2 (monolingual, no hint).
+    // `.english` is the US default; `.englishUK` differs only in the Nemotron
+    // locale prompt (en-GB). Raw values of the pre-locale cases are frozen —
+    // they are the stored @AppStorage identity of existing users.
     case english
+    case englishUK
 
     // Japanese — separate model, no live preview.
     case japanese
@@ -52,12 +56,20 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     case hindi
 
     // European languages WITH a FluidAudio `Language` (script-filter) hint.
-    // Latin script:
-    case spanish
-    case french
+    // Latin script. Spanish / French / Portuguese carry a locale pair: the
+    // pre-locale case is the majority-region default (Latin America / France /
+    // Brazil) and the sibling covers the other region. The locale only changes
+    // the Nemotron prompt code (measured: es-ES applies partial digit
+    // formatting vs es-US spelled-out; fr-FR vs fr-CA differ in orthography);
+    // on the v3 fallback path both members of a pair behave identically.
+    case spanish        // Spanish (Latin America) — es-US
+    case spanishSpain   // Spanish (Spain) — es-ES
+    case french         // French (France) — fr-FR
+    case frenchCanada   // French (Canada) — fr-CA
     case german
     case italian
-    case portuguese
+    case portuguese          // Portuguese (Brazil) — pt-BR
+    case portuguesePortugal  // Portuguese (Portugal) — pt-PT
     case romanian
     case polish
     case czech
@@ -92,7 +104,8 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     /// distinct endonym in another script/spelling (English).
     private var names: (english: String, native: String) {
         switch self {
-        case .english:    return ("English", "English")
+        case .english:    return ("English (US)", "English (US)")
+        case .englishUK:  return ("English (UK)", "English (UK)")
         case .japanese:   return ("Japanese", "日本語")
         case .mandarin:   return ("Mandarin", "中文")
         case .vietnamese: return ("Vietnamese", "Tiếng Việt")
@@ -100,11 +113,16 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         case .korean:     return ("Korean", "한국어")
         case .turkish:    return ("Turkish", "Türkçe")
         case .hindi:      return ("Hindi", "हिन्दी")
-        case .spanish:    return ("Spanish", "Español")
-        case .french:     return ("French", "Français")
+        // Locale pairs keep the region in the ENGLISH half only — repeating it
+        // in the endonym overflows the picker's fixed-width rows.
+        case .spanish:           return ("Spanish (Latin America)", "Español")
+        case .spanishSpain:      return ("Spanish (Spain)", "Español")
+        case .french:            return ("French (France)", "Français")
+        case .frenchCanada:      return ("French (Canada)", "Français")
         case .german:     return ("German", "Deutsch")
         case .italian:    return ("Italian", "Italiano")
-        case .portuguese: return ("Portuguese", "Português")
+        case .portuguese:         return ("Portuguese (Brazil)", "Português")
+        case .portuguesePortugal: return ("Portuguese (Portugal)", "Português")
         case .romanian:   return ("Romanian", "Română")
         case .polish:     return ("Polish", "Polski")
         case .czech:      return ("Czech", "Čeština")
@@ -157,16 +175,18 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     /// never returned for a non-English language.
     public func modelID(tier: HardwareTier.Type = HardwareTier.self) -> ParakeetModelID {
         switch self {
-        case .english:
+        case .english, .englishUK:
             // ≥24 GB folds English into the Nemotron multilingual "latin" ship
             // (one model across en + Latin Europe). 16–24 GB keeps the English
             // Nemotron; <16 GB the English-optimized v2 batch. v3 is never the
-            // English pick.
+            // English pick. UK routes identically — the locale only changes
+            // the Nemotron prompt code.
             if tier.nemotronMultilingualEligible { return .nemotron_multilingual_latin }
             return tier.nemotronEligible ? .nemotron_en : .tdt_0_6b_v2_en_streaming
         case .japanese:
             return .tdt_0_6b_ja
-        case .spanish, .french, .german, .italian, .portuguese:
+        case .spanish, .spanishSpain, .french, .frenchCanada, .german, .italian,
+             .portuguese, .portuguesePortugal:
             // Latin-script Nemotron languages → the "latin" ship on ≥24 GB,
             // else today's Parakeet v3 (no regression below the bar).
             return tier.nemotronMultilingualEligible
@@ -197,18 +217,20 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     /// return `nil` and fall back to v3 auto-detect (design §2.3).
     public var fluidAudioLanguage: Language? {
         switch self {
-        case .english:    return nil  // v2 is English-only; no hint needed
+        case .english, .englishUK:
+            return nil  // v2 is English-only; no hint needed
         case .japanese:   return nil  // ignored by tdtJa anyway
         // Nemotron-multilingual languages don't use v3's `Language` script
         // filter — they pass `nemotronLanguageCode` to `setLanguage`. Return
         // `nil` here so the v3 `AsrManager` hint path is never engaged for them.
         case .mandarin, .vietnamese, .arabic, .korean, .turkish, .hindi:
             return nil
-        case .spanish:    return .spanish
-        case .french:     return .french
+        // Locale pairs share one v3 script filter — v3 has no region concept.
+        case .spanish, .spanishSpain:         return .spanish
+        case .french, .frenchCanada:          return .french
         case .german:     return .german
         case .italian:    return .italian
-        case .portuguese: return .portuguese
+        case .portuguese, .portuguesePortugal: return .portuguese
         case .romanian:   return .romanian
         case .polish:     return .polish
         case .czech:      return .czech
@@ -236,10 +258,14 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     public var nemotronLanguageCode: String {
         switch self {
         case .english:    return "en-US"
-        case .spanish:    return "es-ES"
+        case .englishUK:  return "en-GB"
+        case .spanish:    return "es-US"  // Latin-America default (was es-ES pre-locale-split)
+        case .spanishSpain: return "es-ES"
         case .french:     return "fr-FR"
+        case .frenchCanada: return "fr-CA"
         case .italian:    return "it-IT"
-        case .portuguese: return "pt-PT"
+        case .portuguese: return "pt-BR"  // Brazil default (was pt-PT pre-locale-split)
+        case .portuguesePortugal: return "pt-PT"
         case .german:     return "de-DE"
         case .mandarin:   return "zh-CN"
         case .vietnamese: return "vi-VN"
@@ -282,12 +308,12 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
     /// them, so their transcripts pass through untouched.
     public var fillerLanguageCode: String? {
         switch self {
-        case .english:    return "en"
-        case .spanish:    return "es"
-        case .french:     return "fr"
-        case .german:     return "de"
-        case .italian:    return "it"
-        case .portuguese: return "pt"
+        case .english, .englishUK:             return "en"
+        case .spanish, .spanishSpain:          return "es"
+        case .french, .frenchCanada:           return "fr"
+        case .german:                          return "de"
+        case .italian:                         return "it"
+        case .portuguese, .portuguesePortugal: return "pt"
         case .japanese, .mandarin, .vietnamese, .arabic, .korean, .turkish,
              .hindi, .romanian, .polish, .czech, .slovak, .slovenian, .croatian,
              .bosnian, .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
@@ -320,11 +346,25 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
             // (modern Korean uses inter-word spaces), Turkish (Latin), Hindi
             // (Devanagari).
             return false
-        case .english, .spanish, .french, .german, .italian, .portuguese,
+        case .english, .englishUK, .spanish, .spanishSpain, .french,
+             .frenchCanada, .german, .italian, .portuguese, .portuguesePortugal,
              .romanian, .polish, .czech, .slovak, .slovenian, .croatian,
              .bosnian, .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
              .danish, .dutch, .finnish, .greek, .hungarian, .swedish, .latvian:
             return false
+        }
+    }
+
+    /// The pre-locale base case for a locale variant (`.englishUK → .english`),
+    /// or `self` for everything else. Use this wherever behavior must not
+    /// depend on the region — model no-clobber rules, migrations, fallbacks.
+    public var baseLanguage: LanguageChoice {
+        switch self {
+        case .englishUK:          return .english
+        case .spanishSpain:       return .spanish
+        case .frenchCanada:       return .french
+        case .portuguesePortugal: return .portuguese
+        default:                  return self
         }
     }
 
@@ -413,7 +453,18 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         guard let code = locale.language.languageCode?.identifier.lowercased() else {
             return .english
         }
-        return fromLanguageCode(code) ?? .english
+        guard let base = fromLanguageCode(code) else { return .english }
+        // Refine the four locale-split languages by the system region. Only
+        // regions that map AWAY from the majority default need a case; every
+        // other region (or none) stays on the base default.
+        let region = locale.region?.identifier.uppercased()
+        switch (base, region) {
+        case (.english, "GB"), (.english, "IE"):        return .englishUK
+        case (.spanish, "ES"):                          return .spanishSpain
+        case (.french, "CA"):                           return .frenchCanada
+        case (.portuguese, "PT"):                       return .portuguesePortugal
+        default:                                        return base
+        }
     }
 
     /// Map an ISO-639 language code (e.g. `"de"`, `"ja"`) to a `LanguageChoice`.
