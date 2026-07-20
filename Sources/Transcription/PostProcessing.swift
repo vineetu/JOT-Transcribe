@@ -1,4 +1,5 @@
 import Foundation
+import JotTextPipeline
 
 /// Text cleanup applied to every local transcript before it reaches the
 /// clipboard / the user.
@@ -33,6 +34,13 @@ public enum PostProcessing {
             // non-Latin output. Passthrough.
             return text
         }
+    }
+
+    /// `<unk>` tokenizer-artifact scrub. Implementation lives in the shared
+    /// JotTextPipeline package (`ModelArtifactScrubber`) so Jot for iPhone can
+    /// reuse it; this forwarder keeps the existing call sites stable.
+    public static func scrubModelArtifacts(_ text: String) -> String {
+        ModelArtifactScrubber.scrub(text)
     }
 
     private static func applyEnglish(_ text: String) -> String {

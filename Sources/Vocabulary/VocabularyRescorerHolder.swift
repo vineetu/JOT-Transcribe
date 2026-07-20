@@ -396,8 +396,12 @@ public actor VocabularyRescorerHolder {
     /// text + de-duped corrections, or a byte-identical pass-through when there's
     /// nothing to place.
     ///
-    /// - Parameter language: threaded from `Transcriber`. Nemotron is
-    ///   English-only, so this resolves to the English common-word brake.
+    /// - Parameter language: the active transcription language, threaded from
+    ///   the caller (`Transcriber` or `DualPipelineTranscriber`). Selects the
+    ///   per-language common-word list (`CommonWords.forLanguage`): English on
+    ///   the English Nemotron ship, the user's selected language on the
+    ///   multilingual ships (Spanish → `common-words-es.txt`, …). A language
+    ///   with no bundled list resolves to `.empty` → brake no-ops safely.
     /// - Parameter recordsProvenance: same contract as `rescore(...)`.
     public func gateDetections(
         transcript: String,

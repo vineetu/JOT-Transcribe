@@ -92,8 +92,9 @@ struct CommonWords: Sendable {
 
 extension LanguageChoice {
     /// The short code used to name this language's `common-words-<code>.txt`
-    /// asset. Mirrors the ISO-639 code used elsewhere in `LanguageChoice`. Only
-    /// English (`en`) ships a list today; the rest resolve to a missing list →
+    /// asset. Mirrors the ISO-639 code used elsewhere in `LanguageChoice`.
+    /// 17 lists ship today (en, es, fr, de, it, pt, ro, pl, cs, sk, sl, hr,
+    /// nl, da, sv, fi, hu); the rest resolve to a missing list →
     /// `CommonWords.empty` (guard skipped) until per-language lists are bundled.
     var bcp47CommonWordsCode: String {
         switch self {

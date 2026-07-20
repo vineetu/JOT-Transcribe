@@ -394,7 +394,7 @@ enum JotComposition {
                             bundleDirectory: variantURL,
                             languageCode: language.nemotronLanguageCode
                         ),
-                        isEnglish: language.isEnglish
+                        language: language
                     )
                 case .tdt_0_6b_ja:
                     // Japanese: batch final transcript + batch-pseudo-streaming

@@ -235,6 +235,14 @@ final class FileTranscriptionIngest: ObservableObject {
         }
     }
 
+    /// Whether the dictation recorder is idle right now — the SAME injected
+    /// read guard 2 uses (`enqueue`). Exposed (via `shared`) for the Library
+    /// re-transcribe actions: on the multilingual Nemotron ship a
+    /// re-transcribe shares the live streaming engine with dictation, so
+    /// those sites must refuse to start while a dictation is in flight,
+    /// mirroring this ingest's own mic → file guard.
+    var recorderIsCurrentlyIdle: Bool { recorderIsIdle() }
+
     /// Entry point for both drag-and-drop and the "browse…" picker.
     func enqueue(_ url: URL) {
         if let message = Self.validate(url) {

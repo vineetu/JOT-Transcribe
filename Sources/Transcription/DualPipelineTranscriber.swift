@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import Foundation
 import JotTextPipeline
 
@@ -30,48 +31,88 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     private let pendingLock = NSLock()
     private var pendingNemotronFinal: String?
 
-    /// True when the Nemotron final transcript is English — gates the
-    /// English-word-driven cleanup stages (`FillerWordCleaner` +
-    /// `NumberNormalizer`) in `nemotronResult`, whose rules are
-    /// English-hardcoded. Only meaningful for the `.nemotron` final engine;
-    /// `false` for `.batch` (the batch `Transcriber` runs its own
-    /// language-gated cleanup).
-    private let nemotronFinalIsEnglish: Bool
+    /// Filler-cleaning language code for the Nemotron final transcript
+    /// (`LanguageChoice.fillerLanguageCode` semantics): `"en"` runs the full
+    /// English chain (`FillerWordCleaner` + `NumberNormalizer`), es/fr/de/it/pt
+    /// run `FillerWordCleaner.clean(_:language:)` ONLY (`NumberNormalizer`
+    /// stays strictly English — its spelled-cardinal rules would mis-convert,
+    /// e.g. French "six cents" = 600 → "6¢"), and `nil` skips both. Only
+    /// meaningful for the `.nemotron` final engine; `nil` for `.batch` (the
+    /// batch `Transcriber` runs its own language-gated cleanup).
+    private let nemotronFillerLanguage: String?
 
-    /// Multilingual Parakeet v3 final transcript + Nemotron preview.
+    /// The active `LanguageChoice` for the Nemotron final-transcript path.
+    /// Threaded into the vocabulary gate (`gateDetections`) so the common-word
+    /// brake loads the RIGHT per-language list (`common-words-<code>.txt`):
+    /// `.english` on the English ship, the user's selected language on the
+    /// multilingual ships (e.g. Spanish → `common-words-es.txt`). Languages
+    /// with no bundled list resolve to `CommonWords.empty` inside the gate —
+    /// the brake no-ops and the remaining guards (confidence / margin /
+    /// plausibility) still protect, which is strictly safer than braking a
+    /// non-English transcript against the English frequency list. `nil` for
+    /// the `.batch` final engine (the batch `Transcriber` threads its own
+    /// language into the rescorer path).
+    private let nemotronGateLanguage: LanguageChoice?
+
+    /// Whether the `.nemotron` final engine is the multilingual streaming
+    /// manager (vs. the English `NemotronStreamingTranscriber`). Drives the
+    /// file-import route in `transcribeFile`: the multilingual engine decodes
+    /// the file itself (a fresh `Transcriber(modelID: .nemotron_en)` would be
+    /// the WRONG model — usually not even downloaded on a multilingual ship),
+    /// while the English ship keeps its historical batch-fallback path.
+    private let nemotronFinalIsMultilingual: Bool
+
+    /// Multilingual Parakeet v3 final transcript + Nemotron preview. The final
+    /// goes through the batch `Transcriber`'s own cleanup, so no filler
+    /// language is needed here.
     init(batch: Transcriber, nemotronStreaming: NemotronStreamingTranscriber) {
         self.finalEngine = .batch(batch)
         self.streamingEngine = .nemotron(nemotronStreaming)
-        self.nemotronFinalIsEnglish = false
+        self.nemotronFillerLanguage = nil
+        self.nemotronGateLanguage = nil
+        self.nemotronFinalIsMultilingual = false
     }
 
     /// Batch final transcript + batch-pseudo-streaming preview. The
     /// `PreviewScheduler` must be constructed over the SAME `Transcriber` passed
     /// as `batch`, so the preview re-uses the loaded `AsrModels` (design §4.5).
-    /// This is the live preview path for v2 / v3 / JA.
+    /// This is the live preview path for v2 / v3 / JA. The final goes through
+    /// the batch `Transcriber`'s own cleanup, so no filler language here.
     init(batch: Transcriber, batchPreview: PreviewScheduler) {
         self.finalEngine = .batch(batch)
         self.streamingEngine = .batchPreview(batchPreview)
-        self.nemotronFinalIsEnglish = false
+        self.nemotronFillerLanguage = nil
+        self.nemotronGateLanguage = nil
+        self.nemotronFinalIsMultilingual = false
     }
 
     /// Nemotron-only path: one manager instance provides partials and the
     /// final transcript for a live recording session. `.nemotron_en` is always
-    /// English, so the English cleanup stages are always eligible here.
+    /// English, so the full English cleanup chain is always eligible here.
     init(nemotron: NemotronStreamingTranscriber) {
         self.finalEngine = .nemotron(nemotron)
         self.streamingEngine = .nemotron(nemotron)
-        self.nemotronFinalIsEnglish = true
+        self.nemotronFillerLanguage = "en"
+        self.nemotronGateLanguage = .english
+        self.nemotronFinalIsMultilingual = false
     }
 
     /// Nemotron-multilingual-only path: identical control flow to the English
     /// Nemotron path, behind the shared `NemotronStreamingEngine` protocol.
-    /// `isEnglish` gates the English cleanup stages — the "latin" ship serves
-    /// English + Romance, so only the English pin is eligible.
-    init(nemotronMultilingual: NemotronMultilingualStreamingTranscriber, isEnglish: Bool) {
+    /// `language` is the resolved transcription language for this ship: it
+    /// drives BOTH the vocabulary gate's per-language common-word list
+    /// (`nemotronGateLanguage`) and the cleanup chain for the final transcript
+    /// (via `LanguageChoice.fillerLanguageCode`: `"en"` → full English chain,
+    /// es/fr/de/it/pt → per-language filler cleaning only, `nil` → none).
+    /// Deriving the filler code here (instead of taking it as a second
+    /// parameter) keeps the two per-language behaviors impossible to
+    /// misalign at the call site.
+    init(nemotronMultilingual: NemotronMultilingualStreamingTranscriber, language: LanguageChoice) {
         self.finalEngine = .nemotron(nemotronMultilingual)
         self.streamingEngine = .nemotron(nemotronMultilingual)
-        self.nemotronFinalIsEnglish = isEnglish
+        self.nemotronFillerLanguage = language.fillerLanguageCode
+        self.nemotronGateLanguage = language
+        self.nemotronFinalIsMultilingual = true
     }
 
     /// True when the final transcript runs the Nemotron CTC-gate vocabulary path
@@ -174,46 +215,77 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         case .batch(let batch):
             return try await batch.transcribe(samples, recordsProvenance: recordsProvenance)
         case .nemotron(let nemotron):
-            guard samples.count >= Int(AudioFormat.sampleRate) else {
-                throw TranscriberError.audioTooShort
-            }
-            // Own the shared provenance slot for the saving path: clear any
-            // stale `pending` proposals at the START (mirrors the TDT path in
-            // `Transcriber.transcribe`). Without this, a prior dictation that
-            // filled `pending` but never reached `commit` (save error / discard)
-            // could have its vocab proposals committed under THIS recording's id.
-            if recordsProvenance {
-                await CorrectionProvenance.shared.clearPending()
-            }
-            // The final transcript is ALWAYS a fresh one-shot decode over the
-            // full captured audio — never the live streamed accumulation.
-            //
-            // Why: on a cold model the streaming consumer only starts decoding
-            // ~1s into the recording (model warm-up), and `finish()` drains the
-            // backlog with a bounded timeout, so the accumulated text can be
-            // missing the head (~1s of speech). This was verified directly: the
-            // saved audio is always complete, and a one-shot decode over it
-            // reproduces the full transcript (head intact) at any chunk size,
-            // while the live streamed-final does not. Re-decoding the complete
-            // `samples` here is the authoritative, head-complete result.
-            // Streaming stays on purely for the live preview (and the CTC vocab
-            // spotter, which is independent of this handoff). We then run the
-            // custom-vocabulary spot+gate over the audio — this is the live
-            // dictation path for Nemotron, so vocab MUST run here (it was
-            // previously only wired into `Transcriber.transcribeWithNemotron`,
-            // which this path never calls).
-            clearPendingNemotronFinal()
-            let started = Date()
-            let raw = try await nemotron.transcribeOneShot(samples)
-            let processingTime = Date().timeIntervalSince(started)
-            return await Self.nemotronResult(
-                raw: raw,
-                samples: samples,
-                processingTime: processingTime,
+            return try await nemotronTranscribe(
+                samples,
+                engine: nemotron,
                 recordsProvenance: recordsProvenance,
-                isEnglish: nemotronFinalIsEnglish
+                consumeStreamedPayload: true
             )
         }
+    }
+
+    /// Shared Nemotron one-shot final path for BOTH the live dictation stop
+    /// (`transcribe`) and the multilingual file import (`transcribeFile`).
+    /// `consumeStreamedPayload` is `true` ONLY on the live path: the pending
+    /// streamed CTC vocab payload was accumulated from the RECORDING's audio,
+    /// so an import must never consume it (it would gate the file's transcript
+    /// against detections from someone else's dictation) — imports always run
+    /// the one-shot spot over their own samples.
+    private func nemotronTranscribe(
+        _ samples: [Float],
+        engine nemotron: any NemotronStreamingEngine,
+        recordsProvenance: Bool,
+        consumeStreamedPayload: Bool
+    ) async throws -> TranscriptionResult {
+        guard samples.count >= Int(AudioFormat.sampleRate) else {
+            // A sub-1s dictation aborts here BEFORE `nemotronResult` would
+            // consume the streamed vocab payload the recorder stop just
+            // set — take (and drop) it now, or it dangles and the NEXT
+            // Nemotron decode (e.g. a file import) would gate its
+            // transcript against THIS recording's audio detections.
+            if consumeStreamedPayload {
+                _ = await VocabularyRescorerHolder.shared.takePendingStreamedPayload()
+            }
+            throw TranscriberError.audioTooShort
+        }
+        // Own the shared provenance slot for the saving path: clear any
+        // stale `pending` proposals at the START (mirrors the TDT path in
+        // `Transcriber.transcribe`). Without this, a prior dictation that
+        // filled `pending` but never reached `commit` (save error / discard)
+        // could have its vocab proposals committed under THIS recording's id.
+        if recordsProvenance {
+            await CorrectionProvenance.shared.clearPending()
+        }
+        // The final transcript is ALWAYS a fresh one-shot decode over the
+        // full captured audio — never the live streamed accumulation.
+        //
+        // Why: on a cold model the streaming consumer only starts decoding
+        // ~1s into the recording (model warm-up), and `finish()` drains the
+        // backlog with a bounded timeout, so the accumulated text can be
+        // missing the head (~1s of speech). This was verified directly: the
+        // saved audio is always complete, and a one-shot decode over it
+        // reproduces the full transcript (head intact) at any chunk size,
+        // while the live streamed-final does not. Re-decoding the complete
+        // `samples` here is the authoritative, head-complete result.
+        // Streaming stays on purely for the live preview (and the CTC vocab
+        // spotter, which is independent of this handoff). We then run the
+        // custom-vocabulary spot+gate over the audio — this is the live
+        // dictation path for Nemotron, so vocab MUST run here (it was
+        // previously only wired into `Transcriber.transcribeWithNemotron`,
+        // which this path never calls).
+        clearPendingNemotronFinal()
+        let started = Date()
+        let raw = try await nemotron.transcribeOneShot(samples)
+        let processingTime = Date().timeIntervalSince(started)
+        return await Self.nemotronResult(
+            raw: raw,
+            samples: samples,
+            processingTime: processingTime,
+            recordsProvenance: recordsProvenance,
+            fillerLanguage: nemotronFillerLanguage,
+            gateLanguage: nemotronGateLanguage,
+            consumeStreamedPayload: consumeStreamedPayload
+        )
     }
 
     func transcribeFile(
@@ -223,7 +295,31 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         switch finalEngine {
         case .batch(let batch):
             return try await batch.transcribeFile(url, recordsProvenance: recordsProvenance)
-        case .nemotron:
+        case .nemotron(let nemotron):
+            if nemotronFinalIsMultilingual {
+                // Multilingual ship: the ONLY Nemotron model this user has is
+                // the multilingual bundle this instance already wraps — a
+                // fresh `Transcriber(modelID: .nemotron_en)` would demand the
+                // ENGLISH bundle (typically not downloaded → `.modelMissing`,
+                // and the wrong language even when present). Decode the file
+                // into the canonical 16 kHz mono Float32 buffer and run the
+                // SAME one-shot final path as a live dictation: one-shot
+                // decode on the loaded multilingual engine + vocab spot/gate +
+                // per-language cleanup — so imports and dictations produce
+                // identical output for identical audio.
+                // `consumeStreamedPayload: false` — any pending streamed CTC
+                // payload belongs to a recorder session, never to a file.
+                try await ensureLoaded()
+                let file = try AVAudioFile(forReading: url)
+                let samples = try Transcriber.readMono16kFloat(file: file)
+                return try await nemotronTranscribe(
+                    samples,
+                    engine: nemotron,
+                    recordsProvenance: recordsProvenance,
+                    consumeStreamedPayload: false
+                )
+            }
+            // English ship: historical batch-fallback path, unchanged.
             let fallback = Transcriber(modelID: .nemotron_en)
             try await fallback.ensureLoaded()
             return try await fallback.transcribeFile(url, recordsProvenance: recordsProvenance)
@@ -318,13 +414,19 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     /// pass over the audio — the SAME no-fork CTC-spotter path as
     /// `Transcriber.transcribeWithNemotron`. Best-effort: any spotter/gate
     /// failure falls through to the raw Nemotron transcript so vocab can never
-    /// regress the user-visible result. Nemotron is English-only.
+    /// regress the user-visible result. Serves both the English Nemotron and
+    /// the multilingual ships; `fillerLanguage` selects the cleanup chain and
+    /// `gateLanguage` selects the gate's per-language common-word list
+    /// (`.english` on the English ship, the active language on the
+    /// multilingual ships — see `nemotronGateLanguage`).
     private static func nemotronResult(
         raw: String,
         samples: [Float],
         processingTime: TimeInterval,
         recordsProvenance: Bool,
-        isEnglish: Bool
+        fillerLanguage: String?,
+        gateLanguage: LanguageChoice?,
+        consumeStreamedPayload: Bool
     ) async -> TranscriptionResult {
         let duration = TimeInterval(samples.count) / AudioFormat.sampleRate
         let holder = VocabularyRescorerHolder.shared
@@ -335,9 +437,11 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             // Prefer the payload the streaming spotter accumulated DURING
             // recording (no post-stop wait). Falls back to the one-shot spot
             // when streaming didn't run (no vocab, non-recorder path, or a
-            // streaming failure) — identical result, just slower.
+            // streaming failure) — identical result, just slower. The fast
+            // path is live-dictation-only (`consumeStreamedPayload`): a file
+            // import must spot its OWN audio, never a recorder session's.
             let payload: VocabularyRescorerHolder.SpotPayload?
-            if let streamed = await holder.takePendingStreamedPayload() {
+            if consumeStreamedPayload, let streamed = await holder.takePendingStreamedPayload() {
                 payload = streamed
             } else {
                 payload = try await holder.spotDetections(audioSamples: samples)
@@ -346,7 +450,7 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
                 let gated = await holder.gateDetections(
                     transcript: raw,
                     payload: payload,
-                    language: .english,
+                    language: gateLanguage,
                     recordsProvenance: recordsProvenance
                 )
                 text = gated.text
@@ -360,16 +464,27 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             )
         }
 
-        // Same cleanup chain as every other model, with the English-word-driven
-        // stages gated to English (FillerWordCleaner's filler/abbreviation
-        // lists and NumberNormalizer's spelled-cardinal rules are
-        // English-hardcoded — the "latin" ship's Romance output would
-        // mis-convert, e.g. French "six cents" = 600 → "6¢"). Nemotron emits
-        // clean native punctuation + casing but leaves spoken numbers spelled
-        // out. It returns a plain string with no token timings, so paragraph
+        // Scrub tokenizer `<unk>` artifacts FIRST so the number/filler stages
+        // see clean text — the multilingual tokenizer has no %/€/$ tokens, so
+        // e.g. Spanish "veinticinco por ciento" decodes as the literal
+        // "25<unk>" (`PostProcessing.scrubModelArtifacts`). This path never
+        // calls `PostProcessing.apply`, so the scrub must run here explicitly.
+        text = PostProcessing.scrubModelArtifacts(text)
+
+        // Same cleanup chain as every other model, gated per language:
+        // `"en"` runs the full English chain; es/fr/de/it/pt run the shared
+        // pipeline's per-language filler cleaning ONLY (non-lexical hesitation
+        // sounds — jot-shared docs/multilingual-itn-options.md §5); `nil` runs
+        // nothing. NumberNormalizer stays STRICTLY English — its
+        // spelled-cardinal rules would mis-convert the "latin" ship's Romance
+        // output, e.g. French "six cents" = 600 → "6¢". Nemotron emits clean
+        // native punctuation + casing but leaves spoken numbers spelled out.
+        // It returns a plain string with no token timings, so paragraph
         // segmentation is not possible on this live path.
-        if isEnglish {
-            text = NumberNormalizer.normalize(FillerWordCleaner.clean(text))
+        if let fillerLanguage {
+            text = fillerLanguage == "en"
+                ? NumberNormalizer.normalize(FillerWordCleaner.clean(text))
+                : FillerWordCleaner.clean(text, language: fillerLanguage)
         }
         return TranscriptionResult(
             text: text,

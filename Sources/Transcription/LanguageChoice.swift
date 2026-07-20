@@ -270,15 +270,31 @@ public enum LanguageChoice: String, CaseIterable, Sendable, Identifiable {
         }
     }
 
-    /// True only for English. Gates the English-word-driven deterministic
-    /// cleanup stages: `NumberNormalizer`'s spelled-cardinal rules would
-    /// mis-convert Romance/other Latin scripts (e.g. French "six cents" = 600
-    /// → "6¢"), and `FillerWordCleaner`'s filler + abbreviation lists are
-    /// English-hardcoded. Pause-based paragraph segmentation and
-    /// `PostProcessing` are language-agnostic and NOT gated on this.
-    /// Per-language rules are future work (jot-shared
-    /// docs/multilingual-itn-options.md).
-    public var isEnglish: Bool { self == .english }
+    /// The language code handed to `FillerWordCleaner.clean(_:language:)`, or
+    /// `nil` for languages whose transcripts must not be filler-cleaned at all.
+    ///
+    /// `"en"` selects the full English chain (fillers + `NumberNormalizer`).
+    /// es/fr/de/it/pt select the per-language non-lexical hesitation lists the
+    /// shared pipeline ships (jot-shared docs/multilingual-itn-options.md §5) —
+    /// fillers ONLY, never `NumberNormalizer` (its spelled-cardinal rules are
+    /// English-hardcoded; French "six cents" = 600 → "6¢"). Everything else
+    /// (Japanese, Arabic, Korean, …) returns `nil`: no filler lists exist for
+    /// them, so their transcripts pass through untouched.
+    public var fillerLanguageCode: String? {
+        switch self {
+        case .english:    return "en"
+        case .spanish:    return "es"
+        case .french:     return "fr"
+        case .german:     return "de"
+        case .italian:    return "it"
+        case .portuguese: return "pt"
+        case .japanese, .mandarin, .vietnamese, .arabic, .korean, .turkish,
+             .hindi, .romanian, .polish, .czech, .slovak, .slovenian, .croatian,
+             .bosnian, .russian, .ukrainian, .belarusian, .bulgarian, .serbian,
+             .danish, .dutch, .finnish, .greek, .hungarian, .swedish, .latvian:
+            return nil
+        }
+    }
 
     /// Whether this language's script is written **without inter-word spaces**
     /// (CJK / space-free scripts). Drives preview-only string assembly in

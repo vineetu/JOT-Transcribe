@@ -27,6 +27,13 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 - **Affects:** `Sources/Settings/ShortcutsPane.swift`, new `Sources/Settings/Shortcuts/` subfolder
 - **Description:** The current Settings → Shortcuts pane shows three rows per action (trigger-type picker + recorder + footer) for five user-bindable actions — ~16+ control rows of vertical scroll. Almost no comparable app uses this multi-row pattern. Collapse to single binding per action with inferred trigger type, section grouping (Recording / Rewrite / Capture), visible "when this fires" badges, and a search field that scales as shortcuts grow. HTML mockup comparing four options at `/tmp/jot-shortcuts-mockups/index.html` during the design phase.
 
+### bugs.diarization-speaker-mismatch
+- **Status:** Reported (owner, 2026-07-20)
+- **Type:** Bug
+- **Trigger:** File import with multiple speakers — repro file: a multi-speaker screen recording in the owner's Downloads, latest transcript in Library
+- **Affects:** `Sources/Diarization/` (assignment), transcript detail view (label rendering)
+- **Description:** Two defects on imported multi-speaker files. (1) **Wrong speaker assignment:** speaker COUNT is right (3 detected) but segments are matched to the wrong speakers — consecutive turns from one voice alternate between labels. (2) **Choppy label rendering:** the detail view prints a "Speaker N" header per micro-segment (every line or two), even when consecutive segments share a speaker — should merge adjacent same-speaker segments into one block. Owner verified both on the repro file; fix queued as the next workstream (before Mac JotVocabCore adoption).
+
 ### features.mac-ui-localization
 - **Status:** Planned
 - **Type:** Feature

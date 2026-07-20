@@ -74,7 +74,12 @@ final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
 
             await mgr.reset()
             await mgr.setPartialCallback { partial in
-                onPartial(partial, generation)
+                // Scrub tokenizer `<unk>` artifacts so the live pill never
+                // flashes "25<unk>" mid-dictation (the final transcript is
+                // scrubbed separately in `DualPipelineTranscriber` /
+                // `Transcriber`). Cheap: a no-op `contains` check per partial
+                // on the artifact-free fast path.
+                onPartial(PostProcessing.scrubModelArtifacts(partial), generation)
             }
 
             for await samples in stream {
@@ -138,6 +143,24 @@ final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
     /// this actor (e.g. Library re-transcribe). Mirrors the English Nemotron
     /// path: one buffer through `process` + `finish`.
     func transcribeOneShot(_ samples: [Float]) async throws -> String {
+        // Single-in-flight guard for NON-session callers (file import, Library
+        // re-transcribe): this one-shot does `reset()` + `process()` +
+        // `finish()` on the SAME underlying manager the live streaming session
+        // feeds, and actors are re-entrant at suspension points — an unguarded
+        // one-shot during a live dictation would interleave with the consumer
+        // task and cross-contaminate decoder state (the dictation could paste
+        // empty/garbled text SILENTLY). `activeGeneration`/`consumerTask` are
+        // non-nil from `start(...)` until `finish()`/`cancel()` completes, and
+        // the recorder's stop path awaits `finishStreaming()` (which nils
+        // BOTH: `drainConsumerWithTimeout` clears `consumerTask`, `finish()`'s
+        // `defer` clears `activeGeneration`, on success AND throw paths)
+        // before it runs its stop-time one-shot — so the live dictation's own
+        // final decode can never trip this. `.busy` is already salvageable in
+        // `FileTranscriptionIngest` (import parks as `.savedPending` and
+        // auto-recovers) and surfaces as a normal alert on re-transcribe.
+        guard activeGeneration == nil, consumerTask == nil else {
+            throw TranscriberError.busy
+        }
         try await ensureLoaded()
         guard let manager else {
             throw TranscriberError.modelNotLoaded

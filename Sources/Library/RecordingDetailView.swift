@@ -511,6 +511,17 @@ struct RecordingDetailView: View {
 
     private func retranscribe() {
         guard !isRetranscribing else { return }
+        // Mic → re-transcribe guard (mirrors `FileTranscriptionIngest.enqueue`
+        // guard 2): on the multilingual Nemotron ship this shares the live
+        // streaming engine with dictation, so starting mid-dictation would
+        // collide (`TranscriberError.busy` at best, interleaved decoder state
+        // at worst). Surfaces the existing re-transcribe alert instead of
+        // silently dropping the tap. `shared == nil` (ingest not built yet)
+        // falls through — the engine-level busy guard still protects.
+        guard FileTranscriptionIngest.shared?.recorderIsCurrentlyIdle ?? true else {
+            retranscribeError = "Finish dictating first, then try again."
+            return
+        }
         let transcriber = transcriberHolder.transcriber
         isRetranscribing = true
         let url = RecordingStore.audioURL(for: recording)
