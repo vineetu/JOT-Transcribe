@@ -50,6 +50,14 @@ import os.log
 /// latter deliberately NOT added here because that path is token/phase/watchdog-
 /// guarded fragile concurrency code, and destabilising it for this edge is a
 /// worse risk than the edge itself. Tracked as a follow-up.
+///
+/// Segment-sliced diarize (accepted expansion of the same C1 class): the
+/// `.diarizing` phase now ALSO occupies the transcription engine — the sliced
+/// pass re-transcribes each speaker run, roughly ~1× the audio duration in
+/// total on top of the import's own transcription. The per-slice windows are
+/// short (a dictation starting between slices cancels cleanly and the pass is
+/// parked for resume), but a dictation whose stop-time transcribe lands while
+/// a single long slice is mid-inference hits the same `.busy` edge as above.
 @MainActor
 final class FileTranscriptionIngest: ObservableObject {
     /// Cross-cutting handle so `RecorderController` can reach the live
@@ -389,13 +397,15 @@ final class FileTranscriptionIngest: ObservableObject {
             }
         }
         do {
-            let payload = try await DiarizationRunner.run(
+            let outcome = try await DiarizationRunner.run(
                 holder: diarizerHolder,
                 audioURL: RecordingStore.audioURL(for: recording),
-                transcript: recording.transcript
+                transcript: recording.transcript,
+                sliceTranscribe: SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber)
             )
-            if !Task.isCancelled, let payload, let data = try? JSONEncoder().encode(payload) {
+            if !Task.isCancelled, let payload = outcome.payload, let data = try? JSONEncoder().encode(payload) {
                 recording.speakerTimeline = data
+                applySlicedTranscriptIfAvailable(outcome, to: recording)
                 try? context.save()
             }
         } catch is CancellationError {
@@ -403,12 +413,44 @@ final class FileTranscriptionIngest: ObservableObject {
             // (status was `.diarizing`, `currentDiarizingRecordingID` set),
             // so the next idle just retries. No error, no save.
             return
+        } catch TranscriberError.busy {
+            // The sliced pass needs the transcription engine and someone else
+            // owns it right now (e.g. an Ask Jot / Rewrite voice capture that
+            // slipped past the idle check). Park it again — same contract as
+            // the recorder-busy defer — and let the next idle hook retry.
+            pendingResume = .diarize(recordingID: recording.persistentModelID, filename: filename)
         } catch {
             log.error("Resumed diarize failed for \"\(filename, privacy: .public)\": \(String(describing: error))")
         }
         guard !Task.isCancelled else { return }
         status = .success(filename: filename)
         scheduleClear()
+    }
+
+    /// Segment-sliced transcription (docs/speaker-diarization follow-up):
+    /// when the diarize pass produced per-run slice transcripts, the runs'
+    /// joined text IS the recording's plain transcript for a diarized import
+    /// (speaker changes = paragraph breaks) — attribution-exact, and it keeps
+    /// transcript and timeline agreeing. Re-indexes for AI search since the
+    /// insert-time index call used the superseded whole-file text.
+    /// `rawTranscript` deliberately keeps the whole-file raw decode (its
+    /// "pre-cleanup original" role is unchanged). No-op for the proportional
+    /// fallback (`slicedTranscript == nil`) — the whole-file transcript the
+    /// import already saved stays authoritative there.
+    private func applySlicedTranscriptIfAvailable(
+        _ outcome: DiarizationRunner.Outcome,
+        to recording: Recording
+    ) {
+        guard let sliced = outcome.slicedTranscript, !sliced.isEmpty else { return }
+        // A PARKED diarize pass (`runDiarizeOnly`) can fire hours after the
+        // import — long enough for the user to have hand-edited the
+        // transcript in the detail view. Never clobber a hand-edit: the
+        // sliced timeline payload is still saved (exact attribution), but
+        // the plain transcript stays the user's. `editedAt` is set by the
+        // detail-view editor and cleared by re-transcribe.
+        guard recording.editedAt == nil else { return }
+        recording.transcript = sliced
+        RecordingIndexer.shared?.index(recordingID: recording.id, text: sliced)
     }
 
     /// FFmpeg-only formats (design §8.5, review R5 — a FINITE explicit
@@ -905,18 +947,27 @@ final class FileTranscriptionIngest: ObservableObject {
                     // `cancelInFlight` itself).
                     currentDiarizingRecordingID = recording.persistentModelID
                     do {
-                        let payload = try await DiarizationRunner.run(
+                        let outcome = try await DiarizationRunner.run(
                             holder: diarizerHolder,
                             audioURL: RecordingStore.audioURL(for: recording),
-                            transcript: recording.transcript
+                            transcript: recording.transcript,
+                            sliceTranscribe: SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber)
                         )
-                        if !Task.isCancelled, let payload, let data = try? JSONEncoder().encode(payload) {
+                        if !Task.isCancelled, let payload = outcome.payload, let data = try? JSONEncoder().encode(payload) {
                             recording.speakerTimeline = data
+                            applySlicedTranscriptIfAvailable(outcome, to: recording)
                             try? context.save()
                         }
                     } catch is CancellationError {
                         // Live dictation preempted mid-diarize — no error, no
                         // save; `cancelInFlight` already captured the resume.
+                    } catch TranscriberError.busy {
+                        // The sliced pass needs the transcription engine and
+                        // someone else grabbed it mid-pass. Park the diarize
+                        // job for the idle hook — same contract as the
+                        // recorder-busy defer branch below; the import still
+                        // completes as `.success` (transcript already saved).
+                        pendingResume = .diarize(recordingID: recording.persistentModelID, filename: filename)
                     } catch {
                         log.error("Auto-diarize failed for \"\(filename, privacy: .public)\": \(String(describing: error))")
                     }

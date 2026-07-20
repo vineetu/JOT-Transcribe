@@ -124,6 +124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         DockActivationPolicyTests.runAll()
         AdvancedFlagTests.runAll()
         WebVTTExporterTests.runAll()
+        SpeakerTimelineTests.runAll()
+        SegmentSlicingTests.runAll()
         ModelSwitchTests.runAll()
         DownloadRetryTests.runAll()
         ModelPickerDisplayTests.runAll()

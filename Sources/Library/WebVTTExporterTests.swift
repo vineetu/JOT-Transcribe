@@ -12,7 +12,24 @@ enum WebVTTExporterTests {
         test_timestamp_atKeyBoundaries()
         test_escape_ampersandLessGreaterAndArrow()
         test_diarized_twoSegmentRoundTrip()
+        test_diarized_emptyTextSegmentsSkipped()
         test_nonDiarized_singleCueFallback()
+    }
+
+    /// Segment-sliced diarize keeps sub-1.2s runs in the timeline with empty
+    /// text (`SegmentSlicing.minRunSeconds`) — the exporter must skip them
+    /// (no bare `<v>` cues) and keep cue numbering contiguous.
+    static func test_diarized_emptyTextSegmentsSkipped() {
+        let segments = [
+            SpeakerTimelineSegment(speakerLabel: "Speaker 1", startSec: 0, endSec: 5, text: "First."),
+            SpeakerTimelineSegment(speakerLabel: "Speaker 2", startSec: 5.2, endSec: 6.1, text: ""),
+            SpeakerTimelineSegment(speakerLabel: "Speaker 1", startSec: 6.5, endSec: 10, text: "Second."),
+        ]
+        let out = WebVTTExporter.vtt(segments: segments)
+        assert(!out.contains("<v Speaker 2>"), "empty-text segment must not emit a cue: \(out)")
+        assert(out.contains("1\n00:00:00.000"), "cue 1 missing")
+        assert(out.contains("2\n00:00:06.500"), "cue numbering must stay contiguous after the skip: \(out)")
+        assert(!out.contains("3\n"), "skipped segment must not leave a third cue")
     }
 
     static func test_timestamp_atKeyBoundaries() {

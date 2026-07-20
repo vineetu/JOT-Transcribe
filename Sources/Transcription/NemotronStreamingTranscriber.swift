@@ -129,6 +129,23 @@ final actor NemotronStreamingTranscriber: NemotronStreamingEngine {
     /// `finish()`, matching FluidAudio's streaming API without inventing a
     /// separate batch abstraction.
     func transcribeOneShot(_ samples: [Float]) async throws -> String {
+        // Single-in-flight guard for NON-session callers (segment-sliced
+        // diarize transcription via `transcribeDetachedSamples`): this
+        // one-shot does `reset()` + `process()` + `finish()` on the SAME
+        // underlying manager the live streaming session feeds, and actors are
+        // re-entrant at suspension points — an unguarded one-shot during a
+        // live dictation would interleave with the consumer task and
+        // cross-contaminate decoder state (the dictation could paste
+        // empty/garbled text SILENTLY). `activeGeneration`/`consumerTask` are
+        // non-nil from `start(...)` until `finish()`/`cancel()` completes,
+        // and the recorder's stop path awaits `finishStreaming()` (which nils
+        // BOTH) before it runs its stop-time one-shot — so the live
+        // dictation's own final decode can never trip this. Mirrors the
+        // guard in `NemotronMultilingualStreamingTranscriber.transcribeOneShot`;
+        // `.busy` parks the sliced diarize pass for the idle-hook resume.
+        guard activeGeneration == nil, consumerTask == nil else {
+            throw TranscriberError.busy
+        }
         try await ensureLoaded()
         guard let manager else {
             throw TranscriberError.modelNotLoaded

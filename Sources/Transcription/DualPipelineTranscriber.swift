@@ -288,6 +288,40 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         )
     }
 
+    /// Samples-buffer counterpart of the file-import path: transcribe a
+    /// DETACHED buffer (one that did not come from the live recorder
+    /// session) with file-import semantics. Used by the diarized-import
+    /// segment-sliced path (`SegmentSlicing.sliceTranscriber`), which feeds
+    /// per-speaker-run slices of an imported file.
+    ///
+    /// Not the same as `transcribe(_:recordsProvenance:)`: that is the LIVE
+    /// dictation final (`consumeStreamedPayload: true` — it consumes the CTC
+    /// vocab payload the streaming spotter accumulated from the RECORDER's
+    /// audio). A detached buffer must never consume that payload (it would
+    /// gate this audio's transcript against someone else's dictation), so
+    /// this routes with `consumeStreamedPayload: false` and runs the one-shot
+    /// spot over its own samples — exactly what `transcribeFile`'s
+    /// multilingual branch does, minus the file decode.
+    ///
+    /// On the English Nemotron ship this uses the loaded streaming engine's
+    /// one-shot (the same engine + cleanup the live dictation final uses)
+    /// rather than `transcribeFile`'s historical fresh-batch-`Transcriber`
+    /// fallback — per-slice engine loads would be pathological, and the
+    /// loaded engine is the same model.
+    func transcribeDetachedSamples(_ samples: [Float]) async throws -> TranscriptionResult {
+        switch finalEngine {
+        case .batch(let batch):
+            return try await batch.transcribe(samples, recordsProvenance: false)
+        case .nemotron(let nemotron):
+            return try await nemotronTranscribe(
+                samples,
+                engine: nemotron,
+                recordsProvenance: false,
+                consumeStreamedPayload: false
+            )
+        }
+    }
+
     func transcribeFile(
         _ url: URL,
         recordsProvenance: Bool

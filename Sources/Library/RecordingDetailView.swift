@@ -366,8 +366,15 @@ struct RecordingDetailView: View {
             // onto it. Bind straight to the model so there's no draft to lose.
             TranscriptEditor(text: $recording.transcript)
         } else if useLabeledView, let segments {
+            // Render-time run coalescing (belt-and-suspenders over the
+            // builder-level pass): old already-persisted payloads still carry
+            // dozens of fine-grained per-pause segments — group consecutive
+            // same-label segments into one block here so they display
+            // correctly without a re-detect. The stored payload (and the VTT
+            // export reading it) is untouched.
+            let displaySegments = SpeakerTimelineBuilder.coalesceDisplayRuns(segments)
             VStack(alignment: .leading, spacing: 16) {
-                ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
+                ForEach(Array(displaySegments.enumerated()), id: \.offset) { _, seg in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(seg.speakerLabel)
                             .font(.system(size: 11, weight: .semibold))
@@ -583,18 +590,42 @@ struct RecordingDetailView: View {
 
     private func detectSpeakers() {
         guard !isDetectingSpeakers else { return }
+        // Mic → detect-speakers guard (mirrors `retranscribe()` above): the
+        // segment-sliced pass transcribes each run's audio on the live
+        // engine, so starting mid-dictation would collide
+        // (`TranscriberError.busy` at best, interleaved decoder state at
+        // worst). Surfaces the existing detect-speakers alert instead of
+        // silently dropping the tap. `shared == nil` (ingest not built yet)
+        // falls through — the engine-level busy guard still protects.
+        guard FileTranscriptionIngest.shared?.recorderIsCurrentlyIdle ?? true else {
+            detectSpeakersError = "Finish dictating first, then try again."
+            return
+        }
         isDetectingSpeakers = true
         detectSpeakersError = nil
         detectSpeakersStatus = nil
         let url = RecordingStore.audioURL(for: recording)
         let transcript = recording.transcript
         let holder = diarizerHolder
+        // Segment-sliced multi-speaker text (docs/speaker-diarization
+        // follow-up): re-detect transcribes each coalesced run's own audio
+        // slice on the active engine, so the labeled text is attribution-
+        // exact. The recording's PLAIN transcript is deliberately NOT
+        // rewritten on this manual path (unlike the import-time pass) — the
+        // user may have edited it, and "Detect speakers" shouldn't clobber
+        // edits; only the timeline payload is replaced.
+        let sliceTranscribe = SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber)
         Task {
             defer { Task { @MainActor in isDetectingSpeakers = false } }
             do {
-                let payload = try await DiarizationRunner.run(holder: holder, audioURL: url, transcript: transcript)
+                let outcome = try await DiarizationRunner.run(
+                    holder: holder,
+                    audioURL: url,
+                    transcript: transcript,
+                    sliceTranscribe: sliceTranscribe
+                )
                 await MainActor.run {
-                    guard let payload else {
+                    guard let payload = outcome.payload else {
                         // Solo recording (design D7 dominance gate) — nothing
                         // to label. Clear any stale timeline from a prior run.
                         recording.speakerTimeline = nil
@@ -615,6 +646,13 @@ struct RecordingDetailView: View {
                 }
             } catch is CancellationError {
                 // View disappeared mid-run — no user-visible error.
+            } catch TranscriberError.busy {
+                // The sliced pass lost the engine to another transcription
+                // (`TranscriberError` has no LocalizedError conformance, so
+                // `localizedDescription` would be an unhelpful generic).
+                await MainActor.run {
+                    detectSpeakersError = "Jot is busy transcribing — try detecting speakers again in a moment."
+                }
             } catch {
                 await MainActor.run {
                     detectSpeakersError = error.localizedDescription

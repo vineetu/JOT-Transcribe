@@ -18,8 +18,15 @@ enum WebVTTExporter {
 
     /// Diarized export: cue-per-segment, ordered by `startSec`, each cue
     /// carrying a `<v LABEL>` voice tag ahead of the (escaped) text.
+    /// Empty-text segments are skipped — the segment-sliced diarize path
+    /// keeps sub-1.2s runs in the timeline with empty text by policy
+    /// (`SegmentSlicing.minRunSeconds`), and a bare `<v Speaker N>` cue with
+    /// no words is noise for players (mirrors the display layer's
+    /// `coalesceDisplayRuns` empty-drop).
     static func vtt(segments: [SpeakerTimelineSegment]) -> String {
-        let ordered = segments.sorted { $0.startSec < $1.startSec }
+        let ordered = segments
+            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted { $0.startSec < $1.startSec }
         var out = "WEBVTT\n\n"
         for (idx, seg) in ordered.enumerated() {
             out += "\(idx + 1)\n"
