@@ -37,7 +37,7 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 ### features.language-locales
 - **Status:** Planned (owner-requested 2026-07-20)
 - **Type:** Feature
-- **Target:** After Mac JotVocabCore adoption (queue: diarization slicing → vocab adoption → this)
+- **Target:** NEXT UP (owner re-ordered 2026-07-20: locales FIRST, then vocab adoption, then release 1.19)
 - **Affects:** `Sources/Transcription/LanguageChoice.swift` (currently one entry per language, hard-coded locale — e.g. French always `fr-FR`), language picker UI, `nemotronLanguageCode` mapping, vocabulary common-words selection, TTS probe harness
 - **Description:** Jot exposes languages without locale variants, but Nemotron 3.5 supports **19 locales** (broad coverage claim: coverage across the locale set, not just base languages). Bare minimum to add, per owner: **English (US / GB)**, **Spanish (Spain / US-LatAm)**, **French (France / Canada)**, **Portuguese (Portugal / Brazil)**; Italian (IT) as-is; Korean fine as-is. Open questions to settle **empirically before building UI**: (1) does the model actually change output per locale code — spelling ("colour"/"color"), vocabulary, number/date conventions — or are locale codes cosmetic? Test method exists: the `tools/nemotron-headdrop-probe` harness accepts a language code; generate TTS clips per locale (macOS `say` has en-GB, es-MX, fr-CA, pt-BR voices) and diff transcripts across locale codes for the same clip. (2) Which of the 19 locales the shipped latin/multilingual bundles actually accept (probe rejects vs. silently maps). (3) Downstream effects: common-words dictionary selection (currently one per base language), filler lists (already region-subtag-tolerant), vocabulary gate. UI: locale picker as sub-choice under each language, defaulting to current behavior so existing users see no change.
 
@@ -47,6 +47,11 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 - **Target:** With/after Mac JotVocabCore adoption (same extraction pattern)
 - **Affects:** `Sources/Diarization/{DiarizationTimelineBuilder,SpeakerTimeline,SegmentSlicing}.swift` → new `JotDiarizationCore` (or fold into JotTextPipeline) in `jot-shared`
 - **Description:** The diarization text-attribution brains — timeline building (smooth/fold/coalesce), sentence-boundary snapping, segment-slice geometry — are pure Foundation with DEBUG fixture tests, and iOS will want them verbatim if jot-mobile adds multi-speaker import. Extract per the JotTextPipeline pattern (engine seams injected; FluidAudio diarizer + transcriber wiring stay platform-side). Port the 14+10 harness tests as golden fixtures.
+
+### ux.vocab-remove-coral-color
+- **Status:** Planned (owner 2026-07-20) — fold into the JotVocabCore adoption workstream
+- **Type:** UX
+- **Description:** Owner dislikes the coral/orange accent in the vocabulary UI — remove it and use monochrome (system black/white/secondary) styling instead. Candidate sites to confirm with a screenshot before changing: `Sources/Vocabulary/VocabRow.swift:39` (.orange badge), the correction-ask pill card accent, speaker-palette orange if it bleeds into vocab surfaces. Confirm the exact element with the owner first, then restyle to system monochrome.
 
 ### features.mac-ui-localization
 - **Status:** Planned
