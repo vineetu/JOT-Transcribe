@@ -1,3 +1,4 @@
+import JotVocabCore
 import SwiftUI
 
 /// Boost-model download state, surfaced to the pane so the user can see

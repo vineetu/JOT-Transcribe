@@ -1,3 +1,4 @@
+import JotVocabCore
 import SwiftData
 import SwiftUI
 
@@ -130,10 +131,14 @@ final class CorrectionReviewModel {
             newLength: edit.newLength, newText: edit.newText)
     }
 
-    /// Move the mapping's global learning net by the provenance-computed delta.
-    private func applyLearning(_ delta: CorrectionProvenance.MappingDelta?) async {
-        guard let d = delta else { return }
-        await CorrectionStore.shared.adjust(originalWord: d.originalWord, term: d.term, by: d.delta)
+    /// Move the mapping's global learning net by the provenance-computed deltas.
+    /// The package's `setVerdict`/`clearVerdict` now return `[MappingDelta]` (an
+    /// alt0 verdict reconciles the base pair AND the chosen alternate's mapping),
+    /// so apply each rather than a single optional.
+    private func applyLearning(_ deltas: [CorrectionProvenance.MappingDelta]) async {
+        for d in deltas {
+            await CorrectionStore.shared.adjust(originalWord: d.originalWord, term: d.term, by: d.delta)
+        }
     }
 
     // MARK: - Deterministic per-occurrence text edit (plan §v2-A)

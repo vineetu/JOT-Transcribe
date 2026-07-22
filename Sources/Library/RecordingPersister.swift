@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import JotVocabCore
 import SwiftData
 import os.log
 

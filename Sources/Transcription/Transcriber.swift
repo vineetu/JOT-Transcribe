@@ -2,6 +2,7 @@
 import FluidAudio
 import Foundation
 import JotTextPipeline
+import JotVocabCore
 import os.log
 
 /// Jot's wrapper around FluidAudio's `AsrManager`.

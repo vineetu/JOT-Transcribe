@@ -28,6 +28,13 @@ struct TranscriptReader: View {
     /// decoupled from the model. Defaults to a no-op for contexts that don't
     /// want inline edits.
     var onReplaceSelection: (NSRange, String) -> Void = { _, _ in }
+    /// Find-in-transcript highlights (design: in-transcript search). All match
+    /// ranges in THIS block get a dim system-yellow background; `currentHighlight`
+    /// (if in this block) gets the vivid system find highlight and is scrolled
+    /// into view. Applied as layoutManager TEMPORARY attributes — the string and
+    /// the model are never mutated, and selection / the vocab popover keep working.
+    var highlightRanges: [NSRange] = []
+    var currentHighlight: NSRange? = nil
     @State private var height: CGFloat = 1
 
     var body: some View {
@@ -35,6 +42,8 @@ struct TranscriptReader: View {
             text: text,
             width: width,
             height: $height,
+            highlightRanges: highlightRanges,
+            currentHighlight: currentHighlight,
             onReplaceSelection: onReplaceSelection
         )
         .frame(width: width, height: max(height, 1), alignment: .topLeading)
@@ -55,6 +64,8 @@ private struct SelectableTranscriptText: NSViewRepresentable {
     let text: String
     let width: CGFloat
     @Binding var height: CGFloat
+    let highlightRanges: [NSRange]
+    let currentHighlight: NSRange?
     let onReplaceSelection: (NSRange, String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(height: $height) }
@@ -83,6 +94,9 @@ private struct SelectableTranscriptText: NSViewRepresentable {
         apply(text: text, to: tv)
         context.coordinator.textView = tv
         context.coordinator.recomputeHeight(width: width)
+        tv.applyFindHighlights(highlightRanges, current: currentHighlight)
+        context.coordinator.appliedHighlights = highlightRanges
+        context.coordinator.appliedCurrent = currentHighlight
         return tv
     }
 
@@ -103,6 +117,16 @@ private struct SelectableTranscriptText: NSViewRepresentable {
             changed = true
         }
         if changed { context.coordinator.recomputeHeight(width: width) }
+        // Re-apply find highlights when the text changed (which drops temporary
+        // attributes) or the highlight inputs changed. Guarded so playback ticks
+        // (which re-run updateNSView) don't churn temporary attributes.
+        if changed
+            || highlightRanges != context.coordinator.appliedHighlights
+            || currentHighlight != context.coordinator.appliedCurrent {
+            tv.applyFindHighlights(highlightRanges, current: currentHighlight)
+            context.coordinator.appliedHighlights = highlightRanges
+            context.coordinator.appliedCurrent = currentHighlight
+        }
     }
 
     private func apply(text: String, to tv: NSTextView) {
@@ -123,6 +147,10 @@ private struct SelectableTranscriptText: NSViewRepresentable {
     final class Coordinator {
         let heightBinding: Binding<CGFloat>
         weak var textView: NSTextView?
+        /// Last-applied find highlights, so `updateNSView` re-applies only on a
+        /// real change (not on every playback-tick re-render).
+        var appliedHighlights: [NSRange] = []
+        var appliedCurrent: NSRange?
 
         init(height: Binding<CGFloat>) { self.heightBinding = height }
 
@@ -161,6 +189,35 @@ final class VocabSelectableTextView: NSTextView {
     /// owner can edit + persist the transcript. The NSTextView never touches
     /// SwiftData itself.
     var onReplaceSelection: (NSRange, String) -> Void = { _, _ in }
+
+    /// Paint find-in-transcript highlights as layoutManager TEMPORARY attributes
+    /// (never touching the text storage or the model, so selection + the vocab
+    /// popover are unaffected). Every `ranges` entry gets a dim system-yellow
+    /// background; `current` (the active match) gets the system find-highlight
+    /// convention (`NSColor.findHighlightColor` background + black text for
+    /// contrast) and is scrolled into view. Passing `[]`/`nil` clears highlights.
+    func applyFindHighlights(_ ranges: [NSRange], current: NSRange?) {
+        guard let lm = layoutManager else { return }
+        let length = (string as NSString).length
+        let full = NSRange(location: 0, length: length)
+        lm.removeTemporaryAttribute(.backgroundColor, forCharacterRange: full)
+        lm.removeTemporaryAttribute(.foregroundColor, forCharacterRange: full)
+
+        let dim = NSColor.systemYellow.withAlphaComponent(0.30)
+        for r in ranges where r.length > 0 && NSMaxRange(r) <= length {
+            lm.addTemporaryAttribute(.backgroundColor, value: dim, forCharacterRange: r)
+        }
+        if let current, current.length > 0, NSMaxRange(current) <= length {
+            lm.addTemporaryAttribute(.backgroundColor, value: NSColor.findHighlightColor, forCharacterRange: current)
+            lm.addTemporaryAttribute(.foregroundColor, value: NSColor.black, forCharacterRange: current)
+            // Scroll the active match into view. Propagates up to the enclosing
+            // scroll view's clip view (the page ScrollView). Async so it runs
+            // after this layout pass — important when a lazy speaker block was
+            // just materialized by a ScrollViewReader scroll.
+            let target = current
+            DispatchQueue.main.async { [weak self] in self?.scrollRangeToVisible(target) }
+        }
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = super.menu(for: event) ?? NSMenu()

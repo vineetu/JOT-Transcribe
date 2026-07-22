@@ -1,3 +1,4 @@
+import JotVocabCore
 import SwiftUI
 
 /// **Review Jot's Corrections — the summary-row + accordion** (the "review them

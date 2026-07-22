@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import Combine
+import JotVocabCore
 import SwiftData
 import os.log
 
@@ -125,6 +126,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         AdvancedFlagTests.runAll()
         WebVTTExporterTests.runAll()
         SpeakerTimelineTests.runAll()
+        SpeakerTimelineTextEditTests.runAll()
+        TranscriptSearchTests.runAll()
+        RecordingSummaryTests.runAll()
         SegmentSlicingTests.runAll()
         ModelSwitchTests.runAll()
         DownloadRetryTests.runAll()
@@ -141,6 +145,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             NSApp.terminate(nil)
             return
         }
+
+        // Vocabulary-core adoption (design §3, L3): relocate the single curated
+        // `vocabulary.txt` from its legacy `Jot/Vocabulary/` path to the unified
+        // `Vocabulary/` root the package + `VocabularyStore` now resolve. Runs
+        // unconditionally (idempotent — no-op once moved) and STRICTLY BEFORE the
+        // first `VocabularyStore` / `CorrectionStore` / `CorrectionProvenance`
+        // touch below, so no `save()` can write to the new path while the file
+        // still sits at the old one (or race the move).
+        VocabMigration.relocateVocabularyFileIfNeeded()
 
         preConstructionSetup()
 
@@ -432,7 +445,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // keyboard-only — the transcript review reads neither signal.
         Task { @MainActor in
             let suppressed = await CorrectionStore.shared.keyboardSuppressedPairs()
-            let askable = resolved.filter { !suppressed.contains($0.suppressionKey) }.prefix(3)
+            // V2-4: a pair granted "Always replace" auto-applies and never
+            // consumes ask budget (same predicate as `AskPolicy.granted`).
+            // Grants arrive with the review-surface UI; excluding them here
+            // keeps the pill correct the day that ships.
+            let overrides = await CorrectionStore.shared.snapshot()
+            func isGranted(_ item: AskItem) -> Bool {
+                overrides.first {
+                    $0.originalWord == CorrectionKey.normalize(item.from)
+                        && $0.term.lowercased() == item.term.lowercased()
+                }?.alwaysReplace == true
+            }
+            let askable = resolved
+                .filter { !suppressed.contains($0.suppressionKey) && !isGranted($0) }
+                .prefix(3)
 
             guard !askable.isEmpty else {
                 // Every candidate is suppressed → no ask. Deliver the staged text
@@ -476,22 +502,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
         }
 
-        /// `"<normalized-original>|<lowercased-term>"` — the exact key shape
+        /// `"<normalized-original>|<lowercased-term>"` — the EXACT key shape
         /// `CorrectionStore.keyboardSuppressedPairs()` emits, so the gate above
-        /// can test membership. Must match the store's `normalize` (lowercase +
-        /// trim the same punctuation set) and term-lowercasing, mirroring
-        /// jot-mobile's `CorrectionAsksPublisher.pairKey`.
+        /// can test membership. Produced by the SAME package helper the store
+        /// uses to build the suppressed set (`CorrectionKey.pairKey`), so
+        /// produce-side and check-side keys are byte-identical. (This replaced a
+        /// Mac-local `normalizeForStore` that lacked the package's NFC precompose
+        /// + whitespace-collapse — a mismatch there would silently leak
+        /// suppressed pairs back into the ask stream, defeating the fix. Locked
+        /// by the package's `pair_key.json` / key-agreement fixture.)
         var suppressionKey: String {
-            "\(AppDelegate.normalizeForStore(from))|\(term.lowercased())"
+            CorrectionKey.pairKey(originalWord: from, term: term)
         }
-    }
-
-    /// Mirrors `CorrectionStore.normalize` so suppression-pair keys align with
-    /// the store's normalized `originalWord`. (The store is an actor and keeps
-    /// this private, so we duplicate the one-liner here — same as jot-mobile's
-    /// `CorrectionAsksPublisher.normalize`.)
-    nonisolated static func normalizeForStore(_ s: String) -> String {
-        s.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: " .,!?;:\"'()"))
     }
 
     /// Resolve the ask candidates SEQUENTIALLY in the one pill (§4), mutating the

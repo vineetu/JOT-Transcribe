@@ -1088,7 +1088,8 @@ private struct AskCorrectionContent: View {
     }
 
     /// Builds `…<before> <inTextWord> <after>…` with the in-text word bolded +
-    /// amber so the user can spot it instantly inside the sentence.
+    /// full-white (context dimmed to 0.85) so the user can spot it instantly
+    /// inside the sentence — monochrome per the owner's no-coral direction.
     private var contextLine: Text {
         var line = Text("")
         let before = contextBefore.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1098,7 +1099,7 @@ private struct AskCorrectionContent: View {
         }
         line = line + Text(inTextWord)
             .fontWeight(.bold)
-            .foregroundColor(Color(nsColor: .systemOrange))
+            .foregroundColor(.white)
         if !after.isEmpty {
             line = line + Text(" " + after).foregroundColor(.white.opacity(0.85))
         }
@@ -1134,7 +1135,7 @@ private struct CountdownRing: View {
             Circle()
                 .trim(from: 0, to: trim)
                 .stroke(
-                    Color(nsColor: .systemOrange).opacity(0.9),
+                    Color.white.opacity(0.9),
                     style: StrokeStyle(lineWidth: 2, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))

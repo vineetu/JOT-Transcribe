@@ -1,5 +1,6 @@
 import FluidAudio
 import Foundation
+import JotVocabCore
 import os.log
 
 /// Owns the FluidAudio vocabulary-boosting stack. Separate from
@@ -256,7 +257,7 @@ public actor VocabularyRescorerHolder {
     ///   window would clobber that dictation's pending proposals).
     public func rescore(
         transcript: String,
-        tokenTimings: [TokenTiming],
+        tokenTimings: [EngineTokenTiming],
         audioSamples: [Float],
         language: LanguageChoice?,
         recordsProvenance: Bool
@@ -413,18 +414,21 @@ public actor VocabularyRescorerHolder {
             return RescoreResult(text: transcript, corrections: [])
         }
         let overrides = await CorrectionStore.shared.snapshot()
-        let commonWords = CommonWords.forLanguage(language)
 
+        // Seam 2 — common-word guard via the Bundle.main-backed provider keyed by
+        // the active language's resource (nil ⇒ no list ships ⇒ brake no-ops).
         let gated = VocabularyGate.applyFromDetections(
             originalTranscript: transcript,
             detections: payload.detections,
             totalAudioDuration: payload.totalAudioDuration,
-            commonWords: commonWords,
-            overrides: overrides
+            commonWords: MacCommonWordsProvider.shared,
+            commonWordsResource: language?.commonWordsResource,
+            overrides: overrides,
+            diagnostics: MacVocabCore.diagnostics
         )
         log.info("spot-gated \(payload.detections.count) detection(s) → applied \(gated.applied), blocked \(gated.blocked.count)")
 
-        return await emitVerdicts(gated: gated, recordsProvenance: recordsProvenance)
+        return await emitVerdicts(gated: gated, language: language, recordsProvenance: recordsProvenance)
     }
 
     /// Shared tail of the TDT `rescore` path: takes the already-
@@ -433,7 +437,7 @@ public actor VocabularyRescorerHolder {
     /// original `rescore(...)` body so the TDT path's behavior is byte-identical.
     private func finishRescore(
         transcript: String,
-        tokenTimings: [TokenTiming],
+        tokenTimings: [EngineTokenTiming],
         spotResult: CtcKeywordSpotter.SpotKeywordsResult,
         rescorer: VocabularyRescorer,
         vocabulary: CustomVocabularyContext,
@@ -467,22 +471,41 @@ public actor VocabularyRescorerHolder {
                 termAliases[t.text.lowercased(), default: []] += a
             }
         }
-        // Resolve the per-language common-word set. Non-English (or any language
-        // whose list isn't bundled) resolves to `.empty` → the common-word brake
-        // is a clean no-op; the gate never crashes.
-        let commonWords = CommonWords.forLanguage(language)
+        // Seam 1 — map FluidAudio's rescore output + per-word timings into the
+        // package's engine-neutral value types so `JotVocabCore.VocabularyGate`
+        // never imports FluidAudio (design §1). Seam 2 — the common-word guard
+        // is now a `CommonWordsProvider` (Bundle.main lists) keyed by the active
+        // language's resource name; a nil resource (no list ships) degrades to a
+        // clean no-op exactly as the old `CommonWords.empty` did.
+        let neutralOutput = JotVocabCore.RescoreOutput(
+            text: output.text,
+            replacements: output.replacements.map {
+                JotVocabCore.RescoreProposal(
+                    originalWord: $0.originalWord,
+                    replacementWord: $0.replacementWord,
+                    shouldReplace: $0.shouldReplace,
+                    replacementScore: $0.replacementScore,
+                    originalScore: $0.originalScore)
+            },
+            wasModified: output.wasModified)
+        let neutralTimings = tokenTimings.map {
+            JotVocabCore.TokenTiming(token: $0.token, confidence: $0.confidence)
+        }
 
         let gated = VocabularyGate.apply(
             originalTranscript: transcript,
-            output: output,
-            tokenTimings: tokenTimings,
-            commonWords: commonWords,
+            output: neutralOutput,
+            tokenTimings: neutralTimings,
+            commonWords: MacCommonWordsProvider.shared,
+            diagnostics: MacVocabCore.diagnostics,
             overrides: overrides,
-            termAliases: termAliases
+            termAliases: termAliases,
+            commonWordsResource: language?.commonWordsResource,
+            allTerms: vocabulary.terms.map { $0.text }
         )
         log.info("rescored \(output.replacements.count) proposal(s) → applied \(gated.applied), blocked \(gated.blocked.count)")
 
-        return await emitVerdicts(gated: gated, recordsProvenance: recordsProvenance)
+        return await emitVerdicts(gated: gated, language: language, recordsProvenance: recordsProvenance)
     }
 
     /// Shared verdict tail for BOTH gate paths (TDT `finishRescore` and the
@@ -492,6 +515,7 @@ public actor VocabularyRescorerHolder {
     /// `finishRescore` body so the TDT path stays byte-identical.
     private func emitVerdicts(
         gated: VocabularyGate.Result,
+        language: LanguageChoice?,
         recordsProvenance: Bool
     ) async -> RescoreResult {
         // v1: log-only — record each verdict to the cross-cutting ErrorLog
@@ -536,9 +560,21 @@ public actor VocabularyRescorerHolder {
         //     the live ask offers the term on confirm. We surface ONLY blocked
         //     proposals that are ask-candidates so the payload doesn't carry
         //     every routine block.
+        // Addendum gate (JotVocabCore adoption, design §ADDENDUM decision 1): the
+        // shared iOS gate sets `askCandidate` on common-word near-misses that the
+        // iOS KEYBOARD ask policy would never surface — but Mac's live pill reads
+        // the flag directly, so a straight adoption would resurrect the pill spam
+        // Mac's fork guards existed to kill. Suppress the ask for any correction
+        // whose ORIGINAL is a common word (membership via the SAME Bundle.main
+        // provider + active-language resource the gate used, matching the old
+        // `CommonWords.isCommon` lowercased lookup). Fuzzy sounds-like matching and
+        // the teach lane are preserved — only the PILL surfacing is gated.
+        let commonSet = MacCommonWordsProvider.shared.words(forResource: language?.commonWordsResource)
         var seen = Set<String>()
         var corrections: [UXCorrection] = []
-        for p in gated.proposals where p.outcome == "applied" || p.askCandidate {
+        for p in gated.proposals {
+            let askCandidate = p.askCandidate && !commonSet.contains(p.originalWord.lowercased())
+            guard p.outcome == "applied" || askCandidate else { continue }
             let dedupKey = "\(p.originalWord)|\(p.term)"
             guard seen.insert(dedupKey).inserted else { continue }
             corrections.append(
@@ -546,7 +582,7 @@ public actor VocabularyRescorerHolder {
                     from: p.originalWord,
                     to: p.term,
                     notable: Self.notable(p),
-                    askCandidate: p.askCandidate
+                    askCandidate: askCandidate
                 )
             )
         }

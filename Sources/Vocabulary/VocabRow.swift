@@ -1,3 +1,4 @@
+import JotVocabCore
 import SwiftUI
 
 /// A single row in the Vocabulary pane: one visible, tappable text field
@@ -36,7 +37,7 @@ struct VocabRow: View {
                 if let warning = warningMessage {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 10))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.secondary)
                         .help(warning)
                 }
 

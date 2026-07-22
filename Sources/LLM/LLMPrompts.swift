@@ -44,6 +44,63 @@ enum TransformPrompt {
     static let speakerLabelRule: String = "The input is a labeled multi-speaker transcript. Each speaker's block starts with `Name:` (for example `You:`, `Alex:`, `Speaker 2:`). Preserve those `Name:` prefixes at the start of each speaker block exactly as given — do not rewrite, merge, or remove them. Apply the cleanup rules to each speaker's body text only."
 }
 
+/// Recording-detail AI **summary** prompts (the "Summarize" feature). A separate
+/// namespace from Transform/Rewrite — this path never runs Apple Intelligence
+/// (capable providers only) and never touches the cleanup/rewrite pipelines.
+/// Same shape convention as `TransformPrompt` (role → rules → hard constraints →
+/// output contract). Every prompt shares one `guardrails` block: derive ONLY from
+/// the transcript, never invent, attribute to named speakers when labeled, output
+/// plain markdown-ish text with no preamble.
+enum SummaryPrompt {
+    /// Shared hard-constraints + output contract appended to every summary prompt.
+    private static let guardrails: String = """
+        Work ONLY from the transcript below. Never invent names, facts, numbers, quotes, or decisions that are not in it — if the transcript does not contain something, omit it rather than guess. When the transcript is a labeled multi-speaker transcript (lines beginning `Name:`), attribute points to the named speaker. Keep the transcript's original language. Output plain text with light markdown (a short header or `-` bullets where it helps) — no preamble, no "Here is…", no code fences, no closing commentary.
+        """
+
+    static let meetingSummary: String = """
+        You are summarizing a meeting transcript. Write a concise summary organized by topic. Under each topic capture what was discussed and note who said or decided what when the speaker is identifiable. Be faithful and brief; do not editorialize.
+        \(guardrails)
+        """
+
+    static let actionItems: String = """
+        You are extracting action items from a meeting transcript. Output a bulleted list of concrete action items that were actually stated. For each item name the owner when it is identifiable from the speaker labels or context, and state the task faithfully to what was said. Never invent tasks, owners, or due dates.
+        \(guardrails)
+        """
+
+    static let keyDecisions: String = """
+        You are extracting the key decisions from a meeting transcript. Output a bulleted list of decisions that were actually made, each stated plainly and attributed to a speaker when identifiable. Exclude open questions and general discussion — only concrete decisions the participants reached.
+        \(guardrails)
+        """
+
+    static let summary: String = """
+        You are summarizing a dictated note from a single speaker. Write a concise summary of the main points, preserving the speaker's meaning and intent. Keep it brief and faithful; do not add advice or content the speaker did not state.
+        \(guardrails)
+        """
+
+    static let keyPoints: String = """
+        You are extracting the key points from a dictated note by a single speaker. Output a short bulleted list of the main points, each faithful to what was said. Do not add points the speaker did not make.
+        \(guardrails)
+        """
+
+    /// The system prompt for a summary action. `custom` supplies the user's
+    /// free-form instruction for `.custom`; ignored for the built-in kinds.
+    static func systemPrompt(for kind: SummaryKind, custom: String?) -> String {
+        switch kind {
+        case .meetingSummary: return meetingSummary
+        case .actionItems:    return actionItems
+        case .keyDecisions:   return keyDecisions
+        case .summary:        return summary
+        case .keyPoints:      return keyPoints
+        case .custom:
+            let instruction = (custom ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return """
+                You are processing a dictation transcript according to the user's instruction. Follow this instruction exactly: \(instruction)
+                \(guardrails)
+                """
+        }
+    }
+}
+
 /// Rewrite prompts. Two separate prompts for two separate paths:
 ///
 ///   • `RewritePrompt.default` — user-editable, drives the **no-

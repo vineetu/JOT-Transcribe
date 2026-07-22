@@ -146,6 +146,15 @@ enum ResetActions {
         try? fm.removeItem(at: appSupport.appendingPathComponent("default.store"))
         try? fm.removeItem(at: appSupport.appendingPathComponent("default.store-shm"))
         try? fm.removeItem(at: appSupport.appendingPathComponent("default.store-wal"))
+        // JotVocabCore adoption: the correction ledger (corrections.json),
+        // per-transcript provenance/, and the relocated vocabulary.txt all live
+        // under `<containerRoot>/Vocabulary/`. The legacy wipe caught only
+        // `Jot/Vocabulary/` and MISSED corrections/provenance entirely. Derive
+        // the path from the SAME containerRoot the adapter injects so reset wipes
+        // all learning data and stays correct after the vocabulary.txt move.
+        if let vocabRoot = MacVocabCore.containerRoot {
+            try? fm.removeItem(at: vocabRoot.appendingPathComponent("Vocabulary", isDirectory: true))
+        }
         try? fm.removeItem(at: library.appendingPathComponent("Logs/Jot"))
         if let bundleID = Bundle.main.bundleIdentifier {
             try? fm.removeItem(at: library.appendingPathComponent("Caches/\(bundleID)"))

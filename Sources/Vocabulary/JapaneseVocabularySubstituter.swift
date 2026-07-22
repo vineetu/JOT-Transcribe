@@ -1,4 +1,5 @@
 import Foundation
+import JotVocabCore
 
 /// Alias-based vocabulary substitution for Japanese transcripts.
 ///
@@ -21,7 +22,7 @@ import Foundation
 /// they want substituted away (hiragana / katakana / romaji variants
 /// they want collapsed to a single canonical kanji rendering).
 ///
-/// Example `~/Library/Application Support/Jot/Vocabulary/vocabulary.txt`
+/// Example `~/Library/Application Support/Vocabulary/vocabulary.txt`
 /// entry for a JA user who prefers kanji:
 ///
 /// ```

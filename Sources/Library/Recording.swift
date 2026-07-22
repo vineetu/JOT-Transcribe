@@ -52,6 +52,16 @@ final class Recording {
     /// as `editedAt` above.
     var pendingSince: Date?
 
+    /// AI summary (recording-detail "Summarize" feature). The generated text, the
+    /// `SummaryKind.rawValue` that produced it, and when it was generated —
+    /// overwritten each time the user picks a summary action or regenerates.
+    /// Each optional-default-`nil` = unconditionally-safe additive SwiftData
+    /// lightweight migration (same never-versioned pattern as `editedAt` /
+    /// `pendingSince` above — no `VersionedSchema`).
+    var summaryText: String?
+    var summaryKind: String?
+    var summaryGeneratedAt: Date?
+
     init(
         id: UUID = UUID(),
         createdAt: Date = .now,
@@ -64,7 +74,10 @@ final class Recording {
         speakerTimeline: Data? = nil,
         tags: [String] = [],
         editedAt: Date? = nil,
-        pendingSince: Date? = nil
+        pendingSince: Date? = nil,
+        summaryText: String? = nil,
+        summaryKind: String? = nil,
+        summaryGeneratedAt: Date? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -78,6 +91,9 @@ final class Recording {
         self.tags = tags
         self.editedAt = editedAt
         self.pendingSince = pendingSince
+        self.summaryText = summaryText
+        self.summaryKind = summaryKind
+        self.summaryGeneratedAt = summaryGeneratedAt
     }
 }
 

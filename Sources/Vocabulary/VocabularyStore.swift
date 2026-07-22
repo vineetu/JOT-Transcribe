@@ -1,11 +1,14 @@
 import Foundation
+import JotVocabCore
 import SwiftUI
 
 /// Loads, mutates, and persists the user's custom vocabulary list.
 ///
 /// Persistence is a plain-text file at
-/// `~/Library/Application Support/Jot/Vocabulary/vocabulary.txt`. One term
-/// per line, optional aliases after a colon separator:
+/// `~/Library/Application Support/Vocabulary/vocabulary.txt` (unified with the
+/// package's correction stores; relocated from the legacy `Jot/Vocabulary/`
+/// path by `VocabMigration` at launch). One term per line, optional aliases
+/// after a colon separator:
 ///
 /// ```
 /// UJET: you jet, ew jet
@@ -54,12 +57,22 @@ final class VocabularyStore: ObservableObject {
     /// silently no-ops and the pane still renders from the in-memory
     /// list.
     public private(set) lazy var fileURL: URL? = {
+        // Structural L3 guard (design §3): the legacy-file relocation is
+        // idempotent, so running it here — at the moment the path is first
+        // resolved — makes "migration before first store touch" true by
+        // construction rather than by launch-sequence convention. The early
+        // call in `applicationDidFinishLaunching` remains the normal path;
+        // this one exists so a future caller that touches the store earlier
+        // cannot load (and later clobber) an empty not-yet-migrated file.
+        VocabMigration.relocateVocabularyFileIfNeeded()
         let fm = FileManager.default
         guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }
+        // Unified `Application Support/Vocabulary/` root (design §3): the same
+        // directory the package's `CorrectionStore` / `CorrectionProvenance`
+        // resolve `<root>/Vocabulary/…` under.
         let dir = appSupport
-            .appendingPathComponent("Jot", isDirectory: true)
             .appendingPathComponent("Vocabulary", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("vocabulary.txt")
@@ -269,39 +282,15 @@ final class VocabularyStore: ObservableObject {
     /// files) parse identically to LF — the two implementations must
     /// agree on interpretation or Phase B's rescorer will see a
     /// different list than the pane shows.
+    /// Delegates to the shared `JotVocabCore.VocabularyFile` — the parse/serialize
+    /// pair moved into the package (byte-identical to the old in-tree logic and
+    /// to FluidAudio's `loadFromSimpleFormat`). The `@MainActor` observable shell
+    /// stays here; only the pure format logic is shared.
     static func parse(_ body: String) -> [VocabTerm] {
-        var result: [VocabTerm] = []
-        let lines = body.components(separatedBy: .newlines)
-        for rawLine in lines {
-            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
-            if line.isEmpty || line.hasPrefix("#") { continue }
-
-            let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-            let text = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.isEmpty { continue }
-
-            let aliases: [String] = parts.count > 1
-                ? parts[1]
-                    .split(separator: ",")
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-                : []
-
-            result.append(VocabTerm(text: text, aliases: aliases))
-        }
-        return result
+        VocabularyFile.parse(body)
     }
 
     static func serialize(_ terms: [VocabTerm]) -> String {
-        var lines: [String] = []
-        for t in terms where !t.isBlank {
-            let trimmedText = t.text.trimmingCharacters(in: .whitespaces)
-            if t.aliases.isEmpty {
-                lines.append(trimmedText)
-            } else {
-                lines.append("\(trimmedText): \(t.aliases.joined(separator: ", "))")
-            }
-        }
-        return lines.joined(separator: "\n") + (lines.isEmpty ? "" : "\n")
+        VocabularyFile.serialize(terms)
     }
 }

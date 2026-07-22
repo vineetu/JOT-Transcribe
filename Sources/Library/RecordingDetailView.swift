@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import AppKit
 import Combine
+import JotVocabCore
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
@@ -13,6 +14,12 @@ struct RecordingDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var transcriberHolder: TranscriberHolder
     @EnvironmentObject private var diarizerHolder: DiarizerHolder
+    /// Recording-detail AI summary service, injected at the window root (same
+    /// `.environmentObject` site as `LLMConfiguration`). Owns the LLM deps + the
+    /// capable-provider gate, so this view never reaches `AppServices.live` for
+    /// the summary path — the fresh-install race that made the button lie is gone
+    /// by construction.
+    @EnvironmentObject private var summarizer: RecordingSummarizer
     @Bindable var recording: Recording
 
     @StateObject private var player = AudioPlaybackController()
@@ -55,6 +62,39 @@ struct RecordingDetailView: View {
     /// not something the AppKit text view guesses (see `TranscriptReader`).
     @State private var contentWidth: CGFloat = 0
 
+    /// In-transcript search (find-in-transcript, both panes). `isSearching`
+    /// toggles the inline search bar (⌘F); `searchQuery` is the live query;
+    /// `searchMatches` are all matches across the CURRENT pane's blocks (plain =
+    /// one block, labeled = one per display segment), ordered by (block, position);
+    /// `currentMatchIndex` is the active match (⌘G / ⇧⌘G step with wraparound).
+    /// State resets on recording change / pane toggle (recompute, keep query).
+    @State private var isSearching = false
+    @State private var searchQuery = ""
+    @State private var searchMatches: [TranscriptSearch.Match] = []
+    @State private var currentMatchIndex = 0
+    /// Set true to move first-responder into the `NSSearchField` when the find
+    /// bar appears; the field flips it back to false once focused.
+    @State private var searchFieldFocusTrigger = false
+    /// Captured `ScrollViewReader` proxy so cross-block next/prev can scroll a
+    /// (possibly off-screen, lazily-built) speaker block into view before its
+    /// NSTextView applies the fine `scrollRangeToVisible`.
+    @State private var scrollProxy: ScrollViewProxy?
+
+    /// AI summary (recording-detail "Summarize"). The in-flight state + LLM call
+    /// live in the injected `summarizer` (`summarizer.isRunning`); these view
+    /// fields hold only the per-recording UI bits: `summaryError` /
+    /// `summaryDisabledNotice` surface inline in the section; `activeSummaryKind`
+    /// labels the section while running / for Regenerate; `lastCustomInstruction`
+    /// lets Regenerate re-run a custom prompt. Text/kind/timestamp persist on
+    /// `recording`.
+    @State private var summaryError: String?
+    @State private var summaryDisabledNotice: String?
+    @State private var activeSummaryKind: SummaryKind?
+    @State private var lastCustomInstruction: String?
+    @State private var showCustomPrompt = false
+    @State private var customPromptText = ""
+    @State private var didCopySummary = false
+
     /// Width the transcript reading column occupies: measured content width,
     /// capped at the comfortable reading measure. Falls back to the measure
     /// before the first layout pass reports a width.
@@ -63,28 +103,45 @@ struct RecordingDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DetailMetrics.blockSpacing) {
-                header
-                TagChipsEditor(recording: recording) { try? context.save() }
-                playbackBlock
-                transcriptBlock
-                if let reviewModel, !reviewModel.records.isEmpty {
-                    CorrectionReviewSection(model: reviewModel)
+        // ScrollViewReader so find-in-transcript next/prev can scroll a target
+        // speaker block (possibly off-screen in the LazyVStack) into view before
+        // its NSTextView applies the fine `scrollRangeToVisible`.
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DetailMetrics.blockSpacing) {
+                    header
+                    TagChipsEditor(recording: recording) { try? context.save() }
+                    playbackBlock
+                    // Summary sits ABOVE the transcript (the Zoom/Teams recap
+                    // placement): it's the read-first derived artifact, the
+                    // transcript is the evidence below it — and it appears
+                    // right under the header the user triggered it from, so
+                    // generation is visible instead of happening off-screen
+                    // at the bottom of a long transcript.
+                    if shouldShowSummarySection {
+                        summarySection
+                            .id("summarySection")
+                    }
+                    transcriptBlock
+                    if let reviewModel, !reviewModel.records.isEmpty {
+                        CorrectionReviewSection(model: reviewModel)
+                    }
                 }
+                .background(
+                    GeometryReader { g in
+                        Color.clear.preference(key: ContentWidthKey.self, value: g.size.width)
+                    }
+                )
+                .onPreferenceChange(ContentWidthKey.self) { contentWidth = $0 }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
+                .frame(maxWidth: DetailMetrics.pageMeasure, alignment: .leading)
             }
-            .background(
-                GeometryReader { g in
-                    Color.clear.preference(key: ContentWidthKey.self, value: g.size.width)
-                }
-            )
-            .onPreferenceChange(ContentWidthKey.self) { contentWidth = $0 }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
-            .frame(maxWidth: DetailMetrics.pageMeasure, alignment: .leading)
+            .onAppear { scrollProxy = proxy }
         }
         .frame(maxWidth: .infinity, alignment: .top)
         .toolbar { toolbarContent }
+        .sheet(isPresented: $showCustomPrompt) { customPromptSheet }
         .task(id: recording.id) {
             // The detail view is REUSED across sidebar navigation; reset edit
             // mode so a different recording never opens already-in-edit (and
@@ -94,6 +151,17 @@ struct RecordingDetailView: View {
             isEditing = false
             detectSpeakersStatus = nil
             detectSpeakersError = nil
+            // Reset transient summary UI for the new recording (the summary itself
+            // is persisted on the model; only the in-flight/notice state is view-local).
+            summarizer.cancel()
+            summaryError = nil
+            summaryDisabledNotice = nil
+            activeSummaryKind = nil
+            lastCustomInstruction = nil
+            // Recompute matches against the new recording's text (keeps the query
+            // string, resets the active-match index — design: search state resets
+            // on recording change).
+            recomputeMatches(resetIndex: true)
             // Seed the review model with the live recording + env context, then
             // reconcile its anchors against the current transcript. Re-runs when
             // the bound recording changes (sidebar navigation), so the section
@@ -119,6 +187,16 @@ struct RecordingDetailView: View {
             // mode (isEditing == false) and clears `editedAt`, so it never trips
             // this — and a later hand-edit re-stamps cleanly.
             if isEditing, recording.editedAt == nil { recording.editedAt = .now }
+            recomputeMatches(resetIndex: true)
+        }
+        .onChange(of: searchQuery) { _, _ in
+            recomputeMatches(resetIndex: true)
+            scrollToCurrentMatch()
+        }
+        .onChange(of: showRawTranscript) { _, _ in
+            // Pane toggle (plain ↔ labeled / show original): the block set changes,
+            // so recompute against the newly displayed text; keep the query.
+            recomputeMatches(resetIndex: true)
         }
         .alert(
             "Delete this recording?",
@@ -325,16 +403,47 @@ struct RecordingDetailView: View {
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
+                // Secondary actions folded into ONE native "More" menu
+                // (ellipsis.circle — the Photos/Notes pattern) instead of separate
+                // cryptic magnifier + sparkles buttons: Find in Transcript (⌘F) +
+                // a context-smart, gate-aware Summarize section. Hidden while
+                // editing / on the raw view (search + summarize are out of scope
+                // there).
                 if (hasTransformedTranscript || segments != nil) && !isEditing {
                     Toggle(segments != nil ? "Show plain" : "Show original", isOn: $showRawTranscript)
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .font(.system(size: 11))
                 }
+                if !isEditing && !showRawTranscript && (!displayedTranscript.isEmpty || segments != nil) {
+                    // Bordered like the Edit button beside it so the pair reads
+                    // as one control group — a borderless glyph here looked like
+                    // a stray mark, not a button.
+                    Menu {
+                        Button { toggleSearch() } label: {
+                            Label("Find in Transcript", systemImage: "magnifyingglass")
+                        }
+                        .keyboardShortcut("f", modifiers: .command)
+                        Divider()
+                        summaryMenuSection(segments: segments)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(minWidth: 16)
+                    }
+                    .menuStyle(.button)
+                    .menuIndicator(.hidden)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .fixedSize()
+                    .help("Find and Summarize")
+                }
                 if canEdit || isEditing {
                     Button(isEditing ? "Done" : "Edit") { toggleEdit() }
                         .controlSize(.small)
                 }
+            }
+            if isSearching && !isEditing && !showRawTranscript {
+                findBar
             }
             if isDetectingSpeakers {
                 HStack(spacing: 6) {
@@ -373,8 +482,13 @@ struct RecordingDetailView: View {
             // correctly without a re-detect. The stored payload (and the VTT
             // export reading it) is untouched.
             let displaySegments = SpeakerTimelineBuilder.coalesceDisplayRuns(segments)
-            VStack(alignment: .leading, spacing: 16) {
-                ForEach(Array(displaySegments.enumerated()), id: \.offset) { _, seg in
+            // LazyVStack (inside the page ScrollView): each block hosts a full
+            // TranscriptReader (NSTextView + TextKit + async height measure), so a
+            // 50-turn meeting must not build all 50 eagerly. The per-element
+            // `blockIndex`/closure capture stays correct under laziness (identity
+            // is per ForEach element). Rename menu + vocab popover are unaffected.
+            LazyVStack(alignment: .leading, spacing: 16) {
+                ForEach(Array(displaySegments.enumerated()), id: \.offset) { blockIndex, seg in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(seg.speakerLabel)
                             .font(.system(size: 11, weight: .semibold))
@@ -386,8 +500,24 @@ struct RecordingDetailView: View {
                                 }
                             }
                             .accessibilityLabel("Speaker: \(seg.speakerLabel). Right-click or long-press to rename.")
-                        ReadingProse(text: seg.text)
+                        // Same selectable serif surface + "Add to Vocabulary…"
+                        // popover the plain transcript uses (shared `TranscriptReader`
+                        // — no duplicated selection/popover machinery). A successful
+                        // add rewrites the selected instance in THIS block's stored
+                        // segment(s) and the canonical transcript so both views stay
+                        // in sync. Still non-editable (no `TranscriptEditor` here).
+                        TranscriptReader(
+                            text: seg.text,
+                            width: transcriptReadingWidth,
+                            onReplaceSelection: { range, term in
+                                applyVocabReplacementInSpeakerBlock(
+                                    blockIndex: blockIndex, range: range, term: term)
+                            },
+                            highlightRanges: highlightRanges(inBlock: blockIndex),
+                            currentHighlight: currentHighlight(inBlock: blockIndex)
+                        )
                     }
+                    .id(blockIndex)
                 }
             }
         } else if displayedTranscript.isEmpty {
@@ -408,7 +538,9 @@ struct RecordingDetailView: View {
                 width: transcriptReadingWidth,
                 onReplaceSelection: { range, term in
                     applyVocabReplacement(range: range, term: term)
-                }
+                },
+                highlightRanges: highlightRanges(inBlock: 0),
+                currentHighlight: currentHighlight(inBlock: 0)
             )
         }
     }
@@ -427,8 +559,467 @@ struct RecordingDetailView: View {
               range.length > 0,
               range.location + range.length <= ns.length
         else { return }
+        let selectedText = ns.substring(with: range)
+        // Keep the speaker-labeled view in sync: propagate the SAME single
+        // replacement into the stored timeline segment that owns this occurrence,
+        // BEFORE mutating the transcript (so the pre-edit transcript is the
+        // reference layout the range hint indexes into). If it can't be localized
+        // to one stored segment (diverged text / boundary-spanning), the timeline
+        // is left untouched and only the plain view updates — acceptable.
+        propagateReplacementToTimeline(selectedText: selectedText, term: term, range: range)
         recording.transcript = ns.replacingCharacters(in: range, with: term)
         try? context.save()
+    }
+
+    /// Apply a plain-transcript vocab replacement to the stored speaker timeline
+    /// too, so both rendering paths show the corrected word. Mutates
+    /// `recording.speakerTimeline` in place (the shared `context.save()` in the
+    /// caller persists it in the same transaction). No-op when there is no
+    /// timeline or the edit can't be localized to a single stored segment.
+    private func propagateReplacementToTimeline(selectedText: String, term: String, range: NSRange) {
+        guard let data = recording.speakerTimeline,
+              let payload = try? JSONDecoder().decode(SpeakerTimelinePayload.self, from: data),
+              let updated = SpeakerTimelineTextEdit.applyingReplacement(
+                to: payload.segments, selectedText: selectedText, replacement: term,
+                range: range, referenceText: recording.transcript),
+              let encoded = try? JSONEncoder().encode(SpeakerTimelinePayload(segments: updated))
+        else { return }
+        recording.speakerTimeline = encoded
+    }
+
+    /// "Add to Vocabulary…" invoked from a speaker-labeled block. Applies the
+    /// single replacement to the STORED segment(s) that back this display block
+    /// (the block is a coalesced run of one-or-more consecutive same-label stored
+    /// segments) AND to the canonical plain `recording.transcript`, so both views
+    /// stay in sync — then persists both in one save. No-op when it can't be
+    /// localized to a single stored segment.
+    private func applyVocabReplacementInSpeakerBlock(blockIndex: Int, range: NSRange, term: String) {
+        guard let data = recording.speakerTimeline,
+              let payload = try? JSONDecoder().decode(SpeakerTimelinePayload.self, from: data)
+        else { return }
+        let segments = payload.segments
+        let displayBlocks = SpeakerTimelineBuilder.coalesceDisplayRuns(segments)
+        let groups = SpeakerTimelineTextEdit.displayRunStoredIndices(segments)
+        guard blockIndex >= 0, blockIndex < displayBlocks.count, blockIndex < groups.count else { return }
+
+        // The exact string TranscriptReader rendered for this block — the range
+        // indexes into it — and the selected substring at that range.
+        let blockNS = displayBlocks[blockIndex].text as NSString
+        guard range.location >= 0,
+              range.length > 0,
+              range.location + range.length <= blockNS.length
+        else { return }
+        let selectedText = blockNS.substring(with: range)
+
+        // Locate the ONE constituent stored segment + local range the selection
+        // owns (block text == the constituents' join, so the range is precise).
+        let indices = groups[blockIndex]
+        let blockStored = indices.map { segments[$0] }
+        guard let blockHit = SpeakerTimelineTextEdit.locate(
+                range: range, in: blockStored, referenceText: displayBlocks[blockIndex].text)
+        else { return }
+        let storedIndex = indices[blockHit.segmentIndex]
+        let localRange = blockHit.localRange
+
+        // Edit that stored segment's text at the local range and persist the payload.
+        let storedNS = segments[storedIndex].text as NSString
+        guard localRange.location + localRange.length <= storedNS.length else { return }
+        var updated = segments
+        updated[storedIndex] = SpeakerTimelineSegment(
+            speakerLabel: segments[storedIndex].speakerLabel,
+            startSec: segments[storedIndex].startSec,
+            endSec: segments[storedIndex].endSec,
+            text: storedNS.replacingCharacters(in: localRange, with: term))
+        if let encoded = try? JSONEncoder().encode(SpeakerTimelinePayload(segments: updated)) {
+            recording.speakerTimeline = encoded
+        }
+
+        // Keep the canonical plain transcript in sync on the SAME instance: map
+        // (storedIndex, localRange) into transcript coordinates via alignment and
+        // splice exactly there — so two speakers sharing a word don't diverge on
+        // different occurrences. Only when the transcript has diverged from the
+        // stored layout (alignment fails) fall back to the first whole-word match.
+        let transcriptNS = recording.transcript as NSString
+        if let tRange = SpeakerTimelineTextEdit.transcriptRange(
+                forSegmentIndex: storedIndex, localRange: localRange,
+                segments: segments, transcript: recording.transcript),
+           tRange.location + tRange.length <= transcriptNS.length {
+            recording.transcript = transcriptNS.replacingCharacters(in: tRange, with: term)
+        } else if let newTranscript = SpeakerTimelineTextEdit.replacingFirstWholeWord(
+            selectedText, with: term, in: recording.transcript) {
+            recording.transcript = newTranscript
+        }
+        try? context.save()
+    }
+
+    // MARK: - Find in transcript
+
+    /// Safari/Xcode-style find bar: a real `NSSearchField` (authentic rounded
+    /// shape, embedded magnifier, built-in clear-x) + "N of M" count + grouped
+    /// prev/next in a `ControlGroup` + a bordered Done. Slides in under the header
+    /// on a `.bar` material row with a hairline divider. ⌘F toggles, Esc/Done
+    /// dismiss + clear, ⌘G / ⇧⌘G step, Enter = next; focus lands in the field on
+    /// open. Chrome only — the match/highlight/lazy-scroll logic is unchanged.
+    private var findBar: some View {
+        HStack(spacing: 10) {
+            FindSearchField(
+                text: $searchQuery,
+                focusTrigger: $searchFieldFocusTrigger,
+                onSubmit: { stepMatch(forward: true) },
+                onCancel: { dismissSearch() }
+            )
+            .frame(maxWidth: 280)
+
+            if !searchMatches.isEmpty {
+                Text("\(currentMatchIndex + 1) of \(searchMatches.count)")
+                    .font(.system(size: 11))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            } else if !searchQuery.isEmpty {
+                Text("No results")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            ControlGroup {
+                Button { stepMatch(forward: false) } label: {
+                    Image(systemName: "chevron.up")
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(searchMatches.isEmpty)
+                .help("Previous match (⇧⌘G)")
+
+                Button { stepMatch(forward: true) } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .keyboardShortcut("g", modifiers: .command)
+                .disabled(searchMatches.isEmpty)
+                .help("Next match (⌘G)")
+            }
+            .controlGroupStyle(.navigation)
+            .fixedSize()
+
+            Button("Done") { dismissSearch() }
+                .controlSize(.small)
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
+        .onExitCommand { dismissSearch() }
+    }
+
+    /// The current pane's searchable block texts: plain pane = one block (the
+    /// displayed transcript); labeled pane = one block per coalesced display
+    /// segment (same order the view renders + the highlight `blockIndex` uses).
+    private func currentSearchBlocks() -> [String] {
+        let segments = speakerSegments
+        let useLabeledView = segments != nil && !showRawTranscript
+        if useLabeledView, let segments {
+            return SpeakerTimelineBuilder.coalesceDisplayRuns(segments).map(\.text)
+        }
+        return [displayedTranscript]
+    }
+
+    /// The active match's range if it falls in block `blockIndex`, else nil —
+    /// handed to that block's `TranscriptReader` as its `currentHighlight`.
+    private func currentHighlight(inBlock blockIndex: Int) -> NSRange? {
+        guard isSearching, currentMatchIndex < searchMatches.count else { return nil }
+        let match = searchMatches[currentMatchIndex]
+        return match.blockIndex == blockIndex ? match.range : nil
+    }
+
+    /// All match ranges within block `blockIndex` — that block's dim highlights.
+    private func highlightRanges(inBlock blockIndex: Int) -> [NSRange] {
+        guard isSearching else { return [] }
+        return searchMatches.filter { $0.blockIndex == blockIndex }.map(\.range)
+    }
+
+    private func recomputeMatches(resetIndex: Bool) {
+        guard isSearching else {
+            searchMatches = []
+            return
+        }
+        searchMatches = TranscriptSearch.matches(query: searchQuery, in: currentSearchBlocks())
+        if resetIndex || currentMatchIndex >= searchMatches.count {
+            currentMatchIndex = 0
+        }
+    }
+
+    private func toggleSearch() {
+        if isSearching {
+            dismissSearch()
+        } else {
+            isSearching = true
+            recomputeMatches(resetIndex: true)
+            // Land focus in the NSSearchField as soon as it appears.
+            searchFieldFocusTrigger = true
+        }
+    }
+
+    private func dismissSearch() {
+        isSearching = false
+        searchFieldFocusTrigger = false
+        searchMatches = []
+        currentMatchIndex = 0
+        // Query string is retained so re-opening ⌘F restores the last search.
+    }
+
+    private func stepMatch(forward: Bool) {
+        guard !searchMatches.isEmpty else { return }
+        currentMatchIndex = TranscriptSearch.step(
+            current: currentMatchIndex, count: searchMatches.count, forward: forward)
+        scrollToCurrentMatch()
+    }
+
+    /// Scroll the active match into view. In the speaker pane the target block may
+    /// be off-screen and NOT YET BUILT (LazyVStack), so we scroll to its block id
+    /// FIRST — that materializes the block; its `TranscriptReader` then applies
+    /// `currentHighlight` and does the fine `scrollRangeToVisible` when it appears.
+    /// In the plain pane the single NSTextView's `scrollRangeToVisible` handles it.
+    private func scrollToCurrentMatch() {
+        guard isSearching, currentMatchIndex < searchMatches.count else { return }
+        let blockIndex = searchMatches[currentMatchIndex].blockIndex
+        let segments = speakerSegments
+        let useLabeledView = segments != nil && !showRawTranscript
+        if useLabeledView {
+            scrollProxy?.scrollTo(blockIndex, anchor: .center)
+        }
+    }
+
+    // MARK: - Summarize
+
+    /// Whether the Summarize action can run — delegated to the injected
+    /// `summarizer`, which reads the SAME `LLMConfiguration` Settings writes to,
+    /// so the gate can never fall out of sync (and never reaches AppServices.live).
+    private var summaryEnabled: Bool { summarizer.isEnabled }
+
+    /// The reason the button is disabled (Apple Intelligence / unconfigured), or nil.
+    private var summaryDisabledReason: String? { summarizer.disabledReason }
+
+    private var shouldShowSummarySection: Bool {
+        recording.summaryText != nil || summarizer.isRunning || summaryError != nil || summaryDisabledNotice != nil
+    }
+
+    private var summarySectionTitle: String {
+        let kind = activeSummaryKind ?? recording.summaryKind.flatMap(SummaryKind.init(rawValue:))
+        if let kind { return "Summary · \(kind.title)" }
+        return "Summary"
+    }
+
+    /// The "Summarize" section of the More menu — a native `Section`, context-
+    /// smart (meeting actions for ≥2 speakers, else single-note actions), each row
+    /// with a `sparkles` icon, then "Custom Prompt…". When the provider gate is
+    /// disabled the action rows are disabled and a footer-style disabled row shows
+    /// the short reason.
+    @ViewBuilder
+    private func summaryMenuSection(segments: [SpeakerTimelineSegment]?) -> some View {
+        let count = SummaryInput.speakerCount(segments: segments)
+        Section("Summarize") {
+            if summaryEnabled {
+                ForEach(SummaryMenu.actions(speakerCount: count), id: \.self) { kind in
+                    Button { runSummary(kind: kind, custom: nil) } label: {
+                        Label(kind.title, systemImage: "sparkles")
+                    }
+                }
+                Button {
+                    customPromptText = ""
+                    showCustomPrompt = true
+                } label: {
+                    Label("Custom Prompt…", systemImage: "sparkles")
+                }
+            } else {
+                ForEach(SummaryMenu.actions(speakerCount: count), id: \.self) { kind in
+                    Button {} label: { Label(kind.title, systemImage: "sparkles") }
+                        .disabled(true)
+                }
+                Button {} label: {
+                    Text("Needs a cloud or local AI provider — Settings → AI")
+                }
+                .disabled(true)
+            }
+        }
+    }
+
+    private var summarySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text(summarySectionTitle)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                if let at = recording.summaryGeneratedAt, !summarizer.isRunning, recording.summaryText != nil {
+                    Text("· \(at.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                if !summarizer.isRunning, recording.summaryText != nil {
+                    Button { copySummary() } label: {
+                        Image(systemName: didCopySummary ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .foregroundStyle(.secondary)
+                    .help("Copy summary")
+                    Button { regenerateSummary() } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .foregroundStyle(.secondary)
+                    .help("Regenerate")
+                }
+            }
+
+            if summarizer.isRunning {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Summarizing…")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Button("Cancel") { cancelSummary() }
+                        .controlSize(.small)
+                }
+            } else if let summaryDisabledNotice {
+                Text(summaryDisabledNotice)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let summaryError {
+                Text(summaryError)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let text = recording.summaryText {
+                Text(text)
+                    .font(.system(size: 13))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: DetailMetrics.readingMeasure, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: DetailMetrics.readingMeasure, alignment: .leading)
+    }
+
+    private var customPromptSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Custom summary prompt")
+                .font(.system(size: 13, weight: .semibold))
+            Text("Describe what to do with this transcript.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            TextField("e.g. List the questions I still need to answer", text: $customPromptText, axis: .vertical)
+                .lineLimit(2...5)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { runCustomPrompt() }
+            HStack {
+                Spacer()
+                Button("Cancel") { showCustomPrompt = false }
+                    .keyboardShortcut(.cancelAction)
+                Button("Run") { runCustomPrompt() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(customPromptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(16)
+        .frame(width: 380)
+    }
+
+    private func runCustomPrompt() {
+        let instruction = customPromptText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !instruction.isEmpty else { return }
+        showCustomPrompt = false
+        runSummary(kind: .custom, custom: instruction)
+    }
+
+    /// The transcript text fed to the summary model: labeled `"Name: text"` lines
+    /// for a diarized recording (so points can be attributed), else the canonical
+    /// transcript.
+    private func summaryInputText() -> String {
+        if let segments = speakerSegments {
+            return SummaryInput.labeledTranscript(segments: segments)
+        }
+        return recording.transcript
+    }
+
+    /// Run a summary action. NEVER auto-runs (only explicit menu selection). All
+    /// LLM-call construction + the capable-provider gate live in the injected
+    /// `summarizer`; this view only supplies the input, records which kind is
+    /// active, and — on success — persists the returned text onto the model.
+    private func runSummary(kind: SummaryKind, custom: String?) {
+        summaryError = nil
+        summaryDisabledNotice = nil
+        lastCustomInstruction = custom
+        activeSummaryKind = kind
+        // Teach the section's location: scroll to the in-progress spinner the
+        // moment generation starts (next runloop tick, once the section is in
+        // the tree). One-shot on user action — never on completion, so a user
+        // who scrolls away mid-generation isn't yanked back.
+        DispatchQueue.main.async {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                scrollProxy?.scrollTo("summarySection", anchor: .top)
+            }
+        }
+        summarizer.start(
+            kind: kind,
+            customInstruction: custom,
+            transcriptInput: summaryInputText()
+        ) { result in
+            switch result {
+            case .success(let output):
+                recording.summaryText = output.text
+                recording.summaryKind = output.kind.rawValue
+                recording.summaryGeneratedAt = .now
+                try? context.save()
+            case .failure(.providerNotCapable(let reason)):
+                summaryDisabledNotice = reason
+            case .failure(.emptyResult):
+                summaryError = "The model returned an empty summary."
+            case .failure(.requestFailed(let message)):
+                summaryError = message
+            }
+        }
+    }
+
+    private func regenerateSummary() {
+        let kind = activeSummaryKind
+            ?? recording.summaryKind.flatMap(SummaryKind.init(rawValue:))
+            ?? .summary
+        runSummary(kind: kind, custom: kind == .custom ? lastCustomInstruction : nil)
+    }
+
+    private func cancelSummary() {
+        summarizer.cancel()
+    }
+
+    private func copySummary() {
+        guard let text = recording.summaryText else { return }
+        // Mirror `copyTranscript` exactly (the file's copy precedent): prefer the
+        // Pasteboarding seam, fall back to `NSPasteboard.general` on the cold-launch
+        // race window, and log a failed write.
+        let wrote: Bool
+        if let pb = AppServices.live?.pasteboard {
+            wrote = pb.write(text)
+        } else {
+            let nspb = NSPasteboard.general
+            nspb.clearContents()
+            wrote = nspb.setString(text, forType: .string)
+        }
+        guard wrote else {
+            Task { await ErrorLog.shared.warn(
+                component: "RecordingDetailView",
+                message: "copySummary failed — pasteboard write returned false") }
+            return
+        }
+        didCopySummary = true
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            didCopySummary = false
+        }
     }
 
     // MARK: - Edit mode

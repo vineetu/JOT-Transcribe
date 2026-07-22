@@ -48,6 +48,11 @@ struct JotAppWindow: View {
     /// gotcha #6 — correctness-critical).
     @State private var chatStore: HelpChatStore
 
+    /// Recording-detail AI summary service. Owned at this root and injected as an
+    /// `@EnvironmentObject` (like `LLMConfiguration`) so `RecordingDetailView`
+    /// gets its LLM deps by injection instead of reaching `AppServices.live`.
+    @State private var summarizer: RecordingSummarizer
+
     /// Shared chatbot voice-input bridge. Owned at this root so the
     /// `recorder.$state` Combine subscription persists across pane
     /// navigation and the mutual-exclusion with global dictation stays
@@ -150,6 +155,11 @@ struct JotAppWindow: View {
             llmConfiguration: llmConfiguration,
             appleIntelligence: appleIntelligence
         ))
+        _summarizer = State(initialValue: RecordingSummarizer(
+            urlSession: urlSession,
+            appleClient: appleIntelligence,
+            llmConfiguration: llmConfiguration
+        ))
         _voiceInput = State(initialValue: ChatbotVoiceInput(
             pipeline: pipeline,
             recorder: recorder,
@@ -209,6 +219,7 @@ struct JotAppWindow: View {
         }
         .environment(\.helpNavigator, helpNavigator)
         .environmentObject(llmConfiguration)
+        .environmentObject(summarizer)
         // Download/switch/repair status floats as a compact card in the
         // bottom-right corner (≈¼ width) rather than a full-width top strip —
         // it's an ambient status, not a modal that should eat the whole header.

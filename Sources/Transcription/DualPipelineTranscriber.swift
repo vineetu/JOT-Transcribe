@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import Foundation
 import JotTextPipeline
+import JotVocabCore
 
 /// Composite `Transcribing` conformer for model choices that have a live
 /// preview engine alongside (or instead of) a batch final-transcript engine.
