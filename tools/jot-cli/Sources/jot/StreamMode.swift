@@ -120,11 +120,19 @@ enum StreamMode {
 
         /// EOF/SIGINT: `finish()` returned the whole-session transcript —
         /// emit whatever it carries beyond the committed prefix.
+        ///
+        /// `emitted` always ends at a committed whitespace boundary, and the
+        /// engine's final text typically does NOT carry that trailing
+        /// whitespace — so the prefix comparison runs on the right-trimmed
+        /// committed prefix (verified by simulation: without this, every
+        /// clean session ends in a spurious revision warning).
         func finishSession(finalText: String) {
             lock.lock()
             defer { lock.unlock() }
-            if finalText.hasPrefix(emitted) {
-                let tailStart = finalText.index(finalText.startIndex, offsetBy: emitted.count)
+            var base = emitted
+            while let last = base.last, last.isWhitespace { base.removeLast() }
+            if finalText.hasPrefix(base) {
+                let tailStart = finalText.index(finalText.startIndex, offsetBy: base.count)
                 commit(String(finalText[tailStart...]))
                 emitted = finalText
             } else {
