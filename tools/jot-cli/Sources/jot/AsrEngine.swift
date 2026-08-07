@@ -45,6 +45,16 @@ enum AsrEngine {
         let tokenTimings: [TokenTiming]?
     }
 
+    /// Cheap disk-presence check, exposed so `main` can fail on missing
+    /// models BEFORE paying for the ffmpeg decode — a fresh install piping an
+    /// hour-long video should hear "open Jot first" immediately, not after a
+    /// full decode.
+    static func modelsPresent(modelRoot: URL) -> Bool {
+        AsrModels.modelsExist(
+            at: ModelPaths.parakeetV3BundleDir(root: modelRoot),
+            version: .v3, encoderPrecision: .int8)
+    }
+
     static func transcribe(
         samples: [Float], modelRoot: URL, language: Language? = nil
     ) async throws -> Result {

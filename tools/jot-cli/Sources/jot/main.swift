@@ -222,6 +222,17 @@ do {
 // MARK: - Pipeline
 
 @MainActor func run() async {
+    // Models before decode: on a fresh install the actionable error should
+    // arrive immediately, not after ffmpeg has chewed through the input.
+    guard AsrEngine.modelsPresent(modelRoot: parakeetRoot) else {
+        fail("""
+            Parakeet model not found under \(parakeetRoot.path).
+            Open Jot once to download the transcription model, then retry \
+            (or pass --model-dir pointing at a directory containing a \
+            parakeet-tdt-0.6b-v3-coreml bundle).
+            """)
+    }
+
     let samples: [Float]
     do {
         samples = try FFmpegDecoder.decodeToMono16k(inputPath)
