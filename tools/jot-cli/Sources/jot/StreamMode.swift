@@ -101,9 +101,15 @@ enum StreamMode {
         private var emitted = ""
         private var warnedRevision = false
         private let vocab: VocabularyApplier?
+        /// True for languages written without spaces (zh, …): whitespace
+        /// boundaries never arrive, so commits fall back to CJK sentence
+        /// punctuation, then to a length threshold (review finding: without
+        /// this, zh streams emitted nothing until EOF — batch in disguise).
+        private let spacelessScript: Bool
 
-        init(vocab: VocabularyApplier?) {
+        init(vocab: VocabularyApplier?, spacelessScript: Bool) {
             self.vocab = vocab
+            self.spacelessScript = spacelessScript
         }
 
         func acceptPartial(_ partial: String) {
@@ -121,9 +127,30 @@ enum StreamMode {
             // the last whitespace so a word is never split across finals.
             let pendingStart = partial.index(partial.startIndex, offsetBy: emitted.count)
             let pending = partial[pendingStart...]
-            guard let boundary = pending.lastIndex(where: { $0.isWhitespace }) else { return }
-            commit(String(pending[..<boundary]))
-            emitted = String(partial[..<partial.index(after: boundary)])
+            if let boundary = pending.lastIndex(where: { $0.isWhitespace }) {
+                commit(String(pending[..<boundary]))
+                emitted = String(partial[..<partial.index(after: boundary)])
+                return
+            }
+            guard spacelessScript else { return }
+
+            // CJK sentence punctuation is the boundary. Deliberately NOT the
+            // ASCII set — ASCII commas/periods appear inside numbers
+            // ("3,000") and would split them.
+            let cjkPunctuation: Set<Character> = ["。", "！", "？", "；", "，", "、"]
+            if let cut = pending.lastIndex(where: { cjkPunctuation.contains($0) }) {
+                let after = pending.index(after: cut)
+                commit(String(pending[..<after]))
+                emitted = String(partial[..<after])
+                return
+            }
+            // Length backstop for long unpunctuated runs: commit all but a
+            // holdback so the consumer still gets live text.
+            if pending.count >= 48 {
+                let cut = pending.index(pending.endIndex, offsetBy: -16)
+                commit(String(pending[..<cut]))
+                emitted = String(partial[..<cut])
+            }
         }
 
         /// EOF/SIGINT: `finish()` returned the whole-session transcript —
@@ -195,6 +222,19 @@ enum StreamMode {
         private let lock = NSLock()
         private var stopRequested = false
         private var finalizing = false
+        private var sigintCount = 0
+
+        /// Returns the running SIGINT tally. `signal(SIGINT, SIG_IGN)` strips
+        /// the default kill disposition, so if `finish()` ever hangs (CoreML
+        /// stall) a parked finalization would leave the process uninterruptible
+        /// — the second Ctrl-C is the user's explicit choice of truncation
+        /// over hanging (review finding).
+        func noteSigint() -> Int {
+            lock.lock()
+            defer { lock.unlock() }
+            sigintCount += 1
+            return sigintCount
+        }
 
         func requestStop() {
             lock.lock()
@@ -259,18 +299,24 @@ enum StreamMode {
             fail("failed to load streaming model from \(bundleDir.path): \(error)")
         }
 
-        let emitter = FinalEmitter(vocab: options.vocab)
+        let emitter = FinalEmitter(
+            vocab: options.vocab,
+            spacelessScript: options.language.usesSpacelessScript)
         await engine.setPartialCallback { partial in
             emitter.acceptPartial(partial)
         }
 
-        // SIGINT finalizes exactly like EOF: stop the loop, flush the engine,
-        // emit the tail, exit 0. A second Ctrl-C parks behind the gate while
-        // the first finalization completes.
+        // First SIGINT finalizes exactly like EOF: stop the loop, flush the
+        // engine, emit the tail, exit 0. A second SIGINT exits 130
+        // unconditionally — if the first flush is hung, the user has chosen
+        // truncation over an unkillable process.
         let gate = ShutdownGate()
         signal(SIGINT, SIG_IGN)
         let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
         sigintSource.setEventHandler {
+            if gate.noteSigint() >= 2 {
+                exit(130)
+            }
             gate.requestStop()
             Task { await finalize(engine: engine, emitter: emitter, gate: gate) }
         }

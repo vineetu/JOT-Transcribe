@@ -18,6 +18,13 @@ struct CLILanguage {
 
     var isEnglish: Bool { base == "en" }
 
+    /// Languages written without inter-word spaces. Stream mode's final
+    /// derivation falls back to CJK-punctuation / length-threshold commit
+    /// boundaries for these (whitespace boundaries never arrive).
+    var usesSpacelessScript: Bool {
+        ["zh", "ja", "th", "km", "lo", "my"].contains(base)
+    }
+
     /// Which Nemotron 3.5 Multilingual on-disk ship serves this language.
     /// Must match FluidAudio's `languageDirectory(for:)`: en/es/fr/it/pt/de →
     /// the vocab-pruned "latin" variant, everything else → "multilingual".

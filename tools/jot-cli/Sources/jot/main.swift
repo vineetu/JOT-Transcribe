@@ -70,10 +70,16 @@ func fail(_ message: String) -> Never {
 
 var args = Array(CommandLine.arguments.dropFirst())
 
-if args.isEmpty || args.contains("--help") || args.contains("-h") {
+// Mode/help/version detection must not look past a `--` end-of-options
+// marker, or `jot transcribe -- -h` would print usage with exit 0 instead of
+// transcribing the file named "-h" (review finding). Everything after `--`
+// is positional data, owned by parseArgs.
+let preDashDash = args.prefix(while: { $0 != "--" })
+
+if args.isEmpty || preDashDash.contains("--help") || preDashDash.contains("-h") {
     printUsageAndExit(args.isEmpty ? 2 : 0)
 }
-if args.contains("--version") {
+if preDashDash.contains("--version") {
     print("jot \(version)")
     exit(0)
 }
@@ -123,8 +129,12 @@ struct ParsedArgs {
 
 // MARK: - Stream mode (`jot --stream`, design doc §15)
 
-if args.contains("--stream") {
-    args.removeAll { $0 == "--stream" }
+if preDashDash.contains("--stream") {
+    // Strip only pre-`--` occurrences; a post-`--` "--stream" is positional.
+    let boundary = preDashDash.count
+    args = args.enumerated()
+        .filter { !($0.element == "--stream" && $0.offset < boundary) }
+        .map(\.element)
     let parsed = parseArgs(
         args,
         flagNames: ["--no-vocab"],

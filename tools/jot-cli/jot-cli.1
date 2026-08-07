@@ -78,10 +78,14 @@ during silence or non-speech: silence in, silence out. Fields are
 additive-only; consumers must tolerate unknown fields.
 .PP
 The language is fixed for the whole stream via \fB\-\-language\fR (default
-\fBen\fR). \fB\-\-rate\fR accepts only \fB16000\fR. On end-of-input (or
-SIGINT) the engine flushes, the remaining text is emitted, and
+\fBen\fR). \fB\-\-rate\fR accepts only \fB16000\fR. For languages written
+without spaces (Chinese and friends), segments commit at sentence
+punctuation, or after a length threshold on long unpunctuated runs. On
+end-of-input (or a first SIGINT) the engine flushes, the remaining text is
+emitted, and
 .B jot
-exits 0. If transcription fails mid-stream,
+exits 0; a second SIGINT exits 130 immediately without waiting for the
+flush. If transcription fails mid-stream,
 .B jot
 prints the error to standard error and exits non-zero immediately: a dead
 process is the intended failure signal, never a silent one.
