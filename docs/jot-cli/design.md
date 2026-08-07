@@ -1,6 +1,6 @@
 # `jot` CLI — file → WebVTT transcript (optional diarization)
 
-**Status:** design — awaiting independent review. Not implemented.
+**Status:** v1 shipped (`tools/jot-cli/`, bundled at `Contents/Helpers/jot`). §§1–8 below are the v1 design, kept for the record; **§9 onward is the v2 design (utility transcriber)** — design stage, not implemented.
 **Ask (user):** a command-line tool that takes an audio OR video file and outputs a transcription, with an option for speaker diarization. **Distribution:** bundled inside `Jot.app`. **Output format:** WebVTT.
 
 ## 1. Why a CLI (and why it's the honest home for diarization)
@@ -53,3 +53,72 @@ The app is a **single Xcode executable target**; the CLI needs the transcribe + 
 - **R4 — signing/notarization:** the bundled `jot` must sign + notarize clean like `ffmpeg` (hardened runtime, `--deep --strict`). Proven pattern, but verify for a Swift executable (not just a C binary).
 - **R5 — install UX / PATH:** symlink into `/usr/local/bin` needs admin; `~/bin` may not be on PATH. Decide the least-surprising install path.
 - **R6 — diarization honesty:** the CLI should still say (in `--help` / on a single-speaker result) that diarization needs clean per-voice audio — carry the same honest framing as the GUI note (task #17).
+
+---
+
+# v2 — utility transcriber: cleaned text, vocabulary, stdin streaming
+
+**Status:** design — not implemented.
+**Ask (user):** evolve the bundled CLI into a standalone-feeling utility: plain *cleaned* text out by default, custom vocabulary applied (optionally off), **streaming** where audio is piped in as it plays (mic optional, not required), installable from the command line (installing the CLI installs the app), and a good man page. The app and the CLI run in parallel and never talk at runtime — shared **on-disk conventions only** (model dir, `vocabulary.txt`). No history: the CLI never touches the app's SwiftData library.
+
+## 9. Principle — everything substantive comes from `jot-shared`
+
+No new package, no new repo. The CLI becomes a real consumer of the existing shared package, which grows where needed:
+
+| Capability | Source | State |
+|---|---|---|
+| Cleanup chain (segment → filler-clean → number-normalize) | `JotTextPipeline` | exists — CLI adds the dependency |
+| Final whitespace/punctuation pass (`PostProcessing`) | move from `Sources/Transcription/` into `JotTextPipeline` | small jot-shared update; app switches to the moved copy |
+| Vocabulary | `JotVocabCore` — **model-free** `VocabularyCorrector` + `VocabularyGate` + `VocabularyFile` | exists — no CTC spotter, no CoreML, no extra model downloads; ideal for a headless binary |
+| Engine orchestration (batch + streaming) | new third target/product in jot-shared (working name `JotEngine`), lifted from the app's `Transcriber` / `NemotronStreamingEngine` seam (`ensureLoaded` / `start(onPartial:)` / `enqueue(samples:)` / `finish`) | Phase 2 (§13) |
+
+Accepted consequence of the engine target: `jot-shared` gains FluidAudio as a *package-level* dependency. Consumers of the text/vocab products don't link it (SPM links per-product), but it enters their dependency resolution; the engine target floors at macOS 15 while the package floor stays iOS 17 / macOS 14 for the existing products.
+
+## 10. Interface v2
+
+```
+jot transcribe <file> [--vtt] [--diarize] [--raw] [--no-vocab] [--vocab <file>]
+                      [--language <code>] [-o <path>] [--model-dir <dir>]
+jot stream [--mic] [--format s16le|f32le] [--raw] [--no-vocab] [--vocab <file>]
+           [--language <code>] [--model-dir <dir>]
+jot --help | --version
+```
+
+- **Default output flips to plain cleaned text** (v1 emitted WebVTT unconditionally; v1 shipped bundled-only, so the break is acceptable — `--vtt` restores cue output, and `--diarize` implies `--vtt`).
+- **Text mode** runs the full chain: vocab corrections → segment → filler-clean → number-normalize → `PostProcessing`. `--raw` skips the cleanup chain (vocab still applies unless `--no-vocab`).
+- **VTT mode** keeps v1 behavior for cue text (timings own the words; fillers/ITN would desync cues). Vocab corrections *do* apply per-cue — word-for-word swaps are timing-safe.
+- **Vocabulary** is on by default when the well-known file exists (`~/Library/Application Support/Jot/Vocabulary/vocabulary.txt` — the same file the app writes, already in FluidAudio's simple format). `--vocab <file>` points elsewhere; `--no-vocab` disables. Reading a documented path is a convention, not a runtime dependency — the parallel-tools property holds.
+- **`--language <code>`** mirrors the app's gating: the English-only stages (filler list, spelled-number ITN) are skipped for non-English, and the code is passed to FluidAudio as the script hint. Default `en`.
+- Everything still writes to **stdout** (shell redirection is the interface); `-o` stays for parity with v1.
+
+## 11. Streaming (`jot stream`)
+
+The primary input is **piped audio on stdin** — some other process produces audio as it plays and pipes it in. No microphone required.
+
+- **stdin contract:** raw PCM, 16 kHz mono, `s16le` by default (`--format f32le` accepted). A leading RIFF/WAV header is autodetected and skipped. Anything else is the user's job to convert — the man page carries the recipes:
+  ```sh
+  ffmpeg -i input.webm -f s16le -ar 16000 -ac 1 - | jot stream
+  ffmpeg -f avfoundation -i ":0" -f s16le -ar 16000 -ac 1 - | jot stream   # live capture
+  ```
+- **Engine:** the same streaming seam the app uses (Nemotron streaming via `JotEngine`), loading from the app's model dir. If the streaming model isn't downloaded: exit non-zero with "Open Jot once to download the streaming model, then retry" — the CLI still never downloads models.
+- **Output behavior:** partial hypotheses are shown only when **stdout is a TTY** (single line, carriage-return rewrite); when piped, partials are suppressed so downstream consumers see only final text. On stdin EOF (or SIGINT) the engine finalizes, the cleanup + vocab chain runs over the final transcript, the result prints to stdout, exit 0.
+- **`--mic`** switches the source to the default input device via `AVAudioEngine` (the terminal app owns the mic TCC prompt — documented in the man page). Stop with Ctrl-C → same finalize path.
+
+## 12. Distribution & man page
+
+- **Bundled (unchanged):** `Contents/Helpers/jot`, signed, built from `tools/jot-cli/`, ffmpeg sibling.
+- **Command-line install:** a Homebrew **cask** whose artifact is the Jot.app DMG, with a `binary` stanza exposing the bundled CLI on PATH and a `manpage` stanza — "installing the CLI installs the app" is literally how a cask works. The DMG remains the primary channel; the cask is an alternate front door to the same artifact.
+- **Name collision (decide before the cask ships):** macOS ships BSD `jot(1)` at `/usr/bin/jot`, and `/usr/local/bin` precedes it on PATH — installing as `jot` shadows a system tool and its man page. Recommendation: the *installed* name (binary + man page + cask token) is **`jot-cli`**; the in-bundle helper keeps its `jot` name. Flag for review.
+- **Man page:** `tools/jot-cli/jot-cli.1` (troff, checked in, versioned with the source). Sections — NAME, SYNOPSIS, DESCRIPTION (two modes, parallel-to-the-app framing), COMMANDS, OPTIONS, STREAMING (stdin contract + ffmpeg recipes), FILES (model dir, `vocabulary.txt`, both marked "shared conventions with Jot.app"), EXIT STATUS, EXAMPLES (pipe to file, pbcopy, live ffmpeg), SEE ALSO (`jot(1)` BSD, Jot.app help). "Just the right amount": one screen of DESCRIPTION, recipes over prose.
+
+## 13. Phasing
+
+- **Phase 1 — no engine extraction:** add the jot-shared dependency to `tools/jot-cli`; text-default output + cleanup chain + `JotVocabCore` vocabulary; move `PostProcessing` into `JotTextPipeline` (app switches import); man page; cask. The CLI keeps its small v1 `AsrEngine` for batch.
+- **Phase 2 — engine into jot-shared:** lift the batch + streaming orchestration into the `JotEngine` target; CLI gains `jot stream`; app and CLI both consume the shared engine. This is the point where v1's deliberate wrapper duplication (§4 option A) is retired, on the trigger v1 itself named: the surfaces started drifting.
+
+## 14. Risks / open questions (v2)
+
+- **R7 — text-default break:** anyone scripting against v1's VTT-on-stdout gets text after upgrade. Judged acceptable (bundled-only, one release old); call it out in release notes.
+- **R8 — streaming finalization quality:** cleanup runs once on the final transcript, so paragraph segmentation depends on the streaming engine returning usable timings; if Nemotron streaming yields none (as in batch), streamed output is a single block — same honest degradation the app has.
+- **R9 — vocab parity with the app:** the CLI uses only the model-free corrector; the app can additionally use the acoustic rescorer. Same `vocabulary.txt`, slightly different recall. Document in the man page FILES section rather than pretending parity.
+- **R10 — cask naming/shadowing (§12):** confirm `jot-cli` vs `jot` before publishing the cask.
