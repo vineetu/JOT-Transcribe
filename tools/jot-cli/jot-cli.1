@@ -55,6 +55,9 @@ Write to \fIpath\fR instead of standard output.
 .TP
 .BI \-\-model\-dir " dir"
 Override the model root directory. See \fBFILES\fR.
+.TP
+.B \-\-
+End of options; use before an input filename that begins with a dash.
 .SH STREAM MODE
 Input contract: raw PCM, 16 kHz, mono, on standard input, continuously, in
 real time. \fBs16le\fR by default, \fBf32le\fR with \fB\-\-encoding\fR. A
