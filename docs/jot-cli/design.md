@@ -145,14 +145,12 @@ jot --stream --language <code> --rate 16000 --encoding s16le [--no-vocab]
 - **Long-run hygiene (minutes to an hour, hold music, silence):** riding through non-speech without exiting is required; emitting nothing during quiet is correct. Session-recycling during silence is kept in reserve as a hygiene mechanism (bounded engine state, hallucination-on-music guard), not for correctness. Validate memory behavior on hour-long streams before shipping.
 - `--rate` accepts only `16000` and `--encoding` only `s16le`/`f32le`; anything else exits non-zero at startup (predictable > permissive).
 
-## 16. Setup — `jot setup`, no GUI required
+## 16. Setup — models
 
-The CLI's only real setup is **models** (no TCC for file/stdin paths; `--mic` triggers the system prompt on first use, attributed to the invoking terminal). v1's "open Jot once to download" rule breaks for Call Assist-style headless deployment, so:
+The CLI's only real setup is **models** (no TCC for file/stdin paths; `--mic` triggers the system prompt on first use, attributed to the invoking terminal).
 
-- **`jot setup --language <code> [--streaming|--batch]`** downloads exactly the bundles that mode+language needs (stream: Nemotron + CTC spotter model; batch: Parakeet v3 / JA). Idempotent. `jot setup` with no args prints status: what's on disk, what each mode would need.
-- **Explicit, never automatic.** A transcribe/stream invocation that finds models missing fails loudly with the exact `jot setup` command to run — it never silently pulls 500 MB+ mid-command.
-- **Peer, not owner.** Download logic is the app's `ModelDownloader`, moved into the `JotEngine` target — one implementation, two callers, identical directory layout. `ModelCache.isCached()` already decides "downloaded" by disk presence, so CLI-fetched models are simply there for the app and vice versa. Advisory lock file per bundle prevents app/CLI download races.
-- Headless deployment path: `brew install jot-cli` → `jot setup --language en --streaming` → `jot --stream ...`, no window ever opened.
+- **First ship: setup happens in the app.** A transcribe/stream invocation that finds models missing fails loudly with a clear message: "Open Jot and complete setup, then retry." The CLI does not download models — v1's rule stands. This keeps the first release thin; the app is always present anyway (the cask installs it).
+- **Later: install-time default-model download.** Direction (decided, not designed): the brew install step automatically sets the default model and downloads it at install time — e.g. a cask `postflight` invoking a headless download of the default bundle — so the headless path needs no app launch. The mechanics (which bundle is "default," progress UX in brew output, failure handling, opt-out) are deliberately unspecified until this phase is picked up. When built, the download logic comes from `JotEngine` (one implementation shared with the app, same directory layout, disk-presence = downloaded, advisory lock against app/CLI races) — never a second downloader.
 
 ## 17. Risks / open questions (v2.1)
 
