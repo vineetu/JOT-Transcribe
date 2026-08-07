@@ -122,3 +122,41 @@ The primary input is **piped audio on stdin** — some other process produces au
 - **R8 — streaming finalization quality:** cleanup runs once on the final transcript, so paragraph segmentation depends on the streaming engine returning usable timings; if Nemotron streaming yields none (as in batch), streamed output is a single block — same honest degradation the app has.
 - **R9 — vocab parity with the app:** the CLI uses only the model-free corrector; the app can additionally use the acoustic rescorer. Same `vocabulary.txt`, slightly different recall. Document in the man page FILES section rather than pretending parity.
 - **R10 — cask naming/shadowing (§12):** confirm `jot-cli` vs `jot` before publishing the cask.
+
+---
+
+# v2.1 — Call Assist: machine streaming mode + setup
+
+**Status:** design — not implemented. Supersedes §11's output behavior for machine consumers; §11's TTY/EOF behavior survives as the human mode.
+**Consumer:** Call Assist puts an AI agent on a live phone call; `jot --stream` is the agent's ear. Its requirements (live segment-by-segment text, ~2 s commit SLA, whole-call sessions with hold music, text-only, fail-loud) are the contract this section designs to.
+
+## 15. Machine streaming mode
+
+```
+jot --stream --language <code> --rate 16000 --encoding s16le [--no-vocab]
+```
+
+- **Engine: Nemotron 3.5 streaming only** (`en` → English bundle, others → Multilingual). No Parakeet batch models involved; `--language` is fixed per invocation (no mid-call switching).
+- **Output: NDJSON on stdout, flushed per line.** `{"type":"final","text":"..."}` per committed segment; `{"type":"partial",...}` optional (nothing breaks if never emitted). This is a protocol another product depends on: additive changes only.
+- **Incremental finals via append-only partials.** Nemotron's partial hypothesis only ever grows — it does not revise committed text. Finals are derived by forwarding each stable extension of the partial string at commit boundaries. No engine API change needed; the existing `onPartial` callback carries everything.
+- **No cleanup chain.** Call Assist needs words promptly, no punctuation/paragraph guarantees. `JotTextPipeline` stages do not run in this mode (they are held-back-for-context by nature). Raw engine text per segment, vocab-corrected only (below).
+- **Vocabulary: chunked CTC spot+gate per segment, inside the 2 s SLA.** `StreamingCtcSpotter` already streams the expensive log-prob inference across the audio (FluidAudio-identical 15 s chunks, 2 s overlap) so per-segment cost is only the cheap DP + gate: on each Nemotron commit, run the DP over that segment's audio window (overlapped ~2 s into the previous segment to catch boundary-straddling terms), gate detections through the same Nemotron spot+gate path the app's dual pipeline uses, emit the corrected final. Fallback when the CTC model is absent: the model-free `JotVocabCore` corrector (zero download, per-segment safe). `--no-vocab` disables both.
+- **Fail loudly — inverted error philosophy.** The app's engine wrappers log-and-continue on `process()` errors and return silently if `ensureLoaded()` fails mid-stream; both are exactly the "silently deaf agent" failure Call Assist names as worst-case. In `--stream`: any engine error → stderr + non-zero exit. No fallback, no retry, no degraded continuation.
+- **Long-run hygiene (minutes to an hour, hold music, silence):** riding through non-speech without exiting is required; emitting nothing during quiet is correct. Session-recycling during silence is kept in reserve as a hygiene mechanism (bounded engine state, hallucination-on-music guard), not for correctness. Validate memory behavior on hour-long streams before shipping.
+- `--rate` accepts only `16000` and `--encoding` only `s16le`/`f32le`; anything else exits non-zero at startup (predictable > permissive).
+
+## 16. Setup — `jot setup`, no GUI required
+
+The CLI's only real setup is **models** (no TCC for file/stdin paths; `--mic` triggers the system prompt on first use, attributed to the invoking terminal). v1's "open Jot once to download" rule breaks for Call Assist-style headless deployment, so:
+
+- **`jot setup --language <code> [--streaming|--batch]`** downloads exactly the bundles that mode+language needs (stream: Nemotron + CTC spotter model; batch: Parakeet v3 / JA). Idempotent. `jot setup` with no args prints status: what's on disk, what each mode would need.
+- **Explicit, never automatic.** A transcribe/stream invocation that finds models missing fails loudly with the exact `jot setup` command to run — it never silently pulls 500 MB+ mid-command.
+- **Peer, not owner.** Download logic is the app's `ModelDownloader`, moved into the `JotEngine` target — one implementation, two callers, identical directory layout. `ModelCache.isCached()` already decides "downloaded" by disk presence, so CLI-fetched models are simply there for the app and vice versa. Advisory lock file per bundle prevents app/CLI download races.
+- Headless deployment path: `brew install jot-cli` → `jot setup --language en --streaming` → `jot --stream ...`, no window ever opened.
+
+## 17. Risks / open questions (v2.1)
+
+- **R11 — append-only assumption is load-bearing:** the finals derivation is correct only if Nemotron partials truly never revise. Verify against FluidAudio 0.15.4 behavior (including across chunk boundaries) before freezing the protocol.
+- **R12 — segment→audio-window mapping:** Nemotron returns no token timings; the per-segment DP window is derived from sample counts at commit boundaries. Validate placement quality; the gate remains the placement authority.
+- **R13 — hour-long engine state:** unvalidated territory for an engine built for dictation sessions. Measure memory + hypothesis-window behavior; promote silence-recycling from reserve to required if it grows.
+- **R14 — SLA measurement:** 1120 ms chunk cadence + inference + DP + gate must be measured end-to-end against the 2 s commit SLA on target hardware, not asserted.
