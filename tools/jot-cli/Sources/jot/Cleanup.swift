@@ -19,9 +19,14 @@ enum TranscriptCleanup {
         if let timings = tokenTimings, !timings.isEmpty {
             working = ParagraphSegmenter.segment(rescoredText: working, tokenTimings: timings)
         }
-        working = FillerWordCleaner.clean(working, language: language.base)
+        // Filler + number stay English-gated, mirroring the app's
+        // `applyEnglishCleanup` exactly. The shared package DOES carry
+        // validated multilingual filler lists, but the app doesn't use them
+        // yet — enabling them is an app+CLI decision made together, never a
+        // one-sided CLI divergence (review finding: the same Spanish audio
+        // must not lose "eh" here while keeping it in the app).
         if language.isEnglish {
-            working = NumberNormalizer.normalize(working)
+            working = NumberNormalizer.normalize(FillerWordCleaner.clean(working))
         }
         return PostProcessing.apply(working)
     }

@@ -26,6 +26,7 @@ let usage = """
       --model-dir <dir>    Override the Parakeet model root (defaults to
                             ~/Library/Application Support/Jot/Models/Parakeet,
                             the same directory Jot.app downloads into).
+      --                   End of options (for input files starting with "-").
 
     STREAM OPTIONS (in: 16 kHz mono PCM on stdin; out: one JSON object per line):
       --language <code>    One language per stream, fixed at startup (default: en).
@@ -44,9 +45,18 @@ let usage = """
     See jot-cli(1) for stdin recipes (ffmpeg) and the NDJSON contract.
     """
 
+/// Runtime failure — exit 1. Nonisolated so StreamMode can call it off the
+/// main actor; touches no top-level state.
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("jot: error: \(message)\n".utf8))
     exit(1)
+}
+
+/// Usage error — exit 2, per the documented contract. Scripted callers
+/// distinguish "my invocation is wrong" (2) from "engine/models failed" (1).
+@MainActor func usageFail(_ message: String) -> Never {
+    FileHandle.standardError.write(Data("jot: error: \(message)\n\n\(usage)\n".utf8))
+    exit(2)
 }
 
 @MainActor func printUsageAndExit(_ code: Int32) -> Never {
@@ -61,54 +71,87 @@ func fail(_ message: String) -> Never {
 var args = Array(CommandLine.arguments.dropFirst())
 
 if args.isEmpty || args.contains("--help") || args.contains("-h") {
-    printUsageAndExit(0)
+    printUsageAndExit(args.isEmpty ? 2 : 0)
 }
 if args.contains("--version") {
     print("jot \(version)")
     exit(0)
 }
 
-@MainActor func takeOpt(_ names: [String]) -> String? {
-    for name in names {
-        if let i = args.firstIndex(of: name), i + 1 < args.count {
-            let v = args[i + 1]
-            args.removeSubrange(i...(i + 1))
-            return v
-        }
-    }
-    return nil
+// MARK: - Argument parsing
+
+/// Single left-to-right pass (review finding: the old scan-and-remove parser
+/// let a missing option value silently swallow the next token — e.g.
+/// `--language --raw a.wav b.wav` transcribed the wrong file with exit 0).
+/// Rules: an option's value must exist and must not begin with "-";
+/// unknown "-" tokens are usage errors; `--` ends option parsing.
+struct ParsedArgs {
+    var flags: Set<String> = []
+    var options: [String: String] = [:]
+    var positionals: [String] = []
 }
 
-@MainActor func takeFlag(_ name: String) -> Bool {
-    let present = args.contains(name)
-    args.removeAll { $0 == name }
-    return present
+@MainActor func parseArgs(
+    _ tokens: [String], flagNames: Set<String>, optionAliases: [String: String]
+) -> ParsedArgs {
+    var parsed = ParsedArgs()
+    var positionalOnly = false
+    var i = 0
+    while i < tokens.count {
+        let tok = tokens[i]
+        if positionalOnly {
+            parsed.positionals.append(tok)
+        } else if tok == "--" {
+            positionalOnly = true
+        } else if flagNames.contains(tok) {
+            parsed.flags.insert(tok)
+        } else if let canonical = optionAliases[tok] {
+            guard i + 1 < tokens.count, !tokens[i + 1].hasPrefix("-") else {
+                usageFail("missing value for \(tok)")
+            }
+            parsed.options[canonical] = tokens[i + 1]
+            i += 1
+        } else if tok.hasPrefix("-") {
+            usageFail("unknown option '\(tok)'")
+        } else {
+            parsed.positionals.append(tok)
+        }
+        i += 1
+    }
+    return parsed
 }
 
 // MARK: - Stream mode (`jot --stream`, design doc §15)
 
-if takeFlag("--stream") {
-    let language = CLILanguage(takeOpt(["--language"]) ?? "en")
-    let rate = takeOpt(["--rate"]) ?? "16000"
-    guard rate == "16000" else {
-        fail("unsupported --rate '\(rate)': only 16000 is supported")
+if args.contains("--stream") {
+    args.removeAll { $0 == "--stream" }
+    let parsed = parseArgs(
+        args,
+        flagNames: ["--no-vocab"],
+        optionAliases: [
+            "--language": "--language", "--rate": "--rate", "--encoding": "--encoding",
+            "--vocab": "--vocab", "--model-dir": "--model-dir",
+        ])
+    if let stray = parsed.positionals.first {
+        usageFail("unexpected argument '\(stray)' in --stream mode")
     }
-    let encodingRaw = takeOpt(["--encoding"]) ?? "s16le"
-    guard let encoding = PCMEncoding(rawValue: encodingRaw) else {
-        fail("unsupported --encoding '\(encodingRaw)': use s16le or f32le")
-    }
-    let noVocab = takeFlag("--no-vocab")
-    let vocabPath = takeOpt(["--vocab"])
-    let modelDirOverride = takeOpt(["--model-dir"])
 
-    if let stray = args.first {
-        fail("unexpected argument '\(stray)' in --stream mode\n\n\(usage)")
+    let language = CLILanguage(parsed.options["--language"] ?? "en")
+    let rate = parsed.options["--rate"] ?? "16000"
+    guard rate == "16000" else {
+        usageFail("unsupported --rate '\(rate)': only 16000 is supported")
+    }
+    let encodingRaw = parsed.options["--encoding"] ?? "s16le"
+    guard let encoding = PCMEncoding(rawValue: encodingRaw) else {
+        usageFail("unsupported --encoding '\(encodingRaw)': use s16le or f32le")
     }
 
     let vocab: VocabularyApplier?
     do {
         vocab = try VocabularyApplier.load(
-            explicitPath: vocabPath, disabled: noVocab, language: language)
+            explicitPath: parsed.options["--vocab"],
+            disabled: parsed.flags.contains("--no-vocab"),
+            language: language)
     } catch {
         fail("\(error)")
     }
@@ -116,7 +159,7 @@ if takeFlag("--stream") {
     await StreamMode.run(StreamMode.Options(
         language: language,
         encoding: encoding,
-        modelDirOverride: modelDirOverride,
+        modelDirOverride: parsed.options["--model-dir"],
         vocab: vocab
     ))
 }
@@ -124,31 +167,30 @@ if takeFlag("--stream") {
 // MARK: - Batch mode (`jot transcribe`)
 
 guard args.first == "transcribe" else {
-    FileHandle.standardError.write(Data("jot: unknown command '\(args.first ?? "")'\n\n".utf8))
-    printUsageAndExit(2)
+    usageFail("unknown command '\(args.first ?? "")'")
 }
 args.removeFirst()
 
-let diarize = takeFlag("--diarize")
-let wantVTT = takeFlag("--vtt") || diarize  // --diarize implies WebVTT output
-let raw = takeFlag("--raw")
-let noVocab = takeFlag("--no-vocab")
-let vocabPath = takeOpt(["--vocab"])
-let language = CLILanguage(takeOpt(["--language"]) ?? "en")
-let outputPath = takeOpt(["-o", "--output"])
-let modelDirOverride = takeOpt(["--model-dir"])
+let parsed = parseArgs(
+    args,
+    flagNames: ["--vtt", "--diarize", "--raw", "--no-vocab"],
+    optionAliases: [
+        "--vocab": "--vocab", "--language": "--language",
+        "-o": "-o", "--output": "-o", "--model-dir": "--model-dir",
+    ])
 
-// Reject any leftover unrecognized option: a typo like `--diariz` must NOT be
-// silently dropped (which would yield a non-diarized transcript with exit 0).
-// Review C2.
-if let stray = args.first(where: { $0.hasPrefix("-") }) {
-    fail("unknown option '\(stray)'\n\n\(usage)")
+let diarize = parsed.flags.contains("--diarize")
+let wantVTT = parsed.flags.contains("--vtt") || diarize  // --diarize implies WebVTT
+let raw = parsed.flags.contains("--raw")
+let language = CLILanguage(parsed.options["--language"] ?? "en")
+let outputPath = parsed.options["-o"]
+let modelDirOverride = parsed.options["--model-dir"]
+
+guard let inputPath = parsed.positionals.first else {
+    usageFail("missing <file> argument")
 }
-guard let inputPath = args.first else {
-    fail("missing <file> argument\n\n\(usage)")
-}
-guard args.count == 1 else {
-    fail("unexpected extra argument(s): \(args.dropFirst().joined(separator: " "))\n\n\(usage)")
+guard parsed.positionals.count == 1 else {
+    usageFail("unexpected extra argument(s): \(parsed.positionals.dropFirst().joined(separator: " "))")
 }
 guard FileManager.default.fileExists(atPath: inputPath) else {
     fail("input file not found: \(inputPath)")
@@ -160,7 +202,9 @@ let diarizerRoot = ModelPaths.diarizerRoot
 let vocab: VocabularyApplier?
 do {
     vocab = try VocabularyApplier.load(
-        explicitPath: vocabPath, disabled: noVocab, language: language)
+        explicitPath: parsed.options["--vocab"],
+        disabled: parsed.flags.contains("--no-vocab"),
+        language: language)
 } catch {
     fail("\(error)")
 }

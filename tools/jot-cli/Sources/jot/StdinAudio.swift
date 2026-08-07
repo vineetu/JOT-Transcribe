@@ -37,16 +37,26 @@ struct StdinAudioReader {
                     pending.append(data)
 
                     if !headerHandled {
-                        // Need at least the RIFF magic to sniff.
+                        // Need at least the 12-byte RIFF/WAVE preamble to sniff.
                         if pending.count < 12 { continue }
                         if pending.prefix(4).elementsEqual("RIFF".utf8) {
+                            // RIFF is a container family — WebP and AVI are
+                            // RIFF too. Only WAVE gets the chunk walk;
+                            // anything else is a wrong-file mistake, and
+                            // decoding container bytes as PCM would be the
+                            // forbidden silently-deaf outcome. Fail loudly.
+                            guard pending.subdata(in: 8..<12).elementsEqual("WAVE".utf8) else {
+                                FileHandle.standardError.write(
+                                    Data("jot: error: input is a RIFF container but not WAV — pipe raw PCM or a WAV file\n".utf8))
+                                exit(1)
+                            }
                             guard let offset = Self.wavDataOffset(pending) else {
                                 // `data` chunk header not fully buffered yet.
-                                // A malformed "RIFF" prefix that never yields a
-                                // data chunk is bounded by the 1 MiB guard.
+                                // A malformed WAV that never yields a data
+                                // chunk is bounded by the 1 MiB guard.
                                 if pending.count > 1_048_576 {
                                     FileHandle.standardError.write(
-                                        Data("jot: error: RIFF header with no data chunk in first 1 MiB\n".utf8))
+                                        Data("jot: error: WAV header with no data chunk in first 1 MiB\n".utf8))
                                     exit(1)
                                 }
                                 continue
@@ -60,10 +70,18 @@ struct StdinAudioReader {
                     if !samples.isEmpty { continuation.yield(samples) }
                 }
 
-                if headerHandled {
-                    let tail = Self.consumeFrames(&pending, encoding: encoding)
-                    if !tail.isEmpty { continuation.yield(tail) }
+                // EOF. Two unfinished-header cases (review finding — the old
+                // `if headerHandled` gate silently dropped both with exit 0):
+                //   • stream started with RIFF but EOF arrived before the
+                //     data chunk — a truncated WAV; fail loudly.
+                //   • raw PCM totaling < 12 bytes — flush it as frames below.
+                if !headerHandled, pending.prefix(4).elementsEqual("RIFF".utf8) {
+                    FileHandle.standardError.write(
+                        Data("jot: error: truncated WAV (EOF before the data chunk)\n".utf8))
+                    exit(1)
                 }
+                let tail = Self.consumeFrames(&pending, encoding: encoding)
+                if !tail.isEmpty { continuation.yield(tail) }
                 continuation.finish()
             }
             thread.name = "jot.stdin-audio"

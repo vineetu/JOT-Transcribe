@@ -61,7 +61,12 @@ enum StreamMode {
             }
         }
 
-        func process(_ buffer: AVAudioPCMBuffer) async throws {
+        /// `sending`: the buffer is created fresh per call in `run` and never
+        /// touched after; the keyword lets region analysis transfer it into
+        /// the manager actor (the app creates its buffer in the same scope as
+        /// the process call, so it never needed the annotation — this seam
+        /// does).
+        func process(_ buffer: sending AVAudioPCMBuffer) async throws {
             switch self {
             case .english(let mgr): _ = try await mgr.process(audioBuffer: buffer)
             case .multilingual(let mgr): _ = try await mgr.process(audioBuffer: buffer)
@@ -83,10 +88,9 @@ enum StreamMode {
     /// Invariant this rides on (design §17 R11, asserted by the owner and to
     /// be verified against FluidAudio 0.15.4): Nemotron partials are
     /// APPEND-ONLY — the hypothesis only ever grows, committed text is never
-    /// revised. If a revision is ever observed, we warn ONCE on stderr and
-    /// resynchronize by adopting the new hypothesis wholesale (the divergent
-    /// tail is dropped rather than emitted as garbled overlap; already-printed
-    /// text cannot be retracted in a finals-only protocol).
+    /// revised. If a revision is ever observed we warn ONCE on stderr and
+    /// recover conservatively (see the per-site comments); already-printed
+    /// text cannot be retracted in a finals-only protocol.
     ///
     /// Lock-based `@unchecked Sendable` because the partial callback arrives
     /// on FluidAudio's internal executor while EOF finalization runs on the
@@ -106,7 +110,11 @@ enum StreamMode {
             lock.lock()
             defer { lock.unlock() }
             guard partial.hasPrefix(emitted) else {
-                resynchronize(to: partial)
+                // Mid-stream revision: adopt the new hypothesis wholesale.
+                // The divergent tail is dropped rather than emitted as
+                // garbled overlap.
+                warnRevisionOnce()
+                emitted = partial
                 return
             }
             // Hold back the trailing in-progress token: only commit through
@@ -126,20 +134,37 @@ enum StreamMode {
         /// whitespace — so the prefix comparison runs on the right-trimmed
         /// committed prefix (verified by simulation: without this, every
         /// clean session ends in a spurious revision warning).
+        ///
+        /// If `finish()` diverges INSIDE committed text (re-casing or
+        /// re-punctuating the transcript), the tail beyond the committed
+        /// length is still emitted, snapped back to the previous word
+        /// boundary — bounded duplication of at most one word beats silently
+        /// losing the call's last utterance (review finding: the flush is the
+        /// whole point of finalization).
         func finishSession(finalText: String) {
             lock.lock()
             defer { lock.unlock() }
             var base = emitted
             while let last = base.last, last.isWhitespace { base.removeLast() }
+
             if finalText.hasPrefix(base) {
                 let tailStart = finalText.index(finalText.startIndex, offsetBy: base.count)
                 commit(String(finalText[tailStart...]))
-                emitted = finalText
             } else {
                 warnRevisionOnce()
-                // Conservative: emit nothing rather than re-emit overlapping
-                // text the consumer already committed to.
+                guard finalText.count > base.count else {
+                    emitted = finalText
+                    return
+                }
+                var start = finalText.index(finalText.startIndex, offsetBy: base.count)
+                while start > finalText.startIndex {
+                    let prev = finalText.index(before: start)
+                    if finalText[prev].isWhitespace { break }
+                    start = prev
+                }
+                commit(String(finalText[start...]))
             }
+            emitted = finalText
         }
 
         private func commit(_ segment: String) {
@@ -149,17 +174,48 @@ enum StreamMode {
             NDJSON.emitFinal(corrected)
         }
 
-        private func resynchronize(to partial: String) {
-            warnRevisionOnce()
-            emitted = partial
-        }
-
         private func warnRevisionOnce() {
             guard !warnedRevision else { return }
             warnedRevision = true
             FileHandle.standardError.write(Data(
-                "jot: warning: engine revised committed text (append-only assumption violated — see design R11); resynchronized, some words may be dropped\n"
+                "jot: warning: engine revised committed text (append-only assumption violated — see design R11); recovered conservatively, adjacent words may repeat or drop\n"
                     .utf8))
+        }
+    }
+
+    // MARK: - Shutdown coordination
+
+    /// One gate shared by the stdin loop, EOF finalization, and the SIGINT
+    /// handler. `requestStop` makes the read loop bail at the next chunk;
+    /// `beginFinalize` is an atomic check-and-set so exactly one entry point
+    /// flushes the engine — the loser parks until the winner exits the
+    /// process (review finding: an `exit(0)` on second entry truncates the
+    /// winner's tail write mid-flush).
+    private final class ShutdownGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stopRequested = false
+        private var finalizing = false
+
+        func requestStop() {
+            lock.lock()
+            stopRequested = true
+            lock.unlock()
+        }
+
+        var shouldStop: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return stopRequested
+        }
+
+        /// Returns true exactly once, for the caller that owns finalization.
+        func beginFinalize() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if finalizing { return false }
+            finalizing = true
+            stopRequested = true
+            return true
         }
     }
 
@@ -208,44 +264,49 @@ enum StreamMode {
             emitter.acceptPartial(partial)
         }
 
-        // SIGINT finalizes exactly like EOF: flush the engine, emit the tail,
-        // exit 0. Guarded so a second Ctrl-C during finalization is ignored
-        // (the default disposition would kill us mid-flush).
+        // SIGINT finalizes exactly like EOF: stop the loop, flush the engine,
+        // emit the tail, exit 0. A second Ctrl-C parks behind the gate while
+        // the first finalization completes.
+        let gate = ShutdownGate()
         signal(SIGINT, SIG_IGN)
         let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
         sigintSource.setEventHandler {
-            Task { await finalize(engine: engine, emitter: emitter) }
+            gate.requestStop()
+            Task { await finalize(engine: engine, emitter: emitter, gate: gate) }
         }
         sigintSource.resume()
 
         let reader = StdinAudioReader(encoding: options.encoding)
         for await samples in reader.chunks() {
+            if gate.shouldStop { break }
             guard let buffer = makeBuffer(samples) else {
                 fail("internal error: could not create audio buffer (\(samples.count) samples)")
             }
             do {
                 try await engine.process(buffer)
             } catch {
+                // A process error AFTER finalization began belongs to the
+                // shutdown path, not to us — don't let it flip the exit code.
+                if gate.shouldStop { break }
                 // FAIL LOUDLY (requirement 7): no log-and-continue, no
                 // degraded deaf agent. Crash; the caller handles a dead process.
                 fail("streaming transcription failed: \(error)")
             }
         }
 
-        await finalize(engine: engine, emitter: emitter)
+        await finalize(engine: engine, emitter: emitter, gate: gate)
     }
 
-    // Once-guard for the two finalize entry points (EOF and SIGINT); both run
-    // on the main actor's task tree, so plain state is race-free in practice
-    // and the worst case is a benign double-finish the engine rejects.
-    nonisolated(unsafe) private static var finalizing = false
-
-    private static func finalize(engine: Engine, emitter: FinalEmitter) async -> Never {
-        // Best-effort once-guard; both call sites hop through the main actor
-        // hierarchy so a race is a benign double-finish attempt that the
-        // engine rejects, not corruption.
-        if finalizing { exit(0) }
-        finalizing = true
+    private static func finalize(
+        engine: Engine, emitter: FinalEmitter, gate: ShutdownGate
+    ) async -> Never {
+        guard gate.beginFinalize() else {
+            // Another entry point owns the flush; park until it exits the
+            // process. Exiting here would truncate its tail write.
+            while true {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
         do {
             let finalText = try await engine.finish()
             emitter.finishSession(finalText: finalText)
