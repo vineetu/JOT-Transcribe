@@ -34,4 +34,21 @@ enum ModelPaths {
     static var diarizerRoot: URL {
         jotModelsRoot.appendingPathComponent("Diarizer", isDirectory: true)
     }
+
+    /// Nemotron 3.5 English streaming bundle under a Parakeet root. Matches
+    /// `ModelCache.streamingPartialCacheURL(for: .nemotron_en)`.
+    static func nemotronEnglishStreamingDir(root: URL) -> URL {
+        root.appendingPathComponent("nemotron-streaming-en-1120ms", isDirectory: true)
+    }
+
+    /// Nemotron 3.5 Multilingual variant bundle under a Parakeet root.
+    /// Matches `ParakeetModelID.repoFolderName` for
+    /// `.nemotron_multilingual(_latin)`: `nemotron-multilingual/<variant>/1120ms`,
+    /// where the variant split (en/es/fr/it/pt/de → "latin", else
+    /// "multilingual") mirrors FluidAudio's `languageDirectory(for:)`.
+    static func nemotronMultilingualDir(root: URL, latin: Bool) -> URL {
+        root.appendingPathComponent("nemotron-multilingual", isDirectory: true)
+            .appendingPathComponent(latin ? "latin" : "multilingual", isDirectory: true)
+            .appendingPathComponent("1120ms", isDirectory: true)
+    }
 }

@@ -1,31 +1,50 @@
 import FluidAudio
 import Foundation
+import JotTextPipeline
 
-let version = "0.1.0"
+let version = "0.2.0"
 
 let usage = """
-    jot — transcribe an audio/video file to WebVTT, with optional speaker diarization.
+    jot — on-device transcription utility (batch files and live streaming).
 
     USAGE:
-      jot transcribe <file> [--diarize] [-o <out.vtt>] [--model-dir <dir>]
-      jot --help
-      jot --version
+      jot transcribe <file> [options]     Transcribe an audio/video file.
+      jot --stream [options]              Stream raw PCM from stdin, emit NDJSON finals.
+      jot --help | --version
 
-    OPTIONS:
-      --diarize            Run offline speaker diarization and label cues
-                            <v Speaker N>. Diarization is only reliable on
-                            clean, separate-audio-per-voice input (e.g. a
-                            Zoom/Meet recording's own soundtrack) — not audio
-                            captured acoustically through speakers into a mic.
-      -o, --output <path>  Write WebVTT to <path> instead of stdout.
-      --model-dir <dir>    Override the Parakeet model directory (defaults to
+    TRANSCRIBE OPTIONS (default output: cleaned plain text on stdout):
+      --vtt                Emit WebVTT cues instead of plain text (v1 behavior).
+      --diarize            Speaker-labeled WebVTT cues (implies --vtt).
+                            Reliable only on clean, separate-audio-per-voice
+                            input (e.g. a Zoom/Meet recording's own soundtrack).
+      --raw                Skip the cleanup chain (paragraphs, fillers, number
+                            normalization, whitespace). Vocabulary still applies.
+      --language <code>    Transcription language hint + cleanup gating
+                            (default: en). English-only cleanup stages are
+                            skipped for other languages.
+      -o, --output <path>  Write to <path> instead of stdout.
+      --model-dir <dir>    Override the Parakeet model root (defaults to
                             ~/Library/Application Support/Jot/Models/Parakeet,
                             the same directory Jot.app downloads into).
-      -h, --help           Show this help.
-      --version            Show the version.
+
+    STREAM OPTIONS (in: 16 kHz mono PCM on stdin; out: one JSON object per line):
+      --language <code>    One language per stream, fixed at startup (default: en).
+      --rate <hz>          Input sample rate. Only 16000 is supported.
+      --encoding <enc>     s16le (default) or f32le. A leading WAV header is
+                            detected and skipped; --encoding governs decoding.
+      --model-dir <dir>    As above.
+
+    VOCABULARY (both modes):
+      --no-vocab           Disable custom-vocabulary correction.
+      --vocab <file>       Use <file> instead of the default
+                            ~/Library/Application Support/Jot/Vocabulary/vocabulary.txt.
+
+    EXIT STATUS: 0 success, 1 runtime failure (decode, models, engine), 2 usage.
+    Models are downloaded by Jot.app — open Jot once to complete setup.
+    See jot-cli(1) for stdin recipes (ffmpeg) and the NDJSON contract.
     """
 
-@MainActor func fail(_ message: String) -> Never {
+func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("jot: error: \(message)\n".utf8))
     exit(1)
 }
@@ -49,12 +68,6 @@ if args.contains("--version") {
     exit(0)
 }
 
-guard args[0] == "transcribe" else {
-    FileHandle.standardError.write(Data("jot: unknown command '\(args[0])'\n\n".utf8))
-    printUsageAndExit(2)
-}
-args.removeFirst()
-
 @MainActor func takeOpt(_ names: [String]) -> String? {
     for name in names {
         if let i = args.firstIndex(of: name), i + 1 < args.count {
@@ -66,8 +79,62 @@ args.removeFirst()
     return nil
 }
 
-let diarize = args.contains("--diarize")
-args.removeAll { $0 == "--diarize" }
+@MainActor func takeFlag(_ name: String) -> Bool {
+    let present = args.contains(name)
+    args.removeAll { $0 == name }
+    return present
+}
+
+// MARK: - Stream mode (`jot --stream`, design doc §15)
+
+if takeFlag("--stream") {
+    let language = CLILanguage(takeOpt(["--language"]) ?? "en")
+    let rate = takeOpt(["--rate"]) ?? "16000"
+    guard rate == "16000" else {
+        fail("unsupported --rate '\(rate)': only 16000 is supported")
+    }
+    let encodingRaw = takeOpt(["--encoding"]) ?? "s16le"
+    guard let encoding = PCMEncoding(rawValue: encodingRaw) else {
+        fail("unsupported --encoding '\(encodingRaw)': use s16le or f32le")
+    }
+    let noVocab = takeFlag("--no-vocab")
+    let vocabPath = takeOpt(["--vocab"])
+    let modelDirOverride = takeOpt(["--model-dir"])
+
+    if let stray = args.first {
+        fail("unexpected argument '\(stray)' in --stream mode\n\n\(usage)")
+    }
+
+    let vocab: VocabularyApplier?
+    do {
+        vocab = try VocabularyApplier.load(
+            explicitPath: vocabPath, disabled: noVocab, language: language)
+    } catch {
+        fail("\(error)")
+    }
+
+    await StreamMode.run(StreamMode.Options(
+        language: language,
+        encoding: encoding,
+        modelDirOverride: modelDirOverride,
+        vocab: vocab
+    ))
+}
+
+// MARK: - Batch mode (`jot transcribe`)
+
+guard args.first == "transcribe" else {
+    FileHandle.standardError.write(Data("jot: unknown command '\(args.first ?? "")'\n\n".utf8))
+    printUsageAndExit(2)
+}
+args.removeFirst()
+
+let diarize = takeFlag("--diarize")
+let wantVTT = takeFlag("--vtt") || diarize  // --diarize implies WebVTT output
+let raw = takeFlag("--raw")
+let noVocab = takeFlag("--no-vocab")
+let vocabPath = takeOpt(["--vocab"])
+let language = CLILanguage(takeOpt(["--language"]) ?? "en")
 let outputPath = takeOpt(["-o", "--output"])
 let modelDirOverride = takeOpt(["--model-dir"])
 
@@ -90,6 +157,14 @@ guard FileManager.default.fileExists(atPath: inputPath) else {
 let parakeetRoot = ModelPaths.parakeetRoot(override: modelDirOverride)
 let diarizerRoot = ModelPaths.diarizerRoot
 
+let vocab: VocabularyApplier?
+do {
+    vocab = try VocabularyApplier.load(
+        explicitPath: vocabPath, disabled: noVocab, language: language)
+} catch {
+    fail("\(error)")
+}
+
 // MARK: - Pipeline
 
 @MainActor func run() async {
@@ -105,27 +180,53 @@ let diarizerRoot = ModelPaths.diarizerRoot
 
     let asr: AsrEngine.Result
     do {
-        asr = try await AsrEngine.transcribe(samples: samples, modelRoot: parakeetRoot)
+        asr = try await AsrEngine.transcribe(
+            samples: samples, modelRoot: parakeetRoot, language: language.batchHint)
     } catch {
         fail("\(error)")
     }
 
-    let vtt: String
-    if diarize {
-        vtt = await buildDiarizedVTT(samples: samples, asr: asr)
+    let output: String
+    if wantVTT {
+        if diarize {
+            output = await buildDiarizedVTT(samples: samples, asr: asr)
+        } else {
+            output = buildPlainVTT(asr: asr)
+        }
     } else {
-        vtt = buildPlainVTT(asr: asr)
+        // Default: cleaned plain text (design doc §10). Vocabulary first (on
+        // the raw engine text, like the app's rescore-before-segment order),
+        // then the deterministic chain unless --raw.
+        var text = asr.text
+        if let vocab {
+            text = vocab.correct(text)
+        }
+        if !raw {
+            let timings = asr.tokenTimings?.map {
+                JotTextPipeline.TokenTiming(
+                    token: $0.token, startTime: $0.startTime, endTime: $0.endTime)
+            }
+            text = TranscriptCleanup.apply(text, tokenTimings: timings, language: language)
+        }
+        output = text
     }
 
     if let outputPath {
         do {
-            try vtt.write(toFile: outputPath, atomically: true, encoding: .utf8)
+            try output.write(toFile: outputPath, atomically: true, encoding: .utf8)
         } catch {
             fail("failed to write \(outputPath): \(error)")
         }
     } else {
-        print(vtt)
+        print(output)
     }
+}
+
+/// Vocabulary correction applied per cue: word-for-word swaps are timing-safe
+/// (design §10 — VTT mode never runs the cleanup chain, which would desync
+/// cue boundaries, but vocab corrections do apply).
+@MainActor func correctCue(_ text: String) -> String {
+    vocab?.correct(text) ?? text
 }
 
 @MainActor func buildPlainVTT(asr: AsrEngine.Result) -> String {
@@ -133,12 +234,12 @@ let diarizerRoot = ModelPaths.diarizerRoot
         let words = WordReassembly.words(from: tokenTimings)
         let cues = CueBuilder.cues(fromWords: words)
         if !cues.isEmpty {
-            return WebVTT.vtt(timedCues: cues)
+            return WebVTT.vtt(timedCues: cues.map { ($0.start, $0.end, correctCue($0.text)) })
         }
     }
     // Nemotron path (no tokenTimings) or a degenerate empty-cues case:
     // single cue spanning the whole clip (design doc §6).
-    return WebVTT.vtt(fullTranscript: asr.text, durationSeconds: asr.duration)
+    return WebVTT.vtt(fullTranscript: correctCue(asr.text), durationSeconds: asr.duration)
 }
 
 @MainActor func buildDiarizedVTT(samples: [Float], asr: AsrEngine.Result) async -> String {
@@ -169,7 +270,9 @@ let diarizerRoot = ModelPaths.diarizerRoot
     } else {
         diarizedSegments = CueBuilder.distributeText(transcript: asr.text, segments: merged, labels: labels)
     }
-    return WebVTT.vtt(diarizedSegments: diarizedSegments)
+    return WebVTT.vtt(diarizedSegments: diarizedSegments.map {
+        ($0.speaker, $0.start, $0.end, correctCue($0.text))
+    })
 }
 
 await run()

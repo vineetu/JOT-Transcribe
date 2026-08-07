@@ -58,7 +58,7 @@ The app is a **single Xcode executable target**; the CLI needs the transcribe + 
 
 # v2 — utility transcriber: cleaned text, vocabulary, stdin streaming
 
-**Status:** design — not implemented.
+**Status:** implemented (CLI v0.2 sources on branch, paired with jot-shared branch `claude/jot-cli-v2` which adds `PostProcessing` to `JotTextPipeline`) — **pending Mac build verification + `Vendor/jot-cli/jot` rebuild**; written in a Linux session with no Swift/macOS toolchain, so it has not been compiled. The `JotEngine` extraction (§9 table, engine row) is NOT part of this pass — the CLI keeps its thin local engine wrappers until that lift.
 **Ask (user):** evolve the bundled CLI into a standalone-feeling utility: plain *cleaned* text out by default, custom vocabulary applied (optionally off), **streaming** where audio is piped in as it plays (mic optional, not required), installable from the command line (installing the CLI installs the app), and a good man page. The app and the CLI run in parallel and never talk at runtime — shared **on-disk conventions only** (model dir, `vocabulary.txt`). No history: the CLI never touches the app's SwiftData library.
 
 ## 9. Principle — everything substantive comes from `jot-shared`
@@ -127,7 +127,7 @@ The primary input is **piped audio on stdin** — some other process produces au
 
 # v2.1 — Call Assist: machine streaming mode + setup
 
-**Status:** design — not implemented. Supersedes §11's output behavior for machine consumers; §11's TTY/EOF behavior survives as the human mode.
+**Status:** implemented in the same v0.2 pass (see v2 status above), with one scoping deviation: stream-mode vocabulary ships the **model-free corrector first**; the chunked CTC spot+gate upgrade below is follow-up work gated on the JotEngine extraction (the spotter streaming logic lives app-side and moving it without that seam would mean copying it). Supersedes §11's output behavior for machine consumers; §11's TTY/EOF behavior survives as the human mode.
 **Consumer:** Call Assist puts an AI agent on a live phone call; `jot --stream` is the agent's ear. Its requirements (live segment-by-segment text, ~2 s commit SLA, whole-call sessions with hold music, text-only, fail-loud) are the contract this section designs to.
 
 ## 15. Machine streaming mode

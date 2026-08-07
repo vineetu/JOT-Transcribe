@@ -45,7 +45,9 @@ enum AsrEngine {
         let tokenTimings: [TokenTiming]?
     }
 
-    static func transcribe(samples: [Float], modelRoot: URL) async throws -> Result {
+    static func transcribe(
+        samples: [Float], modelRoot: URL, language: Language? = nil
+    ) async throws -> Result {
         let bundleDir = ModelPaths.parakeetV3BundleDir(root: modelRoot)
         guard AsrModels.modelsExist(at: bundleDir, version: .v3, encoderPrecision: .int8) else {
             throw AsrEngineError.modelMissing(bundleDir)
@@ -67,7 +69,7 @@ enum AsrEngine {
 
         var decoderState = TdtDecoderState.make(decoderLayers: AsrModelVersion.v3.decoderLayers)
         do {
-            let result = try await manager.transcribe(samples, decoderState: &decoderState, language: nil)
+            let result = try await manager.transcribe(samples, decoderState: &decoderState, language: language)
             return Result(text: result.text, duration: TimeInterval(result.duration), tokenTimings: result.tokenTimings)
         } catch {
             throw AsrEngineError.transcribeFailed(error)

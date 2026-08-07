@@ -1,0 +1,154 @@
+.TH JOT-CLI 1 "August 2026" "jot 0.2.0" "User Commands"
+.SH NAME
+jot\-cli \- on-device speech transcription utility (batch files and live streaming)
+.SH SYNOPSIS
+.B jot
+.B transcribe
+.I file
+[\fB\-\-vtt\fR] [\fB\-\-diarize\fR] [\fB\-\-raw\fR] [\fB\-\-no\-vocab\fR] [\fB\-\-vocab\fR \fIfile\fR] [\fB\-\-language\fR \fIcode\fR] [\fB\-o\fR \fIpath\fR] [\fB\-\-model\-dir\fR \fIdir\fR]
+.br
+.B jot
+.B \-\-stream
+[\fB\-\-language\fR \fIcode\fR] [\fB\-\-rate\fR \fI16000\fR] [\fB\-\-encoding\fR \fIs16le\fR|\fIf32le\fR] [\fB\-\-no\-vocab\fR] [\fB\-\-vocab\fR \fIfile\fR] [\fB\-\-model\-dir\fR \fIdir\fR]
+.br
+.B jot
+[\fB\-\-help\fR | \fB\-\-version\fR]
+.SH DESCRIPTION
+.B jot
+transcribes speech entirely on device, using the same engines, cleanup
+pipeline, and custom vocabulary as the Jot.app dictation utility. It ships
+inside Jot.app and runs in parallel with it: the two never communicate at
+runtime and share only on-disk conventions (the model directory and the
+vocabulary file). Nothing is uploaded anywhere; no transcript is stored.
+.PP
+Two modes. \fBtranscribe\fR takes an audio or video file (anything the
+bundled ffmpeg can decode: wav, mp3, m4a, webm, mkv, mp4, \[u2026]) and prints a
+cleaned plain-text transcript to standard output. \fB\-\-stream\fR reads raw
+PCM audio from standard input as it is produced and emits committed transcript
+segments as newline-delimited JSON, one object per line, flushed per line \(em
+built to be another program's ear on a live conversation.
+.SH TRANSCRIBE MODE
+Default output is plain text, run through the deterministic cleanup chain
+(paragraph breaks from pause timing, filler-word removal, spoken-number
+normalization, whitespace normalization \(em English-hardcoded stages are
+skipped for other languages).
+.TP
+.B \-\-vtt
+Emit WebVTT cues with timestamps instead of plain text.
+.TP
+.B \-\-diarize
+Speaker-labeled WebVTT cues (implies \fB\-\-vtt\fR). Diarization is only
+reliable on clean, separate-audio-per-voice input, such as a meeting
+recording's own soundtrack \(em not audio captured acoustically through
+speakers into a microphone.
+.TP
+.B \-\-raw
+Skip the cleanup chain. Vocabulary correction still applies unless
+\fB\-\-no\-vocab\fR is also given.
+.TP
+.BI \-\-language " code"
+Language hint for the engine and gating for the cleanup chain. Default
+\fBen\fR. Bare codes (\fBes\fR, \fBde\fR, \fBzh\fR, \[u2026]) are accepted.
+.TP
+.BI \-o " path" "\fR,\fP \-\-output " path
+Write to \fIpath\fR instead of standard output.
+.TP
+.BI \-\-model\-dir " dir"
+Override the model root directory. See \fBFILES\fR.
+.SH STREAM MODE
+Input contract: raw PCM, 16 kHz, mono, on standard input, continuously, in
+real time. \fBs16le\fR by default, \fBf32le\fR with \fB\-\-encoding\fR. A
+leading RIFF/WAV header is detected and skipped; the \fB\-\-encoding\fR flag,
+not the WAV header, governs sample decoding.
+.PP
+Output contract: one JSON object per line on standard output, flushed per
+line:
+.PP
+.nf
+    {"type":"final","text":"..."}
+.fi
+.PP
+Each \fBfinal\fR is committed text, emitted as soon as the engine is
+confident \(em segment by segment while the stream runs, not at the end. Text
+is emitted exactly once; committed text is never revised. Nothing is emitted
+during silence or non-speech: silence in, silence out. Fields are
+additive-only; consumers must tolerate unknown fields.
+.PP
+The language is fixed for the whole stream via \fB\-\-language\fR (default
+\fBen\fR). \fB\-\-rate\fR accepts only \fB16000\fR. On end-of-input (or
+SIGINT) the engine flushes, the remaining text is emitted, and
+.B jot
+exits 0. If transcription fails mid-stream,
+.B jot
+prints the error to standard error and exits non-zero immediately: a dead
+process is the intended failure signal, never a silent one.
+.SH VOCABULARY
+If the Jot.app custom vocabulary file exists (see \fBFILES\fR), transcripts
+in both modes are corrected against it: term and alias matches are applied
+through the same safety gate the app uses, so a custom term never silently
+overwrites a word the engine clearly got right. This build uses the
+model-free corrector (fuzzy text matching; no extra model downloads). The
+app can additionally use an acoustic rescorer, so recall may differ slightly
+between the two \(em same file, same gate, different detector.
+.TP
+.B \-\-no\-vocab
+Disable vocabulary correction.
+.TP
+.BI \-\-vocab " file"
+Use \fIfile\fR (same format: one term per line, optional comma-separated
+aliases after a colon; \fB#\fR comments) instead of the default.
+.SH FILES
+.TP
+.I ~/Library/Application Support/Jot/Models/Parakeet
+Model root, shared with Jot.app (a convention, not a runtime link). The CLI
+never downloads models: open Jot once to complete setup, then retry.
+.TP
+.I ~/Library/Application Support/Jot/Vocabulary/vocabulary.txt
+Custom vocabulary, written by Jot.app's Settings \(-> Vocabulary pane and
+read by both binaries.
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Runtime failure: undecodable input, models missing, engine error.
+.TP
+.B 2
+Usage error.
+.SH EXAMPLES
+Transcribe a file to the terminal, or into a file, or onto the clipboard:
+.PP
+.nf
+    jot transcribe meeting.m4a
+    jot transcribe meeting.m4a > notes.txt
+    jot transcribe meeting.m4a | pbcopy
+.fi
+.PP
+Subtitles with speakers from a meeting recording:
+.PP
+.nf
+    jot transcribe standup.mp4 --diarize -o standup.vtt
+.fi
+.PP
+Stream a file in real time (as if it were live):
+.PP
+.nf
+    ffmpeg -re -i call.wav -f s16le -ar 16000 -ac 1 - | jot --stream
+.fi
+.PP
+Live-transcribe microphone input via ffmpeg's capture device:
+.PP
+.nf
+    ffmpeg -f avfoundation -i ":0" -f s16le -ar 16000 -ac 1 - | jot --stream
+.fi
+.PP
+Feed an agent on a live call, Spanish, explicit wire format:
+.PP
+.nf
+    your-call-audio | jot --stream --language es --rate 16000 --encoding s16le
+.fi
+.SH SEE ALSO
+.BR jot (1)
+\(em the unrelated BSD sequence-printing utility that ships with macOS.
+Jot.app's in-app Help covers the dictation side of the product.
