@@ -2,7 +2,6 @@ import AVFoundation
 @preconcurrency import CoreML
 import FluidAudio
 import Foundation
-import JotTextPipeline
 
 /// `jot --stream` — the machine streaming mode (design doc §15).
 ///
@@ -35,21 +34,23 @@ enum StreamMode {
         case english(StreamingNemotronAsrManager)
         case multilingual(StreamingNemotronMultilingualAsrManager)
 
-        static func make(options: Options, bundleDir: URL) async throws -> Engine {
+        static func make(
+            options: Options, bundleDir: URL, useMultilingualManager: Bool
+        ) async throws -> Engine {
             let config = MLModelConfiguration()
             config.computeUnits = .cpuAndNeuralEngine
-            if options.language.isEnglish {
-                let mgr = StreamingNemotronAsrManager(
-                    configuration: config, requestedChunkSize: .ms1120)
-                try await mgr.loadModels(from: bundleDir)
-                await mgr.reset()
-                return .english(mgr)
-            } else {
+            if useMultilingualManager {
                 let mgr = StreamingNemotronMultilingualAsrManager(configuration: config)
                 try await mgr.loadModels(from: bundleDir)
                 await mgr.setLanguage(options.language.nemotronCode)
                 await mgr.reset()
                 return .multilingual(mgr)
+            } else {
+                let mgr = StreamingNemotronAsrManager(
+                    configuration: config, requestedChunkSize: .ms1120)
+                try await mgr.loadModels(from: bundleDir)
+                await mgr.reset()
+                return .english(mgr)
             }
         }
 
@@ -158,23 +159,38 @@ enum StreamMode {
 
     static func run(_ options: Options) async -> Never {
         let root = ModelPaths.parakeetRoot(override: options.modelDirOverride)
+        let fm = FileManager.default
+
+        // Resolve which on-disk ship serves this stream. English prefers the
+        // dedicated English bundle but falls back to the Multilingual "latin"
+        // ship — the app folds English into that ship on Nemotron-eligible
+        // Macs, so an English user may have latin-only on disk. Other latin
+        // languages use the latin ship; everything else the full multilingual
+        // ship. `useMultilingualManager` decides which FluidAudio manager
+        // loads the resolved directory.
+        let englishDir = ModelPaths.nemotronEnglishStreamingDir(root: root)
+        let variantDir = ModelPaths.nemotronMultilingualDir(
+            root: root, latin: options.language.usesLatinNemotronVariant)
         let bundleDir: URL
-        if options.language.isEnglish {
-            bundleDir = ModelPaths.nemotronEnglishStreamingDir(root: root)
+        let useMultilingualManager: Bool
+        if options.language.isEnglish, fm.fileExists(atPath: englishDir.path) {
+            bundleDir = englishDir
+            useMultilingualManager = false
+        } else if fm.fileExists(atPath: variantDir.path) {
+            bundleDir = variantDir
+            useMultilingualManager = true
         } else {
-            bundleDir = ModelPaths.nemotronMultilingualDir(
-                root: root, latin: options.language.usesLatinNemotronVariant)
-        }
-        guard FileManager.default.fileExists(atPath: bundleDir.path) else {
             fail("""
-                streaming model not found at \(bundleDir.path).
+                streaming model not found (looked for \(options.language.isEnglish ? englishDir.path + " and " : "")\(variantDir.path)).
                 Open Jot and complete setup (Settings → Transcription) to download it, then retry.
                 """)
         }
 
         let engine: Engine
         do {
-            engine = try await Engine.make(options: options, bundleDir: bundleDir)
+            engine = try await Engine.make(
+                options: options, bundleDir: bundleDir,
+                useMultilingualManager: useMultilingualManager)
         } catch {
             fail("failed to load streaming model from \(bundleDir.path): \(error)")
         }
