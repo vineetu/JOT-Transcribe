@@ -18,6 +18,31 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 
 ## Open · Planned
 
+### bugs.recording-survives-termination
+- **Status:** Planned
+- **Type:** Bug
+- **Trigger:** Owner lost a ~5-minute dictation twice on 2026-08-10 when an install script quit/killed Jot mid-recording. Recovered 1m44s of it with `untrunc` + a healthy recording as reference; the rest was gone.
+- **Affects:** `Sources/Recording/` (writer + termination path), `Sources/App/AppDelegate.swift` (`applicationShouldTerminate`), `Sources/Library/` (orphan sweep at launch)
+- **Description:** A dictation in flight is lost when the app goes away, and worse, the M4A left behind has no `moov` atom (the index is only written on stop), so macOS refuses to open it at all — a silent, unrecoverable-looking loss of the user's words. Three tiers, in order of value:
+  **(1) Graceful termination (cheap, covers ⌘Q, `osascript quit`, SIGTERM, logout, restart, updates):** finalize the writer in `applicationShouldTerminate` — return `.terminateLater`, stop the recording, transcribe-or-at-least-persist, then `reply(toApplicationShouldTerminate:)`. macOS gives a few seconds, which is enough to close the file properly. Today none of this happens.
+  **(2) Crash-safe on-disk format (covers SIGKILL, panics, power loss, where NO code can run):** the container must be valid as it is written, not only after finalize. Write the take as CAF/WAV LPCM (or an M4A with periodically-flushed fragments) and convert to M4A only on stop. A truncated CAF is still playable up to the truncation point; a truncated non-fragmented M4A is a brick.
+  **(3) Launch-time orphan sweep (safety net for whatever still slips through):** on start, find audio files in `Recordings/` with no `Recording` row, repair/finalize them, transcribe, and surface them in Recents — the same shape as `call-assist resume`. Without this a recovered file is invisible to the user even when the bytes are fine.
+  Note (1) alone would have prevented both of the owner's losses, since both were graceful-quit-then-kill. (2)+(3) are what make the guarantee real rather than best-effort.
+
+### tech.vocab-alt-mapping-auto-apply
+- **Status:** Planned
+- **Type:** Cleanup
+- **Trigger:** Always — filed during Phase B (3-option pill) vocab-core work
+- **Affects:** `jot-shared` `JotVocabCore.VocabularyGate` (override step), `Sources/App/AppDelegate.swift` (live-pill alt confirm), `Sources/Vocabulary/CorrectionReviewModel.swift`
+- **Description:** When the owner picks the wider-span alternate on the 3-option "Did you mean?" pill (alt0), we teach the chosen mapping via `CorrectionStore.confirm(altFind, altTerm)` — but `altFind` is a MULTI-WORD key ("sri ram") and the gate's override/OVERRIDE step consults only single-token `originalWord`s, so a confirmed alternate does NOT auto-apply on the next dictation (the pill re-offers it). This matches the current ledger-accounting shape and iOS's re-offer behavior, so today's write is intentionally kept. The improvement: teach the gate to consult multi-word override keys so a granted/confirmed alternate auto-applies. Benefits BOTH platforms (the mapping lives in the shared package). Cross-referenced by a `KNOWN LIMITATION` comment at the `onAlternate` confirm site in `AppDelegate.runAskSequence`.
+
+### research.vocab-phonetic-variant-expansion
+- **Status:** Planned (research first)
+- **Type:** Feature research
+- **Trigger:** Owner request 2026-07-22 (while removing "Always replace")
+- **Affects:** `jot-shared` `JotVocabCore` (gate/alias model), CTC spotter alias generation, Vocabulary UI
+- **Description:** The owner currently has to teach every distinct mis-hearing of a term by hand ("Vineet" and "sri ram" each have many ASR renderings in the live correction ledger). Research whether Jot can generate the plausible mis-hearing set for a vocabulary term automatically — e.g. grapheme-to-phoneme expansion + phoneme-distance candidate generation feeding the CTC spotter's sounds-like aliases, or mining the user's own correction history for variant clusters. Deliverable: a measured feasibility write-up (precision matters — an over-broad variant set recreates the over-correction class the gate exists to prevent), then a design if viable. Explicitly replaces the removed "Always replace" direction: the owner rejected per-pair permanent grants (mis-click risk, "I can never go back") in favor of making teaching itself smarter.
+
 ### features.shortcuts-pane-redesign
 - **Status:** Planned
 - **Type:** UX
@@ -28,16 +53,16 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 - **Description:** The current Settings → Shortcuts pane shows three rows per action (trigger-type picker + recorder + footer) for five user-bindable actions — ~16+ control rows of vertical scroll. Almost no comparable app uses this multi-row pattern. Collapse to single binding per action with inferred trigger type, section grouping (Recording / Rewrite / Capture), visible "when this fires" badges, and a search field that scales as shortcuts grow. HTML mockup comparing four options at `/tmp/jot-shortcuts-mockups/index.html` during the design phase.
 
 ### bugs.diarization-speaker-mismatch
-- **Status:** Reported (owner, 2026-07-20)
+- **Status:** Shipped (v1.19 dev tree, 6da73c0) — exact speaker attribution via segment-sliced transcription (each coalesced speaker run transcribed from its own audio slice) plus coalesced same-speaker display blocks; owner-verified ("got it perfectly")
 - **Type:** Bug
 - **Trigger:** File import with multiple speakers — repro file: a multi-speaker screen recording in the owner's Downloads, latest transcript in Library
 - **Affects:** `Sources/Diarization/` (assignment), transcript detail view (label rendering)
 - **Description:** Two defects on imported multi-speaker files. (1) **Wrong speaker assignment:** speaker COUNT is right (3 detected) but segments are matched to the wrong speakers — consecutive turns from one voice alternate between labels. (2) **Choppy label rendering:** the detail view prints a "Speaker N" header per micro-segment (every line or two), even when consecutive segments share a speaker — should merge adjacent same-speaker segments into one block. Owner verified both on the repro file; fix queued as the next workstream (before Mac JotVocabCore adoption).
 
 ### features.language-locales
-- **Status:** Planned (owner-requested 2026-07-20)
+- **Status:** Shipped (v1.19 dev tree, 2173687) — flat 8-entry picker: English (US/UK), Spanish (Latin America/Spain), French (France/Canada), Portuguese (Brazil/Portugal); pre-locale defaults map to majority region (es→es-US, pt→pt-BR, fr→fr-FR, en→en-US); pairs share model routing / script hints / vocab dicts via the new baseLanguage seam
 - **Type:** Feature
-- **Target:** NEXT UP (owner re-ordered 2026-07-20: locales FIRST, then vocab adoption, then release 1.19)
+- **Target:** Shipped for v1.19 (owner re-ordered 2026-07-20: locales FIRST, then vocab adoption, then release 1.19)
 - **Affects:** `Sources/Transcription/LanguageChoice.swift` (currently one entry per language, hard-coded locale — e.g. French always `fr-FR`), language picker UI, `nemotronLanguageCode` mapping, vocabulary common-words selection, TTS probe harness
 - **Description:** Jot exposes languages without locale variants, but Nemotron 3.5 supports **19 locales** (broad coverage claim: coverage across the locale set, not just base languages). Bare minimum to add, per owner: **English (US / GB)**, **Spanish (Spain / US-LatAm)**, **French (France / Canada)**, **Portuguese (Portugal / Brazil)**; Italian (IT) as-is; Korean fine as-is. Open questions to settle **empirically before building UI**: (1) does the model actually change output per locale code — spelling ("colour"/"color"), vocabulary, number/date conventions — or are locale codes cosmetic? Test method exists: the `tools/nemotron-headdrop-probe` harness accepts a language code; generate TTS clips per locale (macOS `say` has en-GB, es-MX, fr-CA, pt-BR voices) and diff transcripts across locale codes for the same clip. (2) Which of the 19 locales the shipped latin/multilingual bundles actually accept (probe rejects vs. silently maps). (3) Downstream effects: common-words dictionary selection (currently one per base language), filler lists (already region-subtag-tolerant), vocabulary gate. UI: locale picker as sub-choice under each language, defaulting to current behavior so existing users see no change.
 
@@ -49,9 +74,9 @@ When an item ships, move it to the **Shipped** section at the bottom (chronologi
 - **Description:** The diarization text-attribution brains — timeline building (smooth/fold/coalesce), sentence-boundary snapping, segment-slice geometry — are pure Foundation with DEBUG fixture tests, and iOS will want them verbatim if jot-mobile adds multi-speaker import. Extract per the JotTextPipeline pattern (engine seams injected; FluidAudio diarizer + transcriber wiring stay platform-side). Port the 14+10 harness tests as golden fixtures.
 
 ### ux.vocab-remove-coral-color
-- **Status:** Planned (owner 2026-07-20) — fold into the JotVocabCore adoption workstream
+- **Status:** Shipped (v1.19 dev tree, 29be72a) — folded into the JotVocabCore adoption workstream
 - **Type:** UX
-- **Description:** Owner dislikes the coral/orange accent in the vocabulary UI — remove it and use monochrome (system black/white/secondary) styling instead. Candidate sites to confirm with a screenshot before changing: `Sources/Vocabulary/VocabRow.swift:39` (.orange badge), the correction-ask pill card accent, speaker-palette orange if it bleeds into vocab surfaces. Confirm the exact element with the owner first, then restyle to system monochrome.
+- **Description:** Owner dislikes the coral/orange accent in the vocabulary UI — remove it and use monochrome (system black/white/secondary) styling instead. Candidate sites to confirm with a screenshot before changing: `Sources/Vocabulary/VocabRow.swift:39` (.orange badge), the correction-ask pill card accent, speaker-palette orange if it bleeds into vocab surfaces. Confirm the exact element with the owner first, then restyle to system monochrome. **Shipped:** vocabulary UI is now monochrome.
 
 ### features.mac-ui-localization
 - **Status:** Planned

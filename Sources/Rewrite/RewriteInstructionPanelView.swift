@@ -35,6 +35,15 @@ struct RewriteInstructionPanelView: View {
 
     @State private var text: String = ""
     @State private var hasTyped: Bool = false
+    /// Live transcript of what is being said, mirrored into the field so the
+    /// words appear where the instruction goes — no second window needed.
+    @ObservedObject private var partials = StreamingPartialStore.shared
+    /// The exact text this view last wrote into the field from a partial.
+    /// Anything in the field that differs from it came from the KEYBOARD,
+    /// which is how a real keystroke is told apart from our own writes —
+    /// without this the streaming text would trip `onFirstEdit` and stop the
+    /// mic on the user's behalf, one word in.
+    @State private var lastAppliedPartial: String = ""
     @State private var animateWave: Bool = false
     @FocusState private var fieldFocused: Bool
 
@@ -87,7 +96,7 @@ struct RewriteInstructionPanelView: View {
                     .foregroundStyle(.tint)
                     .padding(.vertical, 2)
                     .padding(.horizontal, 9)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                    .background(Capsule().fill(JotTheme.current.accent.opacity(0.14)))
             } else {
                 Text("Rewrite selection")
                     .font(.system(size: 13, weight: .semibold))
@@ -119,13 +128,31 @@ struct RewriteInstructionPanelView: View {
         }
     }
 
+    /// What ⏎ / the hotkey / esc do right now, in the user's terms.
+    private var footerHint: String {
+        if hasTyped {
+            // Typing stopped the mic; anything already transcribed is sitting
+            // in the field and goes with what they type.
+            return "⏎ run · esc cancel · mic off, editing"
+        }
+        // Listening: both keys finish and use the speech. Naming the real
+        // binding here is why the pill no longer needs its own "Press ⌥. to
+        // stop" line — and resolving it (rather than hardcoding ⌥.) keeps it
+        // honest if the shortcut is rebound in Settings.
+        let key = SingleKeyMigration.effectiveBindingLabel(for: .rewriteWithVoice)
+        let finish = key.map { "⏎ or \($0) to finish" } ?? "⏎ to finish"
+        return title != nil
+            ? "\(finish) · esc cancel · stay silent to apply as-is"
+            : "\(finish) · esc cancel"
+    }
+
     /// A small three-bar equalizer that gently pulses while the mic is hot.
     /// Purely decorative (amplitude is not wired) but signals "speaking works".
     private var waveform: some View {
         HStack(spacing: 2) {
             ForEach(0..<3, id: \.self) { index in
                 Capsule()
-                    .fill(Color.accentColor)
+                    .fill(JotTheme.current.accent)
                     .frame(width: 2.5, height: animateWave ? 12 : 4)
                     .animation(
                         .easeInOut(duration: 0.5)
@@ -147,14 +174,23 @@ struct RewriteInstructionPanelView: View {
             .focused($fieldFocused)
             .onSubmit { onSubmit(text) }
             .onChange(of: text) { _, newValue in
-                if !hasTyped && !newValue.isEmpty {
+                // A change that is NOT the partial we just wrote is a keystroke.
+                if !hasTyped && newValue != lastAppliedPartial {
                     hasTyped = true
                     onFirstEdit()
                 }
-                // Mirror the field's live text to the controller so a resolve
-                // via a path other than ⏎ (second hotkey / idle timeout) can
-                // still salvage what was typed.
-                onTextChange(newValue)
+                // Only the user's own text is mirrored to the controller —
+                // partials are feedback, and the final transcript (more
+                // accurate than any partial) is what the voice path uses.
+                if hasTyped { onTextChange(newValue) }
+            }
+            .onChange(of: partials.partial) { _, partial in
+                // Once the user types, the field is theirs: typing supersedes
+                // speaking, and the words already transcribed stay put so they
+                // can keep going from where the speech left off.
+                guard !hasTyped, let partial, !partial.isEmpty else { return }
+                lastAppliedPartial = partial
+                text = partial
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -187,12 +223,14 @@ struct RewriteInstructionPanelView: View {
                 .contentShape(Capsule())
             }
             Spacer(minLength: 8)
-            // On a picked-prompt pane the detail is optional — no detail applies
-            // the prompt as-is — so the footer says so; the plain pane keeps the
-            // terse key hint.
-            Text(title != nil
-                 ? "⏎ run · esc cancel · leave empty to apply as-is"
-                 : "⏎ to run · esc to cancel")
+            // The footer must match what the keys ACTUALLY do, which depends
+            // on whether the mic is still live:
+            //   • still listening → ⏎ and the hotkey do the SAME thing (stop
+            //     and use whatever was spoken). The old copy said "leave empty
+            //     to apply as-is", which is only true if you never spoke — it
+            //     read as "⏎ throws my speech away".
+            //   • typed → the mic is already stopped; ⏎ runs the typed text.
+            Text(footerHint)
                 .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
         }

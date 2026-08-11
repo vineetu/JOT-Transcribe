@@ -69,26 +69,26 @@ final class RewriteController: ObservableObject {
     static let defaultPanelPlaceholder =
         "Describe the change — or just press ⏎ to clean it up"
 
-    /// Upper bound on how long the mic stays open waiting for the user to
-    /// finish the spoken instruction before we auto-stop and transcribe.
-    /// Replaces the previous INDEFINITE wait, which left a frozen user staring
-    /// at a pill that never resolved. On timeout we stop and transcribe
-    /// whatever was captured: non-empty speech becomes the instruction (this
-    /// alone fixes the "spoke but never pressed stop again" failure mode),
-    /// silence runs with no detail (a clean-up on the plain path, or the picked
-    /// prompt applied as-is when one supplied the system prompt). A second hotkey
-    /// press, Esc, or a mic disconnect still resolves earlier; a user with
-    /// long-form instructions can still press the hotkey to finish before the
-    /// window elapses. Named so it is trivial to tune / make a setting later.
-    static let secondToggleTimeout: Duration = .seconds(10)
+    /// How long the PROMPT-PICKER augment path waits for an optional spoken
+    /// detail before running the picked prompt without one.
+    ///
+    /// This exists for prompts whose detail is optional — "Translate to…"
+    /// offers a language, and saying nothing means "use the default". It is
+    /// scoped to that path ONLY, and it can never interrupt someone who is
+    /// talking: the window is cancelled the moment any speech is transcribed
+    /// (see `armOptionalDetailWindow`), and if no live transcript is
+    /// available to prove silence, nothing fires at all.
+    ///
+    /// It must NEVER apply to the plain Rewrite-with-Voice hotkey. Invoking
+    /// that is the user saying "I am about to speak" — for a minute or ten —
+    /// and v1.18.0's mistake was applying this bound there as a hard cap
+    /// measured from mic-open, which cut instructions off mid-word at 10.1 s.
+    static let optionalDetailSilenceWindow: Duration = .seconds(10)
 
-    /// Longer idle bound that replaces the 10 s mic timer once the user starts
-    /// TYPING (which cancels the mic timer). Without it, a user who types one
-    /// character then walks away would park the continuation — and leave the
-    /// panel on screen — forever. On this timeout the flow auto-finishes: the
-    /// typed text (if any) becomes the detail, otherwise the run proceeds
-    /// without one.
-    static let typedPanelIdleTimeout: Duration = .seconds(30)
+    /// Extra grace before concluding silence, covering the lag between speech
+    /// and its first transcribed partial. Without it a user who starts talking
+    /// at second 9 is judged silent at second 10.
+    static let optionalDetailSpeechGrace: Duration = .seconds(3)
 
     /// Resolver for the user-selected default Rewrite prompt. Read on every
     /// TAP (`rewrite()`) so a default chosen in Settings → Prompts (or the
@@ -111,6 +111,12 @@ final class RewriteController: ObservableObject {
     /// path (no override, no hint) — behaves exactly as before. Set when the
     /// run enters `.recording`, cleared when it leaves.
     @Published private(set) var augmentHint: String?
+    /// True while the typed instruction panel is on screen. The panel already
+    /// names the prompt, shows "Listening…", and states which keys finish the
+    /// run — so the pill repeating the hint and "Press ⌥. to stop" underneath
+    /// it is duplicate furniture. The pill stands down to a bare recording
+    /// indicator while this is true.
+    @Published private(set) var typedPanelVisible = false
     @Published private(set) var lastRewrite: String?
     /// Timestamp paired with `lastRewrite`. Updated on every write so
     /// `DeliveryService.pasteLast()` can compare against
@@ -123,10 +129,10 @@ final class RewriteController: ObservableObject {
     private var activeFlowTask: Task<Void, Never>?
     private var activeFixedFlowTask: Task<Void, Never>?
     private var secondToggleContinuation: CheckedContinuation<Void, Error>?
-    /// Fires `resumeSecondToggle()` after `secondToggleTimeout` so the mic
-    /// wait is bounded. Cancelled the instant the continuation is taken by any
-    /// path (user toggle, Esc/cancel, disconnect) so it never resumes twice.
-    private var secondToggleTimeoutTask: Task<Void, Never>?
+    /// Augment-path-only silence window (see `armOptionalDetailWindow`).
+    /// Cancelled whenever the continuation is taken, so it can never resume
+    /// a run twice or outlive the flow it belongs to.
+    private var optionalDetailTask: Task<Void, Never>?
     // Kept through the rewrite tail so Esc can still invalidate generation
     // and suppress a late paste after the voice phase has finished.
     private var pipelineToken: VoiceInputPipeline.Token?
@@ -140,7 +146,7 @@ final class RewriteController: ObservableObject {
 
     /// How the current typed-panel run resolved, set by a panel callback just
     /// before it resumes the parked second-toggle continuation. `nil` means the
-    /// wait resolved WITHOUT a typed decision (timeout, a second hotkey press, a
+    /// wait resolved WITHOUT a typed decision (a second hotkey press, Esc, or a
     /// mic disconnect, or an empty ⏎ while nothing was typed) — i.e. the classic
     /// voice/transcribe path. Consumed once per run in `runCustom`.
     private enum TypedPanelResolution {
@@ -151,13 +157,13 @@ final class RewriteController: ObservableObject {
         case noDetail
     }
     private var typedResolution: TypedPanelResolution?
-    /// Set when the first keystroke lands in the panel: cancels the auto-finish
-    /// timer and stops the mic so it doesn't keep capturing while the user types.
+    /// Set when the first keystroke lands in the panel: stops the mic so it
+    /// doesn't keep capturing while the user types.
     private var micStoppedByTyping = false
     /// Live mirror of the panel field's text (via the panel's `onTextChange`).
-    /// Lets a resolve that arrives WITHOUT a submit — a second hotkey press, or
-    /// the idle timeout while typed — still salvage the typed instruction
-    /// instead of throwing it away and doing a bare clean-up.
+    /// Lets a resolve that arrives WITHOUT a submit — a second hotkey press
+    /// while typed — still salvage the typed instruction instead of throwing
+    /// it away and doing a bare clean-up.
     private var currentPanelText = ""
 
     private let pipeline: VoiceInputPipeline
@@ -298,6 +304,7 @@ final class RewriteController: ObservableObject {
         // here also covers the global-Esc-hotkey cancel path (which doesn't go
         // through the panel's own Esc handler).
         instructionPanel?.dismiss()
+        typedPanelVisible = false
         typedResolution = nil
         activeFlowTask?.cancel()
         activeFlowTask = nil
@@ -411,14 +418,15 @@ final class RewriteController: ObservableObject {
         defer {
             activeFlowTask = nil
             pipelineToken = nil
-            secondToggleTimeoutTask?.cancel()
-            secondToggleTimeoutTask = nil
+            optionalDetailTask?.cancel()
+            optionalDetailTask = nil
             secondToggleContinuation = nil
             self.augmentHint = nil
             // Belt-and-suspenders: any exit path (error, cancel) tears the panel
             // down. The success paths already dismissed it BEFORE pasting; this
             // is idempotent.
             instructionPanel?.dismiss()
+            typedPanelVisible = false
             typedResolution = nil
             micStoppedByTyping = false
         }
@@ -488,18 +496,22 @@ final class RewriteController: ObservableObject {
             // app's selection is already safely captured before the panel takes
             // key (focus discipline §3 item 1). If the panel can't become key
             // (rare WindowServer states), we dismiss it and fall through to the
-            // pure voice+timeout flow — the timer is armed just below.
+            // pure voice flow — the wait is unbounded.
             presentTypedPanelIfEnabled(
                 systemPromptOverride: systemPromptOverride,
                 pickedTitle: pickedTitle,
                 augmentHint: trimmedHint
             )
 
-            try await waitForSecondToggle()
+            // ONLY the prompt-picker augment path (a picked prompt whose
+            // detail is optional) may auto-finish on silence. The plain
+            // Rewrite-with-Voice hotkey never does.
+            try await waitForSecondToggle(optionalDetail: systemPromptOverride != nil)
 
             // Focus discipline §3 item 3: order the panel out FIRST — key focus
             // returns to the target app — BEFORE any synthetic ⌘V fires below.
             instructionPanel?.dismiss()
+            typedPanelVisible = false
 
             // Did the panel resolve this run with a typed instruction (or an
             // explicit empty-⏎-after-typing default)? If so, the mic was
@@ -539,7 +551,7 @@ final class RewriteController: ObservableObject {
                 return
             }
 
-            // Voice path (empty ⏎ without typing, timeout, second hotkey, or
+            // Voice path (empty ⏎ without typing, second hotkey, Esc, or
             // mic disconnect). Typing supersedes speaking, so if a keystroke
             // stopped the mic there is by definition nothing worth
             // transcribing: salvage whatever is in the field instead.
@@ -722,7 +734,7 @@ final class RewriteController: ObservableObject {
 
     /// Present the typed-instruction panel when enabled, and wire its callbacks
     /// back into this run. A `false` (couldn't-become-key) return dismisses the
-    /// panel so we degrade cleanly to voice+timeout.
+    /// panel so we degrade cleanly to the voice path.
     ///
     /// Serves both paths, which want different things from the field:
     ///   * plain — a free-form instruction, plus the canned chips.
@@ -765,7 +777,9 @@ final class RewriteController: ObservableObject {
                 Task { @MainActor [weak self] in await self?.cancel() }
             }
         )
-        if !becameKey {
+        if becameKey {
+            typedPanelVisible = true
+        } else {
             instructionPanel.dismiss()
         }
     }
@@ -784,11 +798,9 @@ final class RewriteController: ObservableObject {
         ]
     }
 
-    /// First keystroke in the panel: cancel the 10 s mic timer (so it can't fire
-    /// mid-type), stop the mic (typing supersedes speaking), stop the pill
-    /// claiming to be listening, and re-arm a LONGER idle timer so an abandoned
-    /// panel auto-finishes rather than parking the continuation forever. The
-    /// parked continuation otherwise stays parked until the user submits/cancels.
+    /// First keystroke in the panel: stop the mic (typing supersedes speaking)
+    /// and stop the pill claiming to be listening. Nothing is armed — the run
+    /// waits for the user to submit or cancel, however long that takes.
     private func handlePanelFirstEdit() {
         guard !micStoppedByTyping else { return }
         micStoppedByTyping = true
@@ -799,17 +811,12 @@ final class RewriteController: ObservableObject {
                 await self?.pipeline.cancel(token: token)
             }
         }
-        // Replace the (now-cancelled) 10 s mic timer with a longer idle
-        // bound. Reuses the `secondToggleTimeoutTask` slot, so
-        // `takeSecondToggleContinuation()` cancels it on any resolve. On this
-        // resume the mic is dead → the voice-fallback branch salvages
-        // `currentPanelText` (or cleans up if empty).
-        secondToggleTimeoutTask?.cancel()
-        secondToggleTimeoutTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: Self.typedPanelIdleTimeout)
-            guard !Task.isCancelled else { return }
-            self?.resumeSecondToggle()
-        }
+        // Typing supersedes speaking, so the optional-detail silence window
+        // no longer applies — the user is plainly present and answering.
+        // Nothing replaces it: the panel waits for submit or cancel, however
+        // long that takes.
+        optionalDetailTask?.cancel()
+        optionalDetailTask = nil
     }
 
     /// Panel submit (⏎ or a chip). Records how the run resolved, then resumes
@@ -1182,22 +1189,51 @@ final class RewriteController: ObservableObject {
         }
     }
 
-    private func waitForSecondToggle() async throws {
+    /// Park until the run resolves. `optionalDetail` is the ONLY thing that
+    /// can arm an automatic finish, and only when the user stays silent —
+    /// see `armOptionalDetailWindow`.
+    private func waitForSecondToggle(optionalDetail: Bool = false) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             secondToggleContinuation = continuation
-            // Bound the wait. Auto-finish is identical to the user pressing the
-            // hotkey again — `resumeSecondToggle` funnels through
-            // `takeSecondToggleContinuation`, which atomically nils the
-            // continuation, so whichever of {timeout, toggle, disconnect,
-            // cancel} lands first wins and the rest are no-ops. Everything runs
-            // on the MainActor, so there is no interleaving between the
-            // isCancelled check and the nil-out.
-            secondToggleTimeoutTask = Task { @MainActor [weak self] in
-                try? await Task.sleep(for: Self.secondToggleTimeout)
-                guard !Task.isCancelled else { return }
-                self?.resumeSecondToggle()
-            }
+            if optionalDetail { armOptionalDetailWindow() }
         }
+    }
+
+    /// Prompt-picker augment path only: if the user says NOTHING, fall through
+    /// to the picked prompt's default rather than leaving them staring at a
+    /// pill asking for a detail they don't want to give.
+    ///
+    /// Silence has to be proven, never assumed. The window is only honoured
+    /// while a live transcript exists to prove it (`isActive`), any transcribed
+    /// speech cancels it permanently, and a grace period covers transcription
+    /// lag so someone who starts talking late is not judged silent.
+    private func armOptionalDetailWindow() {
+        optionalDetailTask?.cancel()
+        optionalDetailTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.optionalDetailSilenceWindow)
+            guard !Task.isCancelled, let self else { return }
+            guard !Self.heardSpeech else { return }
+            // Nothing transcribed yet — wait out the transcription lag before
+            // calling it silence.
+            try? await Task.sleep(for: Self.optionalDetailSpeechGrace)
+            guard !Task.isCancelled else { return }
+            guard !Self.heardSpeech else { return }
+            // No live transcript at all: we cannot prove silence, so we do
+            // nothing and wait for the user.
+            guard StreamingPartialStore.shared.isActive else {
+                self.log.info("optional-detail window elapsed but no live transcript — waiting for the user")
+                return
+            }
+            self.log.info("optional-detail window elapsed in silence — running the picked prompt with no detail")
+            self.resumeSecondToggle()
+        }
+    }
+
+    /// Has the live transcript produced any speech this session? The only
+    /// evidence that distinguishes "said nothing" from "is talking".
+    private static var heardSpeech: Bool {
+        !(StreamingPartialStore.shared.partial ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func resumeSecondToggle() {
@@ -1205,8 +1241,8 @@ final class RewriteController: ObservableObject {
     }
 
     private func takeSecondToggleContinuation() -> CheckedContinuation<Void, Error>? {
-        secondToggleTimeoutTask?.cancel()
-        secondToggleTimeoutTask = nil
+        optionalDetailTask?.cancel()
+        optionalDetailTask = nil
         let continuation = secondToggleContinuation
         secondToggleContinuation = nil
         return continuation

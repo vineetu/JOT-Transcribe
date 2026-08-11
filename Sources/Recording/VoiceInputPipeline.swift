@@ -68,6 +68,45 @@ final class VoiceInputPipeline {
     }
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "VoiceInputPipeline")
+
+    // MARK: - Capture marker (mic-live signal for processes outside the app)
+
+    /// Written while the mic is LIVE and removed the moment it stops, so
+    /// anything outside the app — an install script, a backup job, a future
+    /// updater — can tell whether it is about to interrupt someone speaking.
+    ///
+    /// This exists because every external heuristic is wrong. Watching the
+    /// recording file grow reads an active dictation as idle: M4A audio is
+    /// flushed in bursts, and a sampling window lands in a gap (it did, and it
+    /// cost the owner a dictation). The app is the only thing that actually
+    /// knows, so the app says so.
+    ///
+    /// The file carries the pid, so a reader can ignore a stale marker left by
+    /// a crash rather than being blocked forever. `phase` is the single source
+    /// of truth for the mic being open, hence publishing from its `didSet`:
+    /// there is no path to `.recording` that can forget to announce itself.
+    static let captureMarkerURL: URL = FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Jot/capture-in-progress.json")
+
+    private static func publishCaptureMarker(for phase: Phase) {
+        let fm = FileManager.default
+        guard case .recording(let token, let startedAt) = phase else {
+            try? fm.removeItem(at: captureMarkerURL)
+            return
+        }
+        let payload: [String: Any] = [
+            "pid": ProcessInfo.processInfo.processIdentifier,
+            "owner": String(describing: token.owner),
+            "startedAt": ISO8601DateFormatter().string(from: startedAt),
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+        try? fm.createDirectory(
+            at: captureMarkerURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try? data.write(to: captureMarkerURL, options: .atomic)
+    }
     private let capture: any AudioCapturing
     /// Phase 3 F4: holder is the single source of truth for the active
     /// `Transcribing` instance. Reading `transcriber` always returns
@@ -94,7 +133,9 @@ final class VoiceInputPipeline {
     /// the fallback never leaves a stale notice for a later recorder session.
     private(set) var lastTransientFallbackNotice: String?
 
-    private var phase: Phase = .idle
+    private var phase: Phase = .idle {
+        didSet { Self.publishCaptureMarker(for: phase) }
+    }
     private var generationCounter: UInt64 = 0
     private var transcribeWatchdog: Task<Void, Never>?
     /// Per-token disconnect ledger. The pipeline records a token's
