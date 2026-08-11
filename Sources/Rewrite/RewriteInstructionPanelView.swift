@@ -96,7 +96,7 @@ struct RewriteInstructionPanelView: View {
                     .foregroundStyle(.tint)
                     .padding(.vertical, 2)
                     .padding(.horizontal, 9)
-                    .background(Capsule().fill(JotTheme.current.accent.opacity(0.14)))
+                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
             } else {
                 Text("Rewrite selection")
                     .font(.system(size: 13, weight: .semibold))
@@ -152,7 +152,7 @@ struct RewriteInstructionPanelView: View {
         HStack(spacing: 2) {
             ForEach(0..<3, id: \.self) { index in
                 Capsule()
-                    .fill(JotTheme.current.accent)
+                    .fill(Color.accentColor)
                     .frame(width: 2.5, height: animateWave ? 12 : 4)
                     .animation(
                         .easeInOut(duration: 0.5)
