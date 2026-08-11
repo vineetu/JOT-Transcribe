@@ -256,26 +256,14 @@ if [[ -n "${JOT_SIMPLE_HOST_API_KEY:-}" ]]; then
     log "Uploading appcast + DMG to Simple Host (${JOT_SIMPLE_HOST_SITENAME})"
 
     UPLOAD_DIR="$(mktemp -d)"
-    cat > "${UPLOAD_DIR}/index.html" <<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Jot for Sony — Update Feed</title>
-<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:640px;margin:60px auto;padding:0 20px;color:#1a1a1a;line-height:1.5}h1{margin:0 0 8px 0}.sub{color:#666;margin-bottom:24px}a{color:#0066cc;text-decoration:none}a:hover{text-decoration:underline}</style>
-</head>
-<body>
-<h1>Jot for Sony</h1>
-<p class="sub">Internal Sparkle auto-update feed.</p>
-<p>Latest release: <strong>${TAG}</strong></p>
-<ul>
-<li><a href="appcast.xml">appcast.xml</a> — Sparkle feed</li>
-<li><a href="${JOT_FLAVOR_DMG_NAME}">${JOT_FLAVOR_DMG_NAME}</a> — DMG (latest)</li>
-</ul>
-<p class="sub" style="margin-top:40px;font-size:.85em">Contact: jot.transcribe@gmail.com</p>
-</body>
-</html>
-HTML
+    # The upload REPLACES the whole site, so every file the site needs must be
+    # in this payload. Ship the real downloads page (scripts/sony-assets/) —
+    # a generated placeholder here silently wiped it on every release.
+    if compgen -G "${REPO_ROOT}/scripts/sony-assets/*" >/dev/null; then
+        cp -R "${REPO_ROOT}/scripts/sony-assets/." "${UPLOAD_DIR}/"
+    else
+        fail "scripts/sony-assets/ missing — refusing to publish a site without its page"
+    fi
     cp "${APPCAST_DST}" "${UPLOAD_DIR}/appcast.xml"
     cp "${DMG_FINAL}" "${UPLOAD_DIR}/${JOT_FLAVOR_DMG_NAME}"
 
