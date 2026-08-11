@@ -94,7 +94,11 @@ struct PillView: View {
             // again stops AND pastes at cursor. Hidden in all other
             // states; the layout collapses cleanly via `if` so the
             // pill stays flush to the notch when idle / transcribing.
-            if isRecordingState {
+            // While the Rewrite typed panel is up it already states the
+            // prompt, the listening state, and which keys finish the run.
+            // Repeating both underneath the pill was stacked, duplicated
+            // furniture — the pill stays a bare recording indicator.
+            if isRecordingState && !model.typedPanelVisible {
                 // Prompt-Picker augment path: when the active Rewrite-with-Voice
                 // run is parameterized (e.g. Translate), show the picked prompt's
                 // hint so the user knows what detail to speak. Sits above the

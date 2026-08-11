@@ -86,6 +86,11 @@ final class PillViewModel: ObservableObject {
     /// Rewrite-with-Voice binding instead of the dictation toggle. Set by the
     /// rewrite vs. recorder state handlers; only read while `.recording`.
     @Published private(set) var isRewriteVoiceCapture: Bool = false
+    /// True while the Rewrite typed panel is on screen. The panel names the
+    /// prompt, shows the listening state, and states which keys finish — so
+    /// the pill's own hint banner and "Press … to stop" line are redundant
+    /// furniture stacked above it.
+    @Published private(set) var typedPanelVisible: Bool = false
 
     /// True while the user has tapped the recording pill to expand it
     /// into the multi-line streaming-transcript view. Only meaningful
@@ -207,6 +212,9 @@ final class PillViewModel: ObservableObject {
     /// recording pill can surface the per-use augment hint during a
     /// picker-augmented Rewrite with Voice capture.
     private var rewriteAugmentHintCancellable: AnyCancellable?
+    /// Mirrors `RewriteController.typedPanelVisible` so the pill can stand
+    /// down while the panel is saying the same things.
+    private var typedPanelCancellable: AnyCancellable?
     /// Subscriber on `StreamingPartialStore.shared.$partial`. Updates
     /// `latestPartial` and rebuilds the pill state when currently
     /// `.recording`. Same subscriber covers all three voice-capture
@@ -286,6 +294,18 @@ final class PillViewModel: ObservableObject {
                 .receive(on: DispatchQueue.main)
                 .sink { [weak self] hint in
                     self?.augmentHint = hint
+                }
+            typedPanelCancellable = rewriteController.$typedPanelVisible
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] visible in
+                    guard let self else { return }
+                    self.typedPanelVisible = visible
+                    // The panel becomes key slightly after the capture starts,
+                    // so the pill may already be on screen when this lands.
+                    if visible, case .recording = self.state {
+                        self.stopTick()
+                        self.transition(to: .hidden)
+                    }
                 }
         }
 
@@ -446,6 +466,15 @@ final class PillViewModel: ObservableObject {
         case .recording(let startedAt):
             isRewriteVoiceCapture = true
             recordingStartedAt = startedAt
+            // The typed panel is the whole interface for a Rewrite capture:
+            // it names the prompt, shows the listening state, and the words
+            // land in its own field. A pill above it was a second, competing
+            // window saying the same things.
+            guard !typedPanelVisible else {
+                stopTick()
+                transition(to: .hidden)
+                return
+            }
             transition(to: .recording(elapsed: Date().timeIntervalSince(startedAt), streamingPartial: latestPartial))
             startTick()
         case .transcribing:
