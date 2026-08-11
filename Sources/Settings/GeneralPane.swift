@@ -6,6 +6,10 @@ import ServiceManagement
 import SwiftUI
 
 struct GeneralPane: View {
+    /// Observed so the Appearance section re-renders on selection.
+    #if JOT_THEMES_ENABLED
+    @ObservedObject private var themeStore = ThemeStore.shared
+    #endif
     @AppStorage("jot.inputDeviceUID") private var inputDeviceUID: String = ""
     /// Cached human-readable name for the saved UID. Populated when the
     /// user selects a device from the picker and read by the
@@ -181,6 +185,23 @@ struct GeneralPane: View {
             // pane (Settings → Speaker labels, shown only when Advanced is on).
             // It is deliberately NOT surfaced here in General.
 
+            // Deliberately OUTSIDE the `advancedEnabled` gate below: picking a
+            // look is a plain preference, not a power-user setting.
+            // Themes: built, working, and deliberately not shipped. Nothing
+            // defines JOT_THEMES_ENABLED, so the picker compiles out of both
+            // either build.
+            // The toggle stays PUT when it is switched on: everything it
+            // reveals appears below it. Sitting at the bottom meant flipping
+            // it on shoved the control itself further down the page, away
+            // from where the user just tapped.
+            Section("Advanced") {
+                Toggle("Show advanced features", isOn: $advancedEnabled)
+                Text("Custom vocabulary, the Ask Jot chatbot, push-to-talk, and other power-user options.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
             if advancedEnabled {
             Section {
                 HStack {
@@ -344,17 +365,6 @@ struct GeneralPane: View {
             soundSection
             } // end if advancedEnabled
 
-            // Advanced toggle — bottom of General per iOS Settings
-            // convention. New users start off; completing the Setup
-            // Wizard auto-flips this on. Toggling never deletes data —
-            // hidden surfaces preserve their state on disk.
-            Section("Advanced") {
-                Toggle("Show advanced features", isOn: $advancedEnabled)
-                Text("Custom vocabulary, the Ask Jot chatbot, push-to-talk, and other power-user options.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
         }
         .formStyle(.grouped)
         // Migrated from the legacy `Alert(...primaryButton:secondaryButton:)`
@@ -762,6 +772,42 @@ struct GeneralPane: View {
         }
         return ParakeetModelID.visibleCases.first(where: { candidates.contains($0) })
     }
+
+    // MARK: - Appearance
+
+    /// Theme picker. A short curated list, never a colour picker — the point is
+    /// a few considered looks, not arbitrary customisation.
+    ///
+    /// Selecting "Default" restores the standard look instantly, and themes
+    /// follow the system light/dark setting rather than forcing one.
+    #if JOT_THEMES_ENABLED
+    @ViewBuilder
+    private var appearanceSection: some View {
+        Section("Appearance") {
+            Picker("Theme", selection: Binding(
+                get: { themeStore.theme },
+                set: { themeStore.select($0) }
+            )) {
+                ForEach(JotTheme.allCases, id: \.self) { theme in
+                    Text(theme.displayName).tag(theme)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Text(themeStore.theme.blurb)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if themeStore.theme != .default {
+                Text("Themes change colours and chimes only — your transcripts, "
+                     + "shortcuts and settings are untouched. Choose Default to "
+                     + "restore the standard look.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+    #endif
 
     // MARK: - Dictation delivery (relocated from TranscriptionPane, advanced-only)
 
