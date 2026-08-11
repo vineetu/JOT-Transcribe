@@ -107,3 +107,12 @@ tools/*/.build/
 CURRENT_DEBUG_STATE.md
 scripts/*-assets/
 .release-deny-patterns
+
+# Local flavor install helper (build + sign + install from the working tree).
+# Lives on disk only, like the other flavor tooling.
+scripts/install-*-local.sh
+
+# Flavor-only bundled assets, kept OUTSIDE Sources/ because `#if` gates Swift
+# compilation, not resource copying — anything under Sources/ ships in every
+# build regardless of flags.
+.flavor-assets/
