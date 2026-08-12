@@ -2,7 +2,7 @@
 
 `Vendor/jot-cli/jot` is the pre-built, self-contained `jot` command-line
 transcriber (source: `tools/jot-cli/`). It is bundled into
-`Jot.app/Contents/Helpers/jot` (signed, hardened runtime) by the
+`Jot.app/Contents/Helpers/jot-cli` (signed, hardened runtime) by the
 "Bundle Helpers" build phase — the same pattern as `Vendor/ffmpeg/ffmpeg`.
 
 It is **self-contained**: `otool -L` shows no non-system dylibs (FluidAudio and
@@ -25,7 +25,7 @@ Then rebuild the app; the "Bundle Helpers" phase re-copies + re-signs it.
 ## Usage
 
 ```
-jot transcribe <file> [--diarize] [-o out.vtt]
+jot-cli transcribe <file> [--diarize] [-o out.vtt]
 ```
 Output is WebVTT. `--diarize` adds `<v Speaker N>` voice tags (needs the
 diarizer model — run "Detect speakers" in the app once to download it).

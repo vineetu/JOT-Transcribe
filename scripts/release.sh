@@ -353,6 +353,10 @@ RELEASE_STAGE_PATHS=(
     # release commit would ship a binary nobody can reproduce from the tree.
     Vendor/jot-cli
     tools/jot-cli
+    # The project file drives what actually lands in the bundle (the Bundle
+    # Helpers phase names Contents/Helpers/jot-cli). Left out, a build could
+    # ship one thing while the committed tree rebuilds another.
+    Jot.xcodeproj/project.pbxproj
 )
 for path in "${RELEASE_STAGE_PATHS[@]}"; do
     [[ -e "${REPO_ROOT}/${path}" ]] || continue

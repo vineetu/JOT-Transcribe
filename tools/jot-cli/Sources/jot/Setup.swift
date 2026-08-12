@@ -29,11 +29,11 @@ enum Setup {
         /// What the user loses without it — the string `doctor` prints.
         var summary: String {
             switch self {
-            case .asr: return "Parakeet TDT v3 — `jot transcribe`"
-            case .streamEn: return "Nemotron streaming (en) — `jot --stream --language en`"
-            case .streamZh: return "Nemotron multilingual (zh) — `jot --stream --language zh`"
-            case .diarizer: return "speaker diarization — `jot transcribe --diarize`"
-            case .ffmpeg: return "audio/video decoding for `jot transcribe`"
+            case .asr: return "Parakeet TDT v3 — `\(programName) transcribe`"
+            case .streamEn: return "Nemotron streaming (en) — `\(programName) --stream --language en`"
+            case .streamZh: return "Nemotron multilingual (zh) — `\(programName) --stream --language zh`"
+            case .diarizer: return "speaker diarization — `\(programName) transcribe --diarize`"
+            case .ffmpeg: return "audio/video decoding for `\(programName) transcribe`"
             }
         }
 
@@ -125,7 +125,7 @@ enum Setup {
                 return "install ffmpeg (`brew install ffmpeg`), or run the CLI from inside Jot.app "
                     + "where it ships alongside"
             default:
-                return "run: jot setup --components \(rawValue)"
+                return "run: \(programName) setup --components \(rawValue)"
             }
         }
 
@@ -316,7 +316,7 @@ enum Setup {
         print("\nDownload \(downloadable.count == 1 ? "it" : "them") now? [Y/n] ", terminator: "")
         let answer = (readLine() ?? "").trimmingCharacters(in: .whitespaces).lowercased()
         guard answer.isEmpty || answer == "y" || answer == "yes" else {
-            print("Skipped. Re-run `jot setup --wizard` whenever you're ready.")
+            print("Skipped. Re-run `\(programName) setup --wizard` whenever you're ready.")
             return 1
         }
 
@@ -342,7 +342,7 @@ enum Setup {
             for component in blocked { print("  • \(component.rawValue) — \(component.hint)") }
         }
         let ok = !failed && blocked.isEmpty
-        print(ok ? "\nAll set." : "\nFinished with problems — `jot doctor --human` shows what's left.")
+        print(ok ? "\nAll set." : "\nFinished with problems — `\(programName) doctor --human` shows what's left.")
         return ok ? 0 : 1
     }
 
@@ -403,6 +403,6 @@ enum Setup {
     }
 
     private static func humanErr(_ s: String) {
-        FileHandle.standardError.write(Data("jot: \(s)\n".utf8))
+        FileHandle.standardError.write(Data("\(programName): \(s)\n".utf8))
     }
 }

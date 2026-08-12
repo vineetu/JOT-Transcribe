@@ -3,17 +3,24 @@ import Foundation
 
 let version = "0.1.0"
 
+/// How this binary was actually invoked. It ships inside Jot.app as `jot-cli`
+/// (and that is the name Homebrew puts on PATH), but it can equally be run from
+/// a build directory as `jot` — so the help text names whatever the user typed
+/// rather than asserting one of them.
+let programName: String =
+    URL(fileURLWithPath: CommandLine.arguments.first ?? "jot-cli").lastPathComponent
+
 let usage = """
-    jot — transcribe an audio/video file to WebVTT, with optional speaker diarization.
+    \(programName) — transcribe an audio/video file to WebVTT, with optional speaker diarization.
 
     USAGE:
-      jot setup [--wizard] [--all | --components <a,b>] [--force]
-      jot doctor [--human] [--all | --components <a,b>]
-      jot transcribe <file> [--diarize] [-o <out.vtt>] [--model-dir <dir>]
-      jot --stream --language <en|zh> [--rate 16000] [--encoding s16le]
+      \(programName) setup [--wizard] [--all | --components <a,b>] [--force]
+      \(programName) doctor [--human] [--all | --components <a,b>]
+      \(programName) transcribe <file> [--diarize] [-o <out.vtt>] [--model-dir <dir>]
+      \(programName) --stream --language <en|zh> [--rate 16000] [--encoding s16le]
                    [--endpoint auto|caller]
-      jot --help
-      jot --version
+      \(programName) --help
+      \(programName) --version
 
     STREAMING:
       --stream             Live transcription for pipe-driven callers: raw
@@ -39,7 +46,7 @@ let usage = """
                             Idempotent — a second run downloads nothing.
       doctor               Report what is installed and what isn't. JSON by
                             default (--human for prose). Exits 1 if anything
-                            is missing, so `jot doctor` works as a precondition
+                            is missing, so `doctor` works as a precondition
                             check.
       --components <list>  Comma-separated: asr, stream-en, stream-zh,
                             diarizer, ffmpeg. Defaults to asr, stream-en and
@@ -60,7 +67,7 @@ let usage = """
     """
 
 @MainActor func fail(_ message: String) -> Never {
-    FileHandle.standardError.write(Data("jot: error: \(message)\n".utf8))
+    FileHandle.standardError.write(Data("\(programName): error: \(message)\n".utf8))
     exit(1)
 }
 
@@ -79,7 +86,7 @@ if args.isEmpty || args.contains("--help") || args.contains("-h") {
     printUsageAndExit(0)
 }
 if args.contains("--version") {
-    print("jot \(version)")
+    print("\(programName) \(version)")
     exit(0)
 }
 
@@ -121,7 +128,7 @@ if args.contains("--stream") {
 }
 
 guard args[0] == "transcribe" else {
-    FileHandle.standardError.write(Data("jot: unknown command '\(args[0])'\n\n".utf8))
+    FileHandle.standardError.write(Data("\(programName): unknown command '\(args[0])'\n\n".utf8))
     printUsageAndExit(2)
 }
 args.removeFirst()
@@ -218,7 +225,7 @@ let diarizerRoot = ModelPaths.diarizerRoot
         diarization = try await DiarizeEngine.diarize(samples: samples, modelRoot: diarizerRoot)
     } catch {
         FileHandle.standardError.write(
-            Data("jot: warning: diarization failed (\(error)) — falling back to plain transcript\n".utf8))
+            Data("\(programName): warning: diarization failed (\(error)) — falling back to plain transcript\n".utf8))
         return buildPlainVTT(asr: asr)
     }
 
@@ -228,7 +235,7 @@ let diarizerRoot = ModelPaths.diarizerRoot
     let merged = CueBuilder.mergeAdjacent(rawSegments)
     guard !merged.isEmpty else {
         FileHandle.standardError.write(
-            Data("jot: note: no distinct speaker segments detected (single speaker, or audio not clean per-voice) — falling back to plain transcript\n".utf8))
+            Data("\(programName): note: no distinct speaker segments detected (single speaker, or audio not clean per-voice) — falling back to plain transcript\n".utf8))
         return buildPlainVTT(asr: asr)
     }
 

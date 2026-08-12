@@ -6,8 +6,8 @@
 # it is what people already have installed, and renaming it would orphan them.
 # scripts/publish-cask.sh copies this file into the tap.
 cask "mac" do
-  version "1.20"
-  sha256 "3730b9bd4aade28000ad4162f545702cc719869b6964a94eb4980a55e71a67e2"
+  version "1.20.1"
+  sha256 "b1bc3068d8571648f2d465ee08e99613c9a34b63873dd12c968eede8183498e5"
 
   url "https://github.com/vineetu/JOT-Transcribe/releases/download/v#{version}/Jot.dmg",
       verified: "github.com/vineetu/JOT-Transcribe/"
@@ -29,12 +29,13 @@ cask "mac" do
   depends_on macos: :sequoia
 
   app "Jot.app"
-  # The CLI already ships inside the bundle (Contents/Helpers/jot) — this only
-  # puts it on PATH. Installed as `jot-cli`, NOT `jot`: macOS has its own
-  # /usr/bin/jot (the BSD sequential-data utility) and homebrew-core has an
-  # unrelated `jot` formula, so that name would shadow one and collide with
-  # the other.
-  binary "#{appdir}/Jot.app/Contents/Helpers/jot", target: "jot-cli"
+  # The helper is named `jot-cli` inside the bundle, so no `target:` is needed
+  # and Homebrew tracks it as an ordinary artifact. Naming it `jot-cli` at the
+  # source (rather than renaming it here) matters: `target:` makes Homebrew
+  # write a `kMDItemAlternateNames` xattr onto the file, and macOS App
+  # Management forbids writing inside another app's signed bundle, which aborts
+  # the whole install. It is also not `jot` because macOS ships /usr/bin/jot.
+  binary "#{appdir}/Jot.app/Contents/Helpers/jot-cli"
 
   zap trash: [
     "~/Library/Application Support/Jot",

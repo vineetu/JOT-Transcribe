@@ -188,7 +188,7 @@ enum StreamRun {
     }
 
     private static func log(_ s: String) {
-        FileHandle.standardError.write(Data("jot --stream: \(s)\n".utf8))
+        FileHandle.standardError.write(Data("\(programName) --stream: \(s)\n".utf8))
     }
 
     // MARK: - Input events
@@ -308,7 +308,7 @@ final class NemotronEnEngine: StreamEngine, @unchecked Sendable {
 
     static func load() async throws -> NemotronEnEngine {
         FileHandle.standardError.write(
-            Data("jot --stream: loading Nemotron streaming (en, 1120 ms chunks; downloads on first run)…\n".utf8))
+            Data("\(programName) --stream: loading Nemotron streaming (en, 1120 ms chunks; downloads on first run)…\n".utf8))
         // ms1120 — the trained chunk and the app's own choice. The ms560 tier
         // failed CoreML load on this machine (MIL "zero shape" at E5RT compile,
         // 2026-08-08); do not lower without re-verifying on-device.
@@ -316,7 +316,7 @@ final class NemotronEnEngine: StreamEngine, @unchecked Sendable {
         try await manager.loadModels()
         let engine = NemotronEnEngine(manager: manager)
         await manager.setPartialCallback { [box = engine.box] text in box.set(text) }
-        FileHandle.standardError.write(Data("jot --stream: ready (en)\n".utf8))
+        FileHandle.standardError.write(Data("\(programName) --stream: ready (en)\n".utf8))
         return engine
     }
 
@@ -350,7 +350,7 @@ final class NemotronMultilingualEngine: StreamEngine, @unchecked Sendable {
 
     static func load(languageCode: String) async throws -> NemotronMultilingualEngine {
         FileHandle.standardError.write(
-            Data("jot --stream: loading Nemotron multilingual streaming (\(languageCode); downloads on first run)…\n".utf8))
+            Data("\(programName) --stream: loading Nemotron multilingual streaming (\(languageCode); downloads on first run)…\n".utf8))
         let variantDir = try await StreamingNemotronMultilingualAsrManager.downloadVariant(
             languageCode: languageCode)
         let manager = StreamingNemotronMultilingualAsrManager()
@@ -361,7 +361,7 @@ final class NemotronMultilingualEngine: StreamEngine, @unchecked Sendable {
         await manager.setLanguage(languageCode)
         let engine = NemotronMultilingualEngine(manager: manager)
         await manager.setPartialCallback { [box = engine.box] text in box.set(text) }
-        FileHandle.standardError.write(Data("jot --stream: ready (\(languageCode))\n".utf8))
+        FileHandle.standardError.write(Data("\(programName) --stream: ready (\(languageCode))\n".utf8))
         return engine
     }
 
