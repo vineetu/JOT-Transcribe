@@ -227,6 +227,20 @@ if [[ "${JOT_FLAVOR_NAME}" == "sony" ]]; then
     "${SCRIPT_DIR}/lib/assert-sony-plist.sh" "${PLIST}"
 fi
 
+# ---- 2.7. Refresh the bundled CLI helper -------------------------------------
+# Vendor/jot-cli/jot is what the "Bundle Helpers" phase copies into
+# Jot.app/Contents/Helpers, and what the Homebrew cask exposes on PATH as
+# `jot-cli`. It used to be refreshed by hand, so it silently shipped five weeks
+# behind its own source — the released app had no `--stream` at all while
+# Call Assist ran on it daily. Rebuilding here makes staleness impossible.
+log "Rebuilding the bundled jot CLI helper"
+(cd "${REPO_ROOT}/tools/jot-cli" && swift build -c release) ||
+    fail "jot CLI build failed — refusing to ship a stale helper"
+cp "${REPO_ROOT}/tools/jot-cli/.build/release/jot" "${REPO_ROOT}/Vendor/jot-cli/jot"
+chmod 755 "${REPO_ROOT}/Vendor/jot-cli/jot"
+"${REPO_ROOT}/Vendor/jot-cli/jot" --version >/dev/null ||
+    fail "the rebuilt jot CLI does not run"
+
 # ---- 3. Build, sign, notarize ------------------------------------------------
 log "Building DMG"
 bash "${SCRIPT_DIR}/build-dmg.sh"
@@ -236,6 +250,25 @@ if [[ "${DMG_FINAL}" != "${DMG_BUILT}" ]]; then
     [[ -f "${DMG_BUILT}" ]] || fail "Expected ${DMG_BUILT} from build-dmg.sh"
     log "Renaming $(basename "${DMG_BUILT}") -> $(basename "${DMG_FINAL}")"
     mv -f "${DMG_BUILT}" "${DMG_FINAL}"
+fi
+
+# ---- 4.5. Refresh the Homebrew cask ------------------------------------------
+# A cask pinned to a stale version+sha installs a stale app — the same trap the
+# bundled helper fell into. Rewrite both from the DMG that was just built, so
+# the cask cannot describe a release that no longer exists. Public only: the
+# flavor DMG is distributed internally and has no public download URL.
+CASK_FILE="${REPO_ROOT}/scripts/homebrew/mac.rb"
+if [[ -z "${JOT_FLAVOR_NAME}" && -f "${CASK_FILE}" ]]; then
+    cask_sha="$(shasum -a 256 "${DMG_FINAL}" | awk '{print $1}')"
+    [[ -n "${cask_sha}" ]] || fail "could not checksum ${DMG_FINAL} for the cask"
+    /usr/bin/sed -i '' \
+        -e "s|^  version \".*\"|  version \"${VERSION}\"|" \
+        -e "s|^  sha256 \".*\"|  sha256 \"${cask_sha}\"|" \
+        "${CASK_FILE}"
+    grep -q "  version \"${VERSION}\"" "${CASK_FILE}" ||
+        fail "cask version rewrite did not take — check ${CASK_FILE}"
+    log "Cask updated: version ${VERSION}, sha256 ${cask_sha}"
+    log "Publish it with: scripts/publish-cask.sh   (pushes to the Homebrew tap)"
 fi
 
 # ---- 5. Generate appcast (opt-out) -------------------------------------------
@@ -316,6 +349,10 @@ RELEASE_STAGE_PATHS=(
     README.md
     CLAUDE.md
     .gitignore
+    # The helper rebuilt in step 2.7, plus its source. Without these the
+    # release commit would ship a binary nobody can reproduce from the tree.
+    Vendor/jot-cli
+    tools/jot-cli
 )
 for path in "${RELEASE_STAGE_PATHS[@]}"; do
     [[ -e "${REPO_ROOT}/${path}" ]] || continue

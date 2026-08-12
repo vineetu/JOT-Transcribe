@@ -7,9 +7,43 @@ let usage = """
     jot — transcribe an audio/video file to WebVTT, with optional speaker diarization.
 
     USAGE:
+      jot setup [--wizard] [--all | --components <a,b>] [--force]
+      jot doctor [--human] [--all | --components <a,b>]
       jot transcribe <file> [--diarize] [-o <out.vtt>] [--model-dir <dir>]
+      jot --stream --language <en|zh> [--rate 16000] [--encoding s16le]
+                   [--endpoint auto|caller]
       jot --help
       jot --version
+
+    STREAMING:
+      --stream             Live transcription for pipe-driven callers: raw
+                            16 kHz mono s16le PCM on stdin, one JSON object
+                            per line on stdout ({"type":"partial"|"final",
+                            "text":"…"}). en uses Nemotron streaming; zh uses
+                            Nemotron multilingual with the language pinned.
+                            Models download on first run. Logs go to stderr.
+      --endpoint <mode>    Who decides an utterance ended (default auto).
+                            auto   — finalize once the partial stops changing
+                                     for ~1.8 s of audio. Self-contained, but
+                                     that wait is dead air in a conversation.
+                            caller — finalize on SIGUSR1. For callers that
+                                     already run VAD or a turn model: the final
+                                     lands one decode after the signal instead
+                                     of ~1.8 s later. The auto rule stays armed
+                                     at 8 s as a safety net.
+
+    SETUP:
+      setup                Download whatever this machine is missing. Prints
+                            one JSON object and never prompts, so it is safe to
+                            script; add --wizard for the interactive version.
+                            Idempotent — a second run downloads nothing.
+      doctor               Report what is installed and what isn't. JSON by
+                            default (--human for prose). Exits 1 if anything
+                            is missing, so `jot doctor` works as a precondition
+                            check.
+      --components <list>  Comma-separated: asr, stream-en, stream-zh,
+                            diarizer, ffmpeg. Defaults to asr, stream-en and
+                            ffmpeg; --all covers everything.
 
     OPTIONS:
       --diarize            Run offline speaker diarization and label cues
@@ -47,6 +81,43 @@ if args.isEmpty || args.contains("--help") || args.contains("-h") {
 if args.contains("--version") {
     print("jot \(version)")
     exit(0)
+}
+
+if args[0] == "batch" {
+    await runBatch(Array(args.dropFirst()))
+    exit(0)
+}
+
+if args[0] == "setup" {
+    exit(await Setup.runSetup(Array(args.dropFirst())))
+}
+
+if args[0] == "doctor" {
+    exit(Setup.runDoctor(Array(args.dropFirst())))
+}
+
+if args.contains("--stream") {
+    args.removeAll { $0 == "--stream" }
+    @MainActor func streamOpt(_ name: String, default def: String) -> String {
+        if let i = args.firstIndex(of: name), i + 1 < args.count {
+            let v = args[i + 1]
+            args.removeSubrange(i...(i + 1))
+            return v
+        }
+        return def
+    }
+    let language = streamOpt("--language", default: "en")
+    let rate = Int(streamOpt("--rate", default: "16000")) ?? 0
+    let encoding = streamOpt("--encoding", default: "s16le")
+    let endpointRaw = streamOpt("--endpoint", default: "auto")
+    guard let endpoint = StreamRun.Endpointing(rawValue: endpointRaw) else {
+        fail("--endpoint must be auto or caller (got '\(endpointRaw)')")
+    }
+    guard args.isEmpty else {
+        fail("unrecognized arguments for --stream: \(args.joined(separator: " "))")
+    }
+    exit(await StreamRun.run(
+        language: language, rate: rate, encoding: encoding, endpoint: endpoint))
 }
 
 guard args[0] == "transcribe" else {

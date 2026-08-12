@@ -23,16 +23,33 @@ enum FFmpegDecodeError: Error, CustomStringConvertible {
 /// same shape `AudioCapture` produces in the app.
 ///
 enum FFmpegDecoder {
-    /// Resolve ffmpeg: prefer the sibling next to THIS executable (the bundled
-    /// layout — `jot` and `ffmpeg` both live in `Jot.app/Contents/Helpers/`),
-    /// falling back to the repo checkout for standalone `swift run` dev use.
+    /// Resolve ffmpeg, in the order that is right for whoever is running us:
+    ///   1. the sibling next to THIS executable — the bundled layout, where
+    ///      `jot` and `ffmpeg` both live in `Jot.app/Contents/Helpers/`
+    ///   2. `$PATH` — a CLI installed on its own (Homebrew, a build box) has no
+    ///      sibling, and a hardcoded developer path made it work on exactly one
+    ///      machine in the world
+    ///   3. the repo checkout, for `swift run` during development
     static let ffmpegPath: String = {
         if let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() {
             let sibling = exe.deletingLastPathComponent().appendingPathComponent("ffmpeg").path
             if FileManager.default.isExecutableFile(atPath: sibling) { return sibling }
         }
+        if let onPath = searchPath(for: "ffmpeg") { return onPath }
         return "/Users/vsriram/code/jot/Vendor/ffmpeg/ffmpeg"
     }()
+
+    /// `$PATH` lookup without shelling out to `which` (which would need a
+    /// shell we may not have, and costs a process on every launch).
+    private static func searchPath(for tool: String) -> String? {
+        guard let path = ProcessInfo.processInfo.environment["PATH"] else { return nil }
+        for dir in path.split(separator: ":") where !dir.isEmpty {
+            let candidate = URL(fileURLWithPath: String(dir), isDirectory: true)
+                .appendingPathComponent(tool).path
+            if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
+        }
+        return nil
+    }
 
     static func decodeToMono16k(_ inputPath: String) throws -> [Float] {
         guard FileManager.default.fileExists(atPath: ffmpegPath) else {
