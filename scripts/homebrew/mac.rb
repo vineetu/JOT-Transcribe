@@ -6,8 +6,8 @@
 # it is what people already have installed, and renaming it would orphan them.
 # scripts/publish-cask.sh copies this file into the tap.
 cask "mac" do
-  version "1.19"
-  sha256 "eeb940989d008498376b9d81b8fb2f0b36d65b6432a1d424f20b8af377263b10"
+  version "1.20"
+  sha256 "3730b9bd4aade28000ad4162f545702cc719869b6964a94eb4980a55e71a67e2"
 
   url "https://github.com/vineetu/JOT-Transcribe/releases/download/v#{version}/Jot.dmg",
       verified: "github.com/vineetu/JOT-Transcribe/"
