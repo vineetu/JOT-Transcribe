@@ -17,6 +17,7 @@ A macOS utility that turns a hotkey press into typed text. The user presses a sh
 - **Cancel.** A dedicated shortcut discards the current recording without transcribing. The cancel key is only claimed while a recording is active, so it doesn't interfere with other apps.
 - **No length limit.** Recordings of arbitrary duration transcribe reliably.
 - **Automatic transcription.** Transcription runs immediately after the recording ends.
+- **Optional audio takeover.** The user can opt in to having other applications' audio silenced for the duration of a recording, restored exactly when it ends. Off by default, since it mutates system audio state. It must be a no-op when nothing else is playing, must never be triggered by Jot's own sounds, and must restore on every exit — including cancellation, a mid-recording device disconnect, and an unclean quit. Restoring is the hard requirement: leaving a machine muted with no on-screen explanation is a worse failure than not muting at all. Note this is *silencing*, not *pausing* — macOS exposes no supported way for an app to pause another app's playback.
 - **Re-transcription.** The user can re-run transcription on any past recording.
 
 ### Transcription

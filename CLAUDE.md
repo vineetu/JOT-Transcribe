@@ -23,7 +23,7 @@ Single Xcode project, one executable target. Each layer is a Swift function boun
 | **Ask Jot** | Conversational help chatbot pane; grounded in bundled `help-content.md`; Apple Intelligence default, optional cloud routing; markdown answers, voice input, and in-app feature citations |
 | **AskJot/Cloud** | Provider-specific streaming adapters (`OpenAI`, `Anthropic`, `Gemini`, `Ollama`) plus inline tool-calling for feature-slug navigation when cloud Ask Jot is enabled |
 | **Overlay** | `NSPanel`-hosted SwiftUI status indicator (Dynamic Island-style pill under the notch) |
-| **Recording** | `AVAudioEngine` tap → converter → buffer + WAV on disk; hotkey routing with dynamic Escape; CoreAudio device pinning |
+| **Recording** | `AVAudioEngine` tap → converter → buffer + WAV on disk; hotkey routing with dynamic Escape; CoreAudio device pinning; optional audio takeover (mute other apps while listening) |
 | **Transcription** | FluidAudio wrapper (single in-flight), post-processing, model download/load |
 | **Delivery** | Clipboard sandwich: save → write → synthetic `⌘V` → restore; optional auto-Enter |
 | **Library** | SwiftData models — `Recording` (dictation) + `RewriteSession` (rewrite runs) — and the merged `LibraryItem`-driven Home list, detail views, playback (recordings only), and per-row actions |
@@ -50,7 +50,14 @@ Sources/
   MenuBar/        ← NSStatusItem + NSMenu
   Overlay/        ← NSPanel status-indicator pill
   Home/           ← Landing pane + full recordings browser
-  Recording/      ← AVAudioEngine capture, converter, hotkey routing
+  Recording/      ← AVAudioEngine capture, converter, hotkey routing.
+                    `VoiceInputPipeline` is the ONE seam every recording path
+                    goes through (dictation, Rewrite with Voice, picker voice
+                    augment, Ask Jot voice) — hook cross-cutting recording
+                    behaviour there, not in the individual controllers.
+                    `AudioTakeover` (opt-in "silence other audio") is wired
+                    exactly that way: begin on start, restore on all three
+                    exits — stop, cancel, and mid-recording device disconnect
   Transcription/  ← FluidAudio wrapper, post-processing, model I/O
                     (the deterministic cleanup chain — NumberNormalizer /
                     ParagraphSegmenter / FillerWordCleaner — lives in the
