@@ -34,6 +34,7 @@ struct AskHeightKey: PreferenceKey {
 /// ease-in-out fade with no spring.
 struct PillView: View {
     @ObservedObject var model: PillViewModel
+    @ObservedObject private var aiProgress = AIProgressStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Movable pill (v2, design §B/§D.3): the controller installs this so the
@@ -155,11 +156,11 @@ struct PillView: View {
                 }
             case .rewriting:
                 pillBody {
-                    RewritingContent(reduceMotion: reduceMotion)
+                    RewritingContent(reduceMotion: reduceMotion, progress: aiProgress.progress, streamedCharacters: aiProgress.streamedCharacters)
                 }
             case .transforming:
                 pillBody {
-                    TransformingContent(reduceMotion: reduceMotion)
+                    TransformingContent(reduceMotion: reduceMotion, progress: aiProgress.progress, streamedCharacters: aiProgress.streamedCharacters)
                 }
             case .success(let preview):
                 pillBody {
@@ -818,22 +819,49 @@ private struct ThreeDotLoader: NSViewRepresentable {
 
 private struct RewritingContent: View {
     let reduceMotion: Bool
+    /// Determinate progress (0...1) when this prompt's output length can be
+    /// predicted from the user's own history; nil keeps the indeterminate
+    /// loader. Streaming the text itself was tried first and rejected — the
+    /// stream runs faster than reading speed, so a scrolling tail read as noise.
+    var progress: Double?
+    /// Characters streamed so far, shown as an approximate word count. Keeps
+    /// moving even once the bar is pinned at its 90% ceiling.
+    var streamedCharacters: Int = 0
+
+    private var wordish: Int { max(0, streamedCharacters / 5) }
 
     var body: some View {
         HStack(spacing: 10) {
             Circle()
                 .fill(pillSignalTint)
                 .frame(width: 7, height: 7)
-            ThreeDotLoader(reduceMotion: reduceMotion)
+            if progress == nil { ThreeDotLoader(reduceMotion: reduceMotion) }
             Spacer(minLength: 4)
             // Static text — the CA-backed ThreeDotLoader above is the sole
             // "it's working" signal. A `repeatForever` SwiftUI opacity pulse
             // here used to freeze alongside the old timer-driven dots
             // whenever the main thread was blocked (Apple Intelligence
             // rewrite); removing it means nothing on the pill can look frozen.
-            Text("Rewriting")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(wordish > 0 ? "Rewriting · \(wordish) words" : "Rewriting")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                if let progress {
+                    // The store caps this at 90% until the stream truly ends,
+                    // so the bar never sits full while work continues.
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(.white.opacity(0.18))
+                            Capsule().fill(pillSignalTint)
+                                .frame(width: max(3, geo.size.width * progress))
+                        }
+                    }
+                    .frame(height: 3)
+                    .animation(.easeOut(duration: 0.18), value: progress)
+                }
+            }
+            .frame(maxWidth: 190, alignment: .leading)
             AppLabel()
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))
@@ -871,20 +899,47 @@ private struct CondensingContent: View {
 
 private struct TransformingContent: View {
     let reduceMotion: Bool
+    /// Determinate progress (0...1) when this prompt's output length can be
+    /// predicted from the user's own history; nil keeps the indeterminate
+    /// loader. Streaming the text itself was tried first and rejected — the
+    /// stream runs faster than reading speed, so a scrolling tail read as noise.
+    var progress: Double?
+    /// Characters streamed so far, shown as an approximate word count. Keeps
+    /// moving even once the bar is pinned at its 90% ceiling.
+    var streamedCharacters: Int = 0
+
+    private var wordish: Int { max(0, streamedCharacters / 5) }
 
     var body: some View {
         HStack(spacing: 10) {
             Circle()
                 .fill(Color(nsColor: .systemPurple))
                 .frame(width: 7, height: 7)
-            ThreeDotLoader(reduceMotion: reduceMotion)
+            if progress == nil { ThreeDotLoader(reduceMotion: reduceMotion) }
             Spacer(minLength: 4)
             // Static text — see ThreeDotLoader's doc comment and
             // RewritingContent above for why the old repeatForever pulse
             // was removed (it froze in lockstep with the timer-driven dots).
-            Text("Cleaning up")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.9))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(wordish > 0 ? "Cleaning up · \(wordish) words" : "Cleaning up")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+                if let progress {
+                    // The store caps this at 90% until the stream truly ends,
+                    // so the bar never sits full while work continues.
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(.white.opacity(0.18))
+                            Capsule().fill(pillSignalTint)
+                                .frame(width: max(3, geo.size.width * progress))
+                        }
+                    }
+                    .frame(height: 3)
+                    .animation(.easeOut(duration: 0.18), value: progress)
+                }
+            }
+            .frame(maxWidth: 190, alignment: .leading)
             AppLabel()
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))

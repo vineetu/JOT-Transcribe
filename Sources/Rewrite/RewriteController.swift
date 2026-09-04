@@ -238,6 +238,14 @@ final class RewriteController: ObservableObject {
     /// Composition uses `effectiveModel(for:)` (with `provider.defaultModel`
     /// fallback) rather than the raw `model(for:)` so the label reflects
     /// the SKU that will actually answer. See plan §3 for the full rule.
+    /// The string a session is recorded under, so the estimator looks up the
+    /// same key it will later be trained on. The fixed path stores the resolved
+    /// prompt TITLE, not the literal instruction.
+    private func progressInstructionKey(_ instruction: String?) -> String {
+        if let instruction, !instruction.isEmpty { return instruction }
+        return defaultRewriteResolver?()?.title ?? Self.fixedInstruction
+    }
+
     private func snapshotModelLabel() -> String {
         let provider = llmConfiguration.provider
         let display = provider.displayName
@@ -899,10 +907,20 @@ final class RewriteController: ObservableObject {
         state = .rewriting
         let service = rewriteService()
         let modelLabel = snapshotModelLabel()
+        // Length estimate for the pill's progress bar, measured from this
+        // user's own history for THIS prompt. Returns nil for prompts whose
+        // output length is unpredictable (extraction-style), which keeps the
+        // pill on its indeterminate loader rather than showing a bar that lies.
+        let expectedChars = RewriteLengthEstimator.expectedOutputCharacters(
+            selectionLength: selectedText.count,
+            instruction: progressInstructionKey(instruction),
+            context: modelContext
+        )
         let rewritten = try await service.rewrite(
             selectedText: selectedText,
             instruction: instruction,
-            systemPromptOverride: systemPromptOverride
+            systemPromptOverride: systemPromptOverride,
+            expectedOutputChars: expectedChars
         )
         try Task.checkCancellation()
         if let activeToken, !pipeline.stillActive(activeToken) { return }

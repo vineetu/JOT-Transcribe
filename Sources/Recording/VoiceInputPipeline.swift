@@ -244,6 +244,15 @@ final class VoiceInputPipeline {
         phase = .recording(token, startedAt: Date())
         disconnectCallback = onDisconnect
 
+        // "Take over the mic": silence other apps for the duration of the
+        // recording. Hooked HERE rather than in the three controllers because
+        // every recording path — dictation, Rewrite with Voice, the picker's
+        // voice augment, Ask Jot voice — funnels through this one call. Opt-in,
+        // and a no-op when nothing else is playing.
+        if UserDefaults.standard.bool(forKey: "jot.audio.silenceOthersWhileRecording") {
+            AudioTakeover.shared.begin()
+        }
+
         // Streaming option: bring up the streaming session BEFORE
         // `capture.start()` so the audio sink is wired and the
         // streaming engine has a per-session AsyncStream continuation
@@ -316,6 +325,11 @@ final class VoiceInputPipeline {
                 // already ended, the late event is dropped.
                 guard self.stillActive(token) else { return }
                 self.disconnectedGenerations.insert(token.generation)
+                // The device vanished mid-recording. This is the path Wispr
+                // Flow gets wrong (audio stays muted after a headphone pull),
+                // so restore here too — the device we muted may itself be gone,
+                // and end() is a no-op if there is nothing to undo.
+                AudioTakeover.shared.end()
                 self.disconnectCallback?()
                 // One disconnect per session — bail out of the loop.
                 break
@@ -324,6 +338,11 @@ final class VoiceInputPipeline {
     }
 
     func stopAndTranscribe(_ token: Token) async throws -> StopAndTranscribeResult {
+        // Restore before anything that can throw. A stuck mute leaves the
+        // machine silent with nothing on screen to explain it — Wispr Flow
+        // ships that exact bug on mid-dictation headphone disconnect — so every
+        // exit restores, unconditionally and idempotently.
+        AudioTakeover.shared.end()
         guard case .recording(let current, _) = phase, current == token else {
             throw PipelineError.tokenStale
         }
@@ -392,6 +411,7 @@ final class VoiceInputPipeline {
     }
 
     func cancel(token: Token) async {
+        AudioTakeover.shared.end()
         let isRecordingPhase: Bool
         switch phase {
         case .recording(let current, _) where current == token:

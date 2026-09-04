@@ -50,6 +50,16 @@ protocol AIService: Sendable {
     /// shape so harness conformers don't need to implement this.
     func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String?) async throws -> String
 
+    /// As above, plus an expected output length for the pill's progress bar.
+    /// Defaulted in an extension so conformers that cannot estimate (tests,
+    /// fakes) are unaffected.
+    func rewrite(
+        selectedText: String,
+        instruction: String?,
+        systemPromptOverride: String?,
+        expectedOutputChars: Int?
+    ) async throws -> String
+
     /// Stream an Ask Jot turn. Returns a delta-token stream; consumers
     /// accumulate into the assistant bubble. Provider-specific errors
     /// are propagated verbatim through the stream.
@@ -72,6 +82,19 @@ extension AIService {
     /// to `LLMClient.rewrite(...:systemPromptOverride:)`. Test seams
     /// that don't care about the picker get picker-less behavior for
     /// free.
+    func rewrite(
+        selectedText: String,
+        instruction: String?,
+        systemPromptOverride: String?,
+        expectedOutputChars: Int?
+    ) async throws -> String {
+        try await rewrite(
+            selectedText: selectedText,
+            instruction: instruction,
+            systemPromptOverride: systemPromptOverride
+        )
+    }
+
     func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String?) async throws -> String {
         try await rewrite(selectedText: selectedText, instruction: instruction)
     }
@@ -309,6 +332,22 @@ struct AppleAIService: AIService {
     }
 
     func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String?) async throws -> String {
+        try await rewrite(
+            selectedText: selectedText,
+            instruction: instruction,
+            systemPromptOverride: systemPromptOverride,
+            expectedOutputChars: nil
+        )
+    }
+
+    /// The estimate-carrying variant — the only one that can drive a
+    /// determinate pill. The others funnel into this.
+    func rewrite(
+        selectedText: String,
+        instruction: String?,
+        systemPromptOverride: String?,
+        expectedOutputChars: Int?
+    ) async throws -> String {
         let client = LLMClient(
             session: urlSession,
             appleClient: appleClient,
@@ -318,7 +357,8 @@ struct AppleAIService: AIService {
         return try await client.rewrite(
             selectedText: selectedText,
             instruction: instruction,
-            systemPromptOverride: systemPromptOverride
+            systemPromptOverride: systemPromptOverride,
+            expectedOutputChars: expectedOutputChars
         )
     }
 

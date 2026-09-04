@@ -91,6 +91,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     private var windowObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // If a previous run died mid-recording with the output device muted,
+        // the Mac is silent right now and nothing on screen says why. Undo it
+        // before anything else. No-op in the normal case.
+        AudioTakeover.shared.restorePendingAfterCrash()
         // One-shot Advanced-mode migration (v1.13). Must run BEFORE any
         // SwiftUI scene materializes so `@AppStorage("jot.advanced.enabled")`
         // bindings in `AppSidebar` / `JotAppWindow` see the seeded value on

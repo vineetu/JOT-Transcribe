@@ -56,6 +56,10 @@ struct GeneralPane: View {
 
     // ---- Relocated from SoundPane (v1.15 IA collapse) ----
     @AppStorage("jot.sound.recordingStart") private var soundRecordingStart: Bool = true
+    /// "Take over the mic": mute other apps' audio for the duration of a
+    /// recording. OFF by default — it changes system audio state, which is not
+    /// something to opt a user into silently.
+    @AppStorage("jot.audio.silenceOthersWhileRecording") private var silenceOthersWhileRecording: Bool = false
     @AppStorage("jot.sound.articulateStart") private var soundRewriteStart: Bool = true
     @AppStorage("jot.sound.recordingStop") private var soundRecordingStop: Bool = true
     @AppStorage("jot.sound.recordingCancel") private var soundRecordingCancel: Bool = true
@@ -998,6 +1002,20 @@ struct GeneralPane: View {
                 .textSelection(.enabled)
         } header: {
             Text("Sound")
+        }
+
+        Section {
+            Toggle(isOn: $silenceOthersWhileRecording) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Silence other audio while recording")
+                    Text("Mutes your output device while Jot is listening, then restores it.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch)
+        } header: {
+            Text("Microphone")
         }
 
         Section {

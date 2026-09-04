@@ -51,7 +51,12 @@ actor LLMClient {
     /// the picked prompt is hand-written to do its job in a single
     /// block. `instruction` is still respected; pass `nil` for ⏎-apply,
     /// pass a voice tweak for ⌘⏎-apply.
-    func rewrite(selectedText: String, instruction: String?, systemPromptOverride: String? = nil) async throws -> String {
+    func rewrite(
+        selectedText: String,
+        instruction: String?,
+        systemPromptOverride: String? = nil,
+        expectedOutputChars: Int? = nil
+    ) async throws -> String {
         let config = await MainActor.run { [llmConfiguration] in
             let c = llmConfiguration
             let p = c.provider
@@ -108,20 +113,9 @@ actor LLMClient {
             systemPrompt += "\n\n" + RewritePrompt.speakerLabelRule
         }
 
-        // On-device Apple Intelligence short-circuits the HTTP path entirely.
-        if config.provider == .appleIntelligence {
-            do {
-                return try await appleClient.rewrite(
-                    selectedText: selectedText,
-                    instruction: instruction,
-                    branchPrompt: systemPrompt
-                )
-            } catch {
-                let mapped = mapError(error)
-                logLLMError(mapped, provider: config.provider, request: nil, streaming: false, op: "rewrite")
-                throw mapped
-            }
-        }
+        // NOTE: Apple Intelligence short-circuits the HTTP path, but that branch
+        // now lives BELOW, after `userPrompt` is composed — it needs the same
+        // XML-wrapped prompt the HTTP providers get in order to stream it.
 
         if config.provider.requiresUserAPIKey {
             guard !config.apiKey.isEmpty else {
@@ -158,6 +152,60 @@ actor LLMClient {
                 """
         }
 
+        if config.provider == .appleIntelligence {
+            do {
+                // Apple DOES stream — `streamChat` drives
+                // `LanguageModelSession.streamResponse(to:)` — so drive the
+                // rewrite through it rather than the single-shot `respond(to:)`,
+                // otherwise the default provider on public builds is the one
+                // provider whose pill looks frozen. (The documented refusal bug
+                // is specific to `@Generable` guided generation, not to
+                // streaming, so this does not reintroduce it.)
+                //
+                // Any failure falls back to the non-streaming call below: the
+                // pill then shows its static label and the finished text still
+                // arrives via `.success`. Progress is a nicety; the rewrite is not.
+                let streamToken = UInt64.random(in: .min ... .max)
+                let expected = expectedOutputChars
+                await MainActor.run {
+                    AIProgressStore.shared.begin(token: streamToken, expectedCharacters: expected)
+                }
+                defer { Task { @MainActor in AIProgressStore.shared.end(token: streamToken) } }
+                let chatRequest = AIChatRequest(
+                    messages: [AIChatMessage(role: .user, content: userPrompt)],
+                    systemInstructions: systemPrompt,
+                    maxTokens: 64000,
+                    session: nil
+                )
+                var streamed = ""
+                do {
+                    for try await delta in appleClient.streamChat(request: chatRequest) {
+                        streamed += delta
+                        // Snapshot before hopping actors: `streamed` is a local
+                        // var and Swift 6 forbids capturing it concurrently.
+                        let n = streamed.count
+                        await MainActor.run {
+                            AIProgressStore.shared.publish(streamedCharacters: n, token: streamToken)
+                        }
+                    }
+                } catch {
+                    streamed = ""   // fall through to the single-shot path
+                }
+                let trimmedStream = streamed.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmedStream.isEmpty { return trimmedStream }
+
+                return try await appleClient.rewrite(
+                    selectedText: selectedText,
+                    instruction: instruction,
+                    branchPrompt: systemPrompt
+                )
+            } catch {
+                let mapped = mapError(error)
+                logLLMError(mapped, provider: config.provider, request: nil, streaming: true, op: "rewrite")
+                throw mapped
+            }
+        }
+
         var request = try await buildRequest(
             provider: config.provider,
             baseURL: config.baseURL,
@@ -175,7 +223,33 @@ actor LLMClient {
         // — this override only affects what happens AFTER the first byte.
         request.timeoutInterval = 60
 
-        return try await performLLMRequest(provider: config.provider, request: request)
+        // Surface streaming progress. The deltas were always arriving — every
+        // provider except Apple Intelligence streams — but they were accumulated
+        // silently, so a long rewrite was indistinguishable from a hung one.
+        // Reuses the dictation partial store because the pill already subscribes
+        // to it; the token guards against a stale rewrite publishing over a
+        // newer one.
+        // Progress, not text. The stream is usually far faster than reading
+        // speed, so a scrolling tail was noise; what the user actually wants to
+        // know is "is it working, and how much is left". `expectedOutputChars`
+        // comes from the caller's own history for this prompt (nil ⇒ the pill
+        // stays indeterminate rather than showing a bar that would lie).
+        let streamToken = UInt64.random(in: .min ... .max)
+        let expected = expectedOutputChars
+        await MainActor.run {
+            AIProgressStore.shared.begin(token: streamToken, expectedCharacters: expected)
+        }
+        defer { Task { @MainActor in AIProgressStore.shared.end(token: streamToken) } }
+        return try await performLLMRequest(
+            provider: config.provider,
+            request: request,
+            onDelta: { partial in
+                let n = partial.count
+                Task { @MainActor in
+                    AIProgressStore.shared.publish(streamedCharacters: n, token: streamToken)
+                }
+            }
+        )
     }
 
     /// Generic system+user completion. No XML wrapping, no rewrite-specific
@@ -411,15 +485,18 @@ actor LLMClient {
 
         var body: [String: Any] = [
             "model": model,
-            // Long-form rewrites (a paragraphs-long dictation, a whole
-            // chat transcript) routinely exceed the 4096-token cap
-            // that shipped with v1.5; the response truncates mid-sentence
-            // and the paste-back surfaces a half-rewritten selection.
-            // Haiku 4.5 supports 64K output tokens — 16K is well within
-            // budget and covers every dictation-length we've observed
-            // in practice. Anthropic doesn't bill for unused output, so
-            // setting this high has no cost when the rewrite is short.
-            "max_tokens": 16384,
+            // `max_tokens` is REQUIRED by the Messages API — it cannot be
+            // omitted — so "no limit" means "the model's own ceiling".
+            // 64000 is the full output budget of every model in
+            // `ModelCatalog` (Haiku 4.5's hard max; Sonnet 5 allows
+            // 128K but accepts this). The v1.5 cap of 4096 truncated
+            // long rewrites mid-sentence, and v1.13's 16384 was still
+            // an arbitrary ceiling below the model's real one. Anthropic
+            // bills only tokens actually generated, so a high cap costs
+            // nothing on a short rewrite. If a model with a smaller
+            // output budget is ever added to the catalog, the API will
+            // reject this with a 400 — size per model at that point.
+            "max_tokens": 64000,
             "system": systemPrompt,
             "messages": [
                 ["role": "user", "content": userPrompt],
@@ -473,10 +550,15 @@ actor LLMClient {
         }
     }
 
-    private func performLLMRequest(provider: LLMProvider, request: URLRequest, stream: Bool? = nil) async throws -> String {
+    private func performLLMRequest(
+        provider: LLMProvider,
+        request: URLRequest,
+        stream: Bool? = nil,
+        onDelta: (@Sendable (String) -> Void)? = nil
+    ) async throws -> String {
         let useStreaming = stream ?? shouldStream(provider: provider)
         do {
-            return try await sendLLMRequest(provider: provider, request: request, useStreaming: useStreaming)
+            return try await sendLLMRequest(provider: provider, request: request, useStreaming: useStreaming, onDelta: onDelta)
         } catch let error as LLMError where isUnsupportedTemperatureError(error) {
             // The model only supports the default temperature (e.g. gpt-5.5 /
             // gpt-5 reasoning models). OpenAI's accept/reject set is
@@ -521,9 +603,14 @@ actor LLMClient {
         }
     }
 
-    private func sendLLMRequest(provider: LLMProvider, request: URLRequest, useStreaming: Bool) async throws -> String {
+    private func sendLLMRequest(
+        provider: LLMProvider,
+        request: URLRequest,
+        useStreaming: Bool,
+        onDelta: (@Sendable (String) -> Void)? = nil
+    ) async throws -> String {
         if useStreaming {
-            return try await streamResponse(provider: provider, request: request)
+            return try await streamResponse(provider: provider, request: request, onDelta: onDelta)
         }
         let (data, response) = try await session.data(for: request)
         try validateHTTPResponse(response, data: data)
@@ -568,7 +655,17 @@ actor LLMClient {
         Task { await self.logSink.error(component: "LLMClient", message: message, context: context) }
     }
 
-    private func streamResponse(provider: LLMProvider, request: URLRequest) async throws -> String {
+    /// Streams a response, optionally surfacing each delta as it arrives.
+    ///
+    /// The bytes were ALWAYS arriving incrementally — `shouldStream` is true for
+    /// every provider except Apple Intelligence — this method just accumulated
+    /// them silently and returned once. `onDelta` is what turns that discarded
+    /// progress into something the pill can show during a long rewrite.
+    private func streamResponse(
+        provider: LLMProvider,
+        request: URLRequest,
+        onDelta: (@Sendable (String) -> Void)? = nil
+    ) async throws -> String {
         // First-byte watchdog: reachability fail-fast. If the server
         // doesn't send its response headers within the watchdog window
         // of us firing the request, we assume the host is unreachable/dead
@@ -618,6 +715,7 @@ actor LLMClient {
             if line.isEmpty {
                 if let chunk = try parseSSEEvent(provider: provider, lines: eventLines) {
                     accumulated += chunk
+            onDelta?(accumulated)
                 }
                 eventLines.removeAll(keepingCapacity: true)
                 continue
@@ -631,6 +729,7 @@ actor LLMClient {
             if shouldFlushSSEEvent(existingLines: eventLines, nextLine: line) {
                 if let chunk = try parseSSEEvent(provider: provider, lines: eventLines) {
                     accumulated += chunk
+            onDelta?(accumulated)
                 }
                 eventLines.removeAll(keepingCapacity: true)
             }
@@ -639,6 +738,7 @@ actor LLMClient {
 
         if let chunk = try parseSSEEvent(provider: provider, lines: eventLines) {
             accumulated += chunk
+            onDelta?(accumulated)
         }
 
         try validateStreamingHTTPResponse(response, body: rawResponseLines.joined(separator: "\n"))

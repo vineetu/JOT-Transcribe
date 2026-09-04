@@ -116,3 +116,10 @@ scripts/install-*-local.sh
 # compilation, not resource copying — anything under Sources/ ships in every
 # build regardless of flags.
 .flavor-assets/
+
+# Slap-to-talk sensor traces. Raw 800 Hz chassis-vibration captures — they
+# include a typing trace, and `docs/` is staged wholesale by the release
+# commit (scripts/release.sh RELEASE_STAGE_PATHS), so without this they would
+# be pushed to the PUBLIC repo. The findings write-up is committed; the
+# traces never are.
+docs/slap-to-talk/traces/
