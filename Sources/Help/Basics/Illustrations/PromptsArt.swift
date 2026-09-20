@@ -116,7 +116,7 @@ private struct SelectedSnippetView: View {
             Text("meeting notes")
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 3)
-                .background(Color.accentColor.opacity(0.28))
+                .background(JotTheme.current.accent.opacity(0.28))
                 .clipShape(RoundedRectangle(cornerRadius: 3))
         }
         .font(.system(size: 11, weight: .medium))
@@ -139,7 +139,7 @@ private struct AppliedSnippetView: View {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.accentColor.opacity(0.16))
+                    .fill(JotTheme.current.accent.opacity(0.16))
             )
     }
 }
@@ -210,18 +210,18 @@ private struct PromptRow: View {
         HStack(spacing: 6) {
             Image(systemName: pinned ? "pin.fill" : "text.alignleft")
                 .font(.system(size: 8, weight: .semibold))
-                .foregroundStyle(pinned ? Color.accentColor : Color.secondary)
+                .foregroundStyle(pinned ? JotTheme.current.accent : Color.secondary)
                 .frame(width: 10, alignment: .leading)
             Text(title)
                 .font(.system(size: 11, weight: highlighted ? .semibold : .medium))
-                .foregroundStyle(highlighted ? Color.accentColor : Color.primary)
+                .foregroundStyle(highlighted ? JotTheme.current.accent : Color.primary)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(
             RoundedRectangle(cornerRadius: 4)
-                .fill(highlighted ? Color.accentColor.opacity(0.16) : Color.clear)
+                .fill(highlighted ? JotTheme.current.accent.opacity(0.16) : Color.clear)
         )
     }
 }

@@ -207,7 +207,16 @@ struct JotAppWindow: View {
         } detail: {
             detail
                 .environment(\.helpNavigator, helpNavigator)
+                // The detail pane's own ground. Panes that scroll (Settings
+                // forms, Help, Home) hide their container background so this
+                // shows through; Default supplies no colour and nothing is
+                // touched.
+                .themedSurface(JotTheme.current.detailSurface)
         }
+        // Theme art behind both columns (Default and art-less themes draw
+        // nothing here). Each column paints only a clear/washed surface on
+        // top, so the one image spans the whole window instead of two crops.
+        .background { ThemeBackdrop(theme: JotTheme.current).ignoresSafeArea() }
         .environment(\.navigationHistory, navHistory)
         .environment(\.setSidebarSelection) { newValue in
             // v1.13: deep-links from Help "Open in Settings →", About

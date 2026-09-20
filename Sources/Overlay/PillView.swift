@@ -5,7 +5,13 @@ import SwiftUI
 /// owner decision (2026-07-16): a fully monochrome pill — neutral silver on
 /// the black body — instead of `Color.accentColor`, whose hue followed the
 /// user's macOS accent setting and could read as any system color.
-let pillSignalTint = Color(white: 0.82)
+///
+/// That decision still stands: with no theme selected this is exactly
+/// `Color(white: 0.82)`. Only a deliberately-chosen theme tints it — the
+/// original objection was to the *unpredictable* system accent, not to colour.
+/// Computed rather than a stored `let` so a runtime theme switch is picked up;
+/// a module-level constant would be evaluated once at process start.
+var pillSignalTint: Color { JotTheme.current.pillSignal }
 
 /// Carries the ask-before-paste pill's measured ideal height up to the window
 /// controller so the panel can grow vertically to fit (never clip the buttons).
@@ -108,8 +114,10 @@ struct PillView: View {
                     augmentHintBanner(hint)
                         .transition(.opacity)
                 }
-                stopHotkeyHint
-                    .transition(.opacity)
+                if !isSkinnedExpanded {
+                    stopHotkeyHint
+                        .transition(.opacity)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -119,87 +127,100 @@ struct PillView: View {
     @ViewBuilder
     private var pillSurface: some View {
         ZStack {
-            switch model.state {
-            case .hidden:
-                Color.clear.frame(width: 0, height: 0)
-            case .recording(let elapsed, let streamingPartial):
-                if model.isPillExpanded {
-                    expandedRecordingBody {
-                        ExpandedRecordingContent(
-                            elapsed: elapsed,
-                            streamingPartial: streamingPartial,
-                            reduceMotion: reduceMotion
+            // A theme skin sits OUTSIDE the state switch so every skinned state
+            // shares one view identity: recording → transcribing and
+            // transforming → rewriting update the same surface in place instead
+            // of cross-fading two copies of it.
+            if let skinned = skinnedSurface() {
+                skinned
+                    .onTapGesture {
+                        if case .recording = model.state { model.togglePillExpanded() }
+                    }
+            } else {
+                switch model.state {
+                case .hidden:
+                    Color.clear.frame(width: 0, height: 0)
+                case .recording(let elapsed, let streamingPartial):
+                    if model.isPillExpanded {
+                        expandedRecordingBody {
+                            ExpandedRecordingContent(
+                                elapsed: elapsed,
+                                streamingPartial: streamingPartial,
+                                reduceMotion: reduceMotion
+                            )
+                        }
+                        .onTapGesture { model.togglePillExpanded() }
+                    } else {
+                        // Stable-canvas (v3): bound the compact recording capsule to
+                        // its per-state width (360 idle / 480 once a partial lands) —
+                        // it grows inside the stationary canvas, matching `capsuleRect`.
+                        pillBody(maxWidth: Self.recordingCapsuleMaxWidth(streamingPartial)) {
+                            RecordingContent(
+                                elapsed: elapsed,
+                                streamingPartial: streamingPartial,
+                                isStreamingSession: model.isStreamingSessionActive,
+                                reduceMotion: reduceMotion
+                            )
+                        }
+                        .onTapGesture { model.togglePillExpanded() }
+                    }
+                case .transcribing:
+                    pillBody {
+                        TranscribingContent(reduceMotion: reduceMotion)
+                    }
+                case .condensing:
+                    pillBody {
+                        CondensingContent(reduceMotion: reduceMotion)
+                    }
+                case .rewriting:
+                    pillBody {
+                        RewritingContent(reduceMotion: reduceMotion, progress: aiProgress.progress, streamedCharacters: aiProgress.streamedCharacters)
+                    }
+                case .transforming:
+                    pillBody {
+                        TransformingContent(reduceMotion: reduceMotion, progress: aiProgress.progress, streamedCharacters: aiProgress.streamedCharacters)
+                    }
+                case .success(let preview):
+                    pillBody {
+                        SuccessContent(preview: preview)
+                    }
+                case .notice(let message):
+                    pillBody(maxWidth: PillView.expandedPillWidth) {
+                        NoticeContent(message: message)
+                    }
+                case .savedToRecents(let preview):
+                    pillBody(maxWidth: PillView.expandedPillWidth) {
+                        SavedToRecentsContent(
+                            preview: preview,
+                            onTap: { model.invokeSavedToRecentsTap() }
                         )
                     }
-                    .onTapGesture { model.togglePillExpanded() }
-                } else {
-                    // Stable-canvas (v3): bound the compact recording capsule to
-                    // its per-state width (360 idle / 480 once a partial lands) —
-                    // it grows inside the stationary canvas, matching `capsuleRect`.
-                    pillBody(maxWidth: Self.recordingCapsuleMaxWidth(streamingPartial)) {
-                        RecordingContent(
-                            elapsed: elapsed,
-                            streamingPartial: streamingPartial,
-                            isStreamingSession: model.isStreamingSessionActive,
-                            reduceMotion: reduceMotion
+                case .error(let message):
+                    pillBody(maxWidth: PillView.expandedPillWidth) {
+                        ErrorContent(message: message)
+                    }
+                case .holdProgress(let progress):
+                    pillBody {
+                        HoldProgressContent(progress: progress, reduceMotion: reduceMotion)
+                    }
+                case .askCorrection(let original, let term, let contextBefore, let contextAfter, let applied, let alternate):
+                    // Expanded multi-line ask — modeled on the expanded recording
+                    // body (rounded-rect, roomy), NOT the 36pt capsule. This is the
+                    // one moment we need the user's input, so we give the context
+                    // room to breathe.
+                    expandedAskBody {
+                        AskCorrectionContent(
+                            original: original,
+                            term: term,
+                            contextBefore: contextBefore,
+                            contextAfter: contextAfter,
+                            applied: applied,
+                            alternate: alternate,
+                            onConfirm: { model.confirmAsk() },
+                            onDismiss: { model.dismissAsk() },
+                            onAlternate: { model.alternateAsk() }
                         )
                     }
-                    .onTapGesture { model.togglePillExpanded() }
-                }
-            case .transcribing:
-                pillBody {
-                    TranscribingContent(reduceMotion: reduceMotion)
-                }
-            case .condensing:
-                pillBody {
-                    CondensingContent(reduceMotion: reduceMotion)
-                }
-            case .rewriting:
-                pillBody {
-                    RewritingContent(reduceMotion: reduceMotion, progress: aiProgress.progress, streamedCharacters: aiProgress.streamedCharacters)
-                }
-            case .transforming:
-                pillBody {
-                    TransformingContent(reduceMotion: reduceMotion, progress: aiProgress.progress, streamedCharacters: aiProgress.streamedCharacters)
-                }
-            case .success(let preview):
-                pillBody {
-                    SuccessContent(preview: preview)
-                }
-            case .notice(let message):
-                pillBody(maxWidth: PillView.expandedPillWidth) {
-                    NoticeContent(message: message)
-                }
-            case .savedToRecents(let preview):
-                pillBody(maxWidth: PillView.expandedPillWidth) {
-                    SavedToRecentsContent(
-                        preview: preview,
-                        onTap: { model.invokeSavedToRecentsTap() }
-                    )
-                }
-            case .error(let message):
-                pillBody(maxWidth: PillView.expandedPillWidth) {
-                    ErrorContent(message: message)
-                }
-            case .holdProgress(let progress):
-                pillBody {
-                    HoldProgressContent(progress: progress, reduceMotion: reduceMotion)
-                }
-            case .askCorrection(let original, let term, let contextBefore, let contextAfter, let applied):
-                // Expanded multi-line ask — modeled on the expanded recording
-                // body (rounded-rect, roomy), NOT the 36pt capsule. This is the
-                // one moment we need the user's input, so we give the context
-                // room to breathe.
-                expandedAskBody {
-                    AskCorrectionContent(
-                        original: original,
-                        term: term,
-                        contextBefore: contextBefore,
-                        contextAfter: contextAfter,
-                        applied: applied,
-                        onConfirm: { model.confirmAsk() },
-                        onDismiss: { model.dismissAsk() }
-                    )
                 }
             }
         }
@@ -223,6 +244,31 @@ struct PillView: View {
         // click-drag), so dragging the whole expanded surface doesn't fight the
         // ScrollView.
         .gesture(pillDragGesture)
+    }
+
+    /// The active theme's skin for the current state, framed to the skin's size
+    /// and given the same hit shape the controller uses, or nil for the stock
+    /// pill. Only the surface is replaced — drag, tap and hints stay stock.
+    private func skinnedSurface() -> AnyView? {
+        guard let skin = JotTheme.current.pillSkin else { return nil }
+        let state = model.state
+        let expanded = model.isPillExpanded
+        guard let layout = skin.layout(for: state, expanded: expanded) else { return nil }
+        let context = PillSkinContext(
+            state: state,
+            expanded: expanded,
+            isStreamingSession: model.isStreamingSessionActive,
+            reduceMotion: reduceMotion,
+            progress: aiProgress.progress,
+            streamedCharacters: aiProgress.streamedCharacters,
+            stopKeyLabel: stopKeyLabel
+        )
+        return AnyView(
+            skin.surface(context: context)
+                .frame(width: layout.size.width, height: layout.size.height)
+                .contentShape(PillHitShape(rects: layout.hitRects))
+                .transition(pillTransition)
+        )
     }
 
     /// The whole-pill escalation gesture (design §D.3). Its only job is to cross
@@ -257,6 +303,21 @@ struct PillView: View {
     private var isRecordingState: Bool {
         if case .recording = model.state { return true }
         return false
+    }
+
+    /// A theme skin draws the expanded recording card, stop hint included.
+    private var isSkinnedExpanded: Bool {
+        guard model.isPillExpanded, let skin = JotTheme.current.pillSkin else { return false }
+        return skin.layout(for: model.state, expanded: true) != nil
+    }
+
+    /// The bound stop key, for a skin's own hint (same resolution as
+    /// `stopHotkeyHint`).
+    private var stopKeyLabel: String {
+        _ = toggleSingleKey
+        _ = toggleTriggerTypeRaw
+        let action: SingleKey.Action = model.isRewriteVoiceCapture ? .rewriteWithVoice : .toggleRecording
+        return SingleKeyMigration.effectiveBindingLabel(for: action) ?? "your hotkey"
     }
 
     private var stopHotkeyHint: some View {
@@ -340,11 +401,19 @@ struct PillView: View {
         // visually-solid but click-through dead zone). Defaults to the compact
         // width (status pills); wider states (error/notice/recording) pass theirs.
         .frame(maxWidth: maxWidth)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color.black)
-                .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 4)
-        )
+        .background {
+            // Default theme: exactly the stock body. Only a chosen theme swaps
+            // in the themed surface.
+            if JotTheme.current == .default {
+                Capsule(style: .continuous)
+                    .fill(Color.black)
+                    .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 4)
+            } else {
+                ThemedPillSurface(shape: Capsule(style: .continuous))
+                    .compositingGroup()
+                    .shadow(color: .black.opacity(0.35), radius: 8, x: 0, y: 4)
+            }
+        }
         .contentShape(Capsule(style: .continuous))
         .transition(pillTransition)
     }
@@ -359,11 +428,19 @@ struct PillView: View {
             content()
         }
         .frame(width: Self.expandedRecordingWidth, height: Self.expandedRecordingHeight, alignment: .top)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black)
-                .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
-        )
+        .background {
+            // Default theme: exactly the stock body. Only a chosen theme swaps
+            // in the themed surface.
+            if JotTheme.current == .default {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.black)
+                    .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
+            } else {
+                ThemedPillSurface(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .compositingGroup()
+                    .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
+            }
+        }
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .transition(pillTransition)
     }
@@ -383,11 +460,19 @@ struct PillView: View {
         // than letting the fixed window clip it — a long mapping/context line
         // must push the pill TALLER so the Use/Keep buttons stay on-screen.
         .fixedSize(horizontal: false, vertical: true)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.black)
-                .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
-        )
+        .background {
+            // Default theme: exactly the stock body. Only a chosen theme swaps
+            // in the themed surface.
+            if JotTheme.current == .default {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.black)
+                    .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
+            } else {
+                ThemedPillSurface(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .compositingGroup()
+                    .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
+            }
+        }
         // Measure that ideal height and hand it to the window controller so the
         // panel grows to fit (see OverlayWindowController.pillSize / the
         // $measuredAskHeight sink). The measured value is content-driven (width
@@ -1058,8 +1143,12 @@ private struct AskCorrectionContent: View {
     /// "Keep" reverts to). `false` → common-word BLOCKED near-miss (original is
     /// in the text, term is what "Apply" writes).
     let applied: Bool
+    /// 3-option ask (design §2a, alt0): the wider-span alternate term, or nil for
+    /// the common 2-option ask. When present a third button offers it.
+    var alternate: String? = nil
     let onConfirm: () -> Void
     let onDismiss: () -> Void
+    var onAlternate: () -> Void = {}
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1136,6 +1225,23 @@ private struct AskCorrectionContent: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Keep \(original)")
+
+                // Third choice (design §2a, alt0): the wider-span alternate term.
+                // Only present when the gate offered one.
+                if let alternate {
+                    Button(action: onAlternate) {
+                        Text("Use “\(alternate)”").font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule(style: .continuous).fill(Color.white.opacity(0.09))
+                            )
+                            .fixedSize()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Use \(alternate)")
+                }
 
                 Spacer(minLength: 0)
             }

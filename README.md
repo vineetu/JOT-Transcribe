@@ -30,6 +30,7 @@ Apple Silicon · macOS 15+ · iPhone on the App Store · Source-available (free 
 - **Optional cleanup** — Strip filler words and fix grammar while keeping how you actually talk. Off by default.
 - **Custom vocabulary** — Teach it the names, acronyms, and jargon you use so they're transcribed right.
 - **Searchable history** — Every dictation is saved on your Mac. Replay the audio, search everything you've said.
+- **Meeting summaries** — Turn a recording into a summary, action items, or key decisions with your AI provider — useful for calls and meetings with more than one speaker.
 - **Ask Jot** — A built-in help chat, grounded in Jot's docs, that answers in plain language.
 - **On iPhone, too** — A free dictation keyboard. Same rules: no account, no cloud, nothing leaves the device.
 

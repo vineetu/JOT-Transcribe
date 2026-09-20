@@ -36,11 +36,11 @@ struct CorrectionReviewSection: View {
         HStack(spacing: 8) {
             if model.allReviewed {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(JotTheme.current.accent)
                     .font(.system(size: 13))
             } else {
                 Image(systemName: "wand.and.stars")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(JotTheme.current.accent)
                     .font(.system(size: 13))
             }
             VStack(alignment: .leading, spacing: 1) {
@@ -89,7 +89,7 @@ struct CorrectionReviewSection: View {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(JotTheme.current.accent)
                     .padding(.top, 2)
                 CorrectionCopy.resolvedText(r, verdict: verdict)
                     .font(.system(size: 12))
@@ -98,7 +98,7 @@ struct CorrectionReviewSection: View {
                 Button("Undo") { Task { await model.undo(r) } }
                     .font(.system(size: 12, weight: .semibold))
                     .buttonStyle(.plain)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(JotTheme.current.accent)
             }
         } else {
             VStack(alignment: .leading, spacing: 7) {
@@ -109,6 +109,12 @@ struct CorrectionReviewSection: View {
                 }
                 CorrectionRowHeader(record: r)
                 CorrectionChips(record: r) { choice in Task { await model.pick(r, choice: choice) } }
+                // NO "Always replace" affordance — owner decision (2026-07-22):
+                // a mis-click arming a silent permanent auto-apply is a trust
+                // hazard, and cross-recording ask suppression already solves the
+                // nagging problem. The package's `alwaysReplace` machinery stays
+                // (iOS uses it; the live pill defensively excludes granted pairs)
+                // but macOS offers no grant surface.
             }
         }
     }
@@ -136,11 +142,11 @@ struct CorrectionRowHeader: View {
         HStack(spacing: 8) {
             Text(applied ? "CHANGED" : "KEPT")
                 .font(.system(size: 9, weight: .bold)).tracking(1.1)
-                .foregroundStyle(applied ? Color.accentColor : Color.secondary)
+                .foregroundStyle(applied ? JotTheme.current.accent : Color.secondary)
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(
                     applied
-                        ? AnyView(Capsule().fill(Color.accentColor.opacity(0.18)))
+                        ? AnyView(Capsule().fill(JotTheme.current.accent.opacity(0.18)))
                         : AnyView(Capsule().fill(Color.secondary.opacity(0.12))
                             .overlay(Capsule().strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))))
             (Text("Original ").foregroundStyle(.secondary)

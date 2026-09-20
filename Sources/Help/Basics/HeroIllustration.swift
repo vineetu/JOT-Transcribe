@@ -114,7 +114,7 @@ private struct DictationArt: View {
             let micScale = heroKeyframe(phase: phase, start: 0.0, end: 0.3, from: 0.9, to: 1.0)
             Image(systemName: "mic.fill")
                 .font(.system(size: 26))
-                .foregroundStyle(phase < 0.3 ? Color.accentColor.opacity(micOpacity) : Color.accentColor)
+                .foregroundStyle(phase < 0.3 ? JotTheme.current.accent.opacity(micOpacity) : JotTheme.current.accent)
                 .scaleEffect(micScale)
                 .frame(width: 40)
                 .accessibilityHidden(true)
@@ -150,7 +150,7 @@ private struct Waveform7Bar: View {
                 let raw = sin(phase * 2 * .pi + Double(i) * 0.4)
                 let height = 12 + CGFloat(abs(raw)) * 36
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.accentColor.opacity(0.8))
+                    .fill(JotTheme.current.accent.opacity(0.8))
                     .frame(width: 5, height: height)
             }
         }
@@ -262,7 +262,7 @@ private struct CleanBubble: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.accentColor.opacity(0.16))
+                    .fill(JotTheme.current.accent.opacity(0.16))
             )
     }
 }
@@ -321,7 +321,7 @@ private struct BeforeText: View {
             Text("send it")
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 3)
-                .background(Color.accentColor.opacity(0.28))
+                .background(JotTheme.current.accent.opacity(0.28))
                 .clipShape(RoundedRectangle(cornerRadius: 3))
         }
         .font(.system(size: 11, weight: .medium))
@@ -343,7 +343,7 @@ private struct AfterText: View {
             .padding(.vertical, 5)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.accentColor.opacity(0.16))
+                    .fill(JotTheme.current.accent.opacity(0.16))
             )
     }
 }
@@ -353,7 +353,7 @@ private struct InstructionBubble: View {
         HStack(spacing: 4) {
             Image(systemName: "mic.fill")
                 .font(.system(size: 9))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
             Text("\"make it formal\"")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)

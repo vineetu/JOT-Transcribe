@@ -8,6 +8,14 @@ struct JotApp: App {
     @StateObject private var firstRunState = FirstRunState.shared
     @State private var navHistory = NavigationHistory()
 
+    init() {
+        // Register any bundled themes before anything reads the stored theme
+        // (the scene's `ThemeStore.shared`, the pill, the sound player). The
+        // stock build has none, so this is a no-op there.
+        ThemePacks.bootstrap()
+        ThemeStore.shared.reload()
+    }
+
     var body: some Scene {
         // Unified window — single destination for Home, Settings, and Help.
         // Opened from the menu bar via "Open Jot…" (or "Settings…"
@@ -55,6 +63,9 @@ private struct JotMainContent: View {
     @ObservedObject var appDelegate: AppDelegate
     @ObservedObject var firstRunState: FirstRunState
     let navHistory: NavigationHistory
+    /// Observed here, at the root of the only SwiftUI scene, so a theme change
+    /// re-runs this body and the tint propagates through the whole window.
+    @ObservedObject private var themeStore = ThemeStore.shared
 
     var body: some View {
         if let services = appDelegate.services {
@@ -78,6 +89,17 @@ private struct JotMainContent: View {
                 .environmentObject(services.diarizerHolder)
                 .environmentObject(services.fileTranscriptionIngest)
                 .modelContainer(services.modelContainer)
+                // Drives standard controls (buttons, toggles, pickers, selection).
+                // Call sites that read a colour directly rather than inheriting tint
+                // are NOT covered by this — they read `JotTheme.current.accent`, which
+                // resolves from storage, not from the environment.
+                //
+                // `nil` for Default rather than `.accentColor`: passing nil is
+                // genuinely "no tint set", which is what the app did before themes
+                // existed. Passing an explicit colour that merely happens to equal
+                // the accent is not provably the same thing to every control, and
+                // the no-op guarantee for default users has to be exact.
+                .tint(themeStore.theme == .default ? nil : themeStore.theme.accent)
         } else {
             ProgressView()
                 .controlSize(.regular)

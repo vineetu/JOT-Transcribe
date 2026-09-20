@@ -22,6 +22,8 @@ final class CorrectionReviewModel {
     let recording: Recording
     private let modelContext: ModelContext
     var payload = CorrectionProvenance.Payload()
+    /// Store override snapshot (net + always-replace state per pair), refreshed on
+    /// every `reload()`. Drives the "Always replace" affordance's net ≥ 2 gate.
     var accordionExpanded = false
 
     init(recording: Recording, modelContext: ModelContext) {
@@ -76,13 +78,16 @@ final class CorrectionReviewModel {
         await reload()
         let r = record(forKey: r.key) ?? r
         let priorVerdict = payload.verdicts[r.key]   // for the blocked-keep transition guard below
+        // No "alwaysReplace" choice on macOS — owner decision (2026-07-22), see
+        // CorrectionReviewSection. Verdicts here are only term / original.
+        let effectiveChoice = choice
         // kept + term → apply the term here; applied + original → revert here.
-        if choice == "term", r.outcome == "kept" {
+        if effectiveChoice == "term", r.outcome == "kept" {
             await reportSelfEdit(editText(r, find: r.originalWord, replaceWith: r.term), key: r.key)
-        } else if choice == "original", r.outcome == "applied" {
+        } else if effectiveChoice == "original", r.outcome == "applied" {
             await reportSelfEdit(editText(r, find: r.term, replaceWith: r.originalWord), key: r.key)
         }
-        let delta = await CorrectionProvenance.shared.setVerdict(transcriptID: recording.id, record: r, verdict: choice)
+        let delta = await CorrectionProvenance.shared.setVerdict(transcriptID: recording.id, record: r, verdict: effectiveChoice)
         await applyLearning(delta)
         // "Keep original" on a BLOCKED pair contributes 0 to `net` (demote needs an
         // APPLIED revert), so a common-word proposal like "okay"→"Okta" would be
@@ -92,7 +97,7 @@ final class CorrectionReviewModel {
         // surfaces it. Kept for file parity + so a future keyboard never drifts.
         // Guard on a genuine transition INTO "original" so a re-pick of the same
         // verdict can't double-count (the increment is otherwise non-idempotent).
-        if choice == "original", r.outcome == "kept", priorVerdict != "original" {
+        if effectiveChoice == "original", r.outcome == "kept", priorVerdict != "original" {
             await CorrectionStore.shared.noteBlockedKeep(originalWord: r.originalWord, term: r.term)
         }
         await reload()

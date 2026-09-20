@@ -31,15 +31,17 @@ enum HelpRuntimeTests {
         // AI providers section grew from 6 → 7 with ai-prompt-library
         // added alongside the existing ai-editable-prompts (the two
         // cover different concerns: shared system prompts vs. the
-        // catalog of named prompts). "Recordings & Library" (7 cards) was
-        // added for the file-import / diarization / export / CLI / search /
-        // progress / never-lose-audio surfaces.
+        // catalog of named prompts). System is 5 (hide-from-dock joined
+        // launch-at-login / retention / hide-to-tray / reset-scopes).
+        // "Recordings & Library" is 9: the original file-import /
+        // diarization / export / CLI / search / progress / never-lose-audio
+        // surfaces plus find-in-transcript and AI-summary (v1.19).
         let expected: [(String, Int)] = [
             ("AI providers", 7),
-            ("System", 4),
+            ("System", 5),
             ("Input", 4),
             ("Sounds", 3),
-            ("Recordings & Library", 7),
+            ("Recordings & Library", 9),
         ]
         for (idx, (title, count)) in expected.enumerated() {
             let section = sections[idx]

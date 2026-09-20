@@ -225,6 +225,19 @@ public actor VocabularyRescorerHolder {
         /// `to`→`from`); for a BLOCKED ask candidate, `from` is what's in the
         /// text today and `to` is the term offered on confirm.
         public let askCandidate: Bool
+        /// 3-option ask (design §2a, alt0): the FIRST alternate for this span —
+        /// a longer vocab term (`altTerm`) that extends over a wider in-text slice
+        /// (`altFind`, the exact words it spans). Both nil for the common single-
+        /// candidate case; when present the pill offers a third choice whose pick
+        /// splices `altFind`→`altTerm` (a wider replacement than the base term).
+        /// Package-native — carried from `Proposal.alternates.first`.
+        public let altTerm: String?
+        public let altFind: String?
+        /// Merge-TEACH ask (design §1 merge-teach one-shot): a BLOCKED split-word
+        /// proposal ("sri ram" → "Sriram") — i.e. `shape == "merge" && outcome ==
+        /// "kept"`. Drives the once-ever teach gate + mixed-payload drop. (Applied
+        /// merges are ordinary asks, not teach cards, so they are NOT flagged here.)
+        public let isMerge: Bool
     }
 
     /// The result of a gated rescore: the gated text plus the de-duped applied
@@ -573,16 +586,30 @@ public actor VocabularyRescorerHolder {
         var seen = Set<String>()
         var corrections: [UXCorrection] = []
         for p in gated.proposals {
-            let askCandidate = p.askCandidate && !commonSet.contains(p.originalWord.lowercased())
-            guard p.outcome == "applied" || askCandidate else { continue }
+            // H1 merge lane: a KEPT merge ("sri ram" → "Sriram") is the designed
+            // teach ask — admitted here (exempt from the common-word gate) even
+            // though the gate marks it `askCandidate == false`, so `isMerge`
+            // surfaces and the one-shot spend can fire. Non-merge admission is the
+            // addendum gate (§ADDENDUM): applied, or a non-common ask candidate.
+            let originalIsCommon = commonSet.contains(p.originalWord.lowercased())
+            let admission = MacVocabGate.admitAsk(
+                outcome: p.outcome, shape: p.shape,
+                askCandidate: p.askCandidate, originalIsCommon: originalIsCommon)
+            guard admission.admit else { continue }
             let dedupKey = "\(p.originalWord)|\(p.term)"
             guard seen.insert(dedupKey).inserted else { continue }
+            // Surface as an ask when it's the merge-teach OR a non-common ask
+            // candidate (an applied non-ask correction rides the list but isn't asked).
+            let ask = admission.isMergeTeach || (p.askCandidate && !originalIsCommon)
             corrections.append(
                 UXCorrection(
                     from: p.originalWord,
                     to: p.term,
                     notable: Self.notable(p),
-                    askCandidate: askCandidate
+                    askCandidate: ask,
+                    altTerm: p.alternates.first?.term,
+                    altFind: p.alternates.first?.find,
+                    isMerge: admission.isMergeTeach
                 )
             )
         }

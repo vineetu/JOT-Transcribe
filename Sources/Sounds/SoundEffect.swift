@@ -29,6 +29,19 @@ enum SoundEffect: String, CaseIterable, Sendable {
         }
     }
 
+    /// Bundled filename for `theme`, or the stock filename when the theme has
+    /// no chime set of its own.
+    ///
+    /// Theme chimes are flat, distinctly-named files (`theme-<id>-recording-start`)
+    /// because `Bundle.url(forResource:withExtension:)` searches a **flat**
+    /// namespace — resources from `Sources/` subfolders are copied to the top
+    /// level of `Contents/Resources`, so a same-named file in a subfolder would
+    /// collide with the stock chime rather than sit beside it.
+    func fileName(for theme: JotTheme) -> String {
+        guard let prefix = theme.soundPrefix else { return fileName }
+        return "\(prefix)-\(fileName)"
+    }
+
     /// `@AppStorage` key Settings writes. Used by `SoundPlayer` to gate
     /// playback so a muted effect is silent even if triggered.
     /// `rewriteStart`'s key is preserved as `jot.sound.articulateStart`

@@ -5,13 +5,13 @@ Jot can transcribe existing audio/video files too — drag one onto Recents or u
 Keyboard modifier glossary: ⌥=Option, ⌘=Command, ⌃=Control, ⇧=Shift.
 
 ## Dictation
-toggle-recording: press hotkey (default single key Caps Lock) start; press again stop+transcribe.
+toggle-recording: press hotkey (default ⌥Space) start; press again stop+transcribe.
 push-to-talk: hold hotkey record, release stop. Unbound default.
 cancel-recording: Esc discards. Active only while recording, never steals Esc when idle.
 any-length: no hard limit; quality diminishes past ~1 hr.
 on-device-transcription: Parakeet on Apple Neural Engine. Audio stays on Mac. Model downloads first use.
-streaming-preview: English-only v2 model — recommended for new installs, experimental. Live partial transcript in pill; batch fallback on cold ANE.
-multilingual: 25 European langs, auto-detected per recording.
+streaming-preview: live partial transcript shows in the pill on streaming models.
+multilingual: 25 European languages.
 languages: Jot supports these ASR models — pick one as primary at Settings → Transcription. Only the primary is hot in memory; switching unloads + reloads.
 <!-- FRAGMENT: jot-asr-languages -->
 japanese: yes — install the Parakeet 0.6B Japanese model from Settings → Transcription, then make it primary. v3 does NOT transcribe Japanese; the JA model is required.
@@ -34,14 +34,14 @@ Both use configured AI provider (same as Cleanup).
 ## Shortcuts
 modifier-required: each action uses one trigger type: single key (Caps Lock, Fn, or right-modifier keys) or chord (⌘ ⌥ ⌃ ⇧ plus a key). Chords need a modifier; single-key triggers use Jot's separate event path.
 hotkey-stopped-working: hotkey produces Unicode char (≤, ÷) when another app grabbed it while Jot was off. Re-register in Settings → Shortcuts.
-Defaults: toggle-recording single key Caps Lock; push-to-talk chord unbound; articulate-custom chord ⌥. (Option+Period); articulate-fixed chord ⌥/ (Option+Slash); paste-last chord ⌥, (Option+Comma).
+Defaults: toggle-recording ⌥Space; push-to-talk unbound; articulate-custom ⌥.; articulate-fixed ⌥/; paste-last ⌥,.
 shortcuts: bindings in Settings → Shortcuts. Cancel (Esc) hardcoded.
 
 ## Paste & Clipboard
 auto-paste: transcript pastes at cursor.
 auto-enter: press Return after paste. Chat inputs.
 clipboard-preservation: original clipboard restored after paste.
-copy-last: ⌥⇧V (Option+Shift+V) re-pastes most recent transcript.
+copy-last: copy the latest transcript.
 
 ## Retention
 Library items (recordings + rewrite sessions) and transcripts kept on-device, configurable. Options: 7, 30, 90 days, forever. Enforced on launch, hourly. Settings → General → Keep library items.
@@ -49,7 +49,8 @@ Library items (recordings + rewrite sessions) and transcripts kept on-device, co
 ## Files & Library
 recordings-file-import: drag an audio/video file onto Recents (or browse) to transcribe like a live recording; near-universal formats via AVFoundation + bundled ffmpeg. A dictation pauses an import; it auto-resumes after.
 recordings-diarization: Detect speakers labels who spoke when, on-device; right-click a speaker → Rename speaker. Best for clean meeting/call audio, not same-room mic; single-speaker skipped. Imported files auto-diarize by default (Settings → Speaker labels, Advanced).
-Also: WebVTT export (recordings-webvtt-export), jot CLI (recordings-cli), AI search (recordings-ai-search), import progress (recordings-progress), never-lost audio (recordings-never-lose-audio).
+recordings-summary: AI Summary — summarize a recording from its More menu; needs a capable provider, not Apple Intelligence.
+Also: find in transcript with ⌘F (recordings-find), WebVTT export (recordings-webvtt-export), jot CLI (recordings-cli), AI search (recordings-ai-search), import progress (recordings-progress), never-lost audio (recordings-never-lose-audio).
 
 ## Troubleshooting
 permissions: Mic, Input Monitoring, Accessibility.

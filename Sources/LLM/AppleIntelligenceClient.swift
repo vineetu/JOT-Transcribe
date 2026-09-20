@@ -222,7 +222,7 @@ actor AppleIntelligenceClient: AppleIntelligenceClienting {
                     // ramble or enter degenerate loops past a reasonable
                     // answer length. Mirrors AskJot v2 spec §6.
                     let options = GenerationOptions(
-                        sampling: nil,
+                        samplingMode: nil,
                         temperature: nil,
                         maximumResponseTokens: request.maxTokens
                     )

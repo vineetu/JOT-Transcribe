@@ -151,7 +151,7 @@ guard let jotASRLangBody = enumBody("JotASRLanguage", in: source) else {
 // Map symbol → user-facing label. Each `JotASRLanguage` case corresponds
 // to a Parakeet model the user can install as primary.
 let jotASRLabels: [String: String] = [
-    "english":  "English (Parakeet v3 multilingual — auto-detects 25 European languages)",
+    "english":  "English (English-optimized on-device model; the language picker covers 25+ more languages)",
     "japanese": "Japanese (Parakeet 0.6B JA, separate ~1.25 GB download)",
 ]
 let jotASRLanguages = parseCases(jotASRLangBody).map { jotASRLabels[$0.symbol] ?? $0.symbol }

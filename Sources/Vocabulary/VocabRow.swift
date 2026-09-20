@@ -96,7 +96,7 @@ struct VocabRow: View {
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 13))
-                        .foregroundStyle(canAddAlias ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(canAddAlias ? JotTheme.current.accent : Color.secondary)
                 }
                 .buttonStyle(.plain)
                 .disabled(!canAddAlias)

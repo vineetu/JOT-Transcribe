@@ -253,7 +253,7 @@ struct RetentionTimeline: View {
                         let pos = geo.size.width * stops[i].0
                         VStack(spacing: 2) {
                             Circle()
-                                .fill(Color.accentColor)
+                                .fill(JotTheme.current.accent)
                                 .frame(width: 6, height: 6)
                             Text(stops[i].1)
                                 .font(.system(size: 9, weight: .medium, design: .monospaced))
@@ -296,7 +296,7 @@ struct SelectionCaret: View {
     var body: some View {
         HStack(spacing: 2) {
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.accentColor.opacity(0.25))
+                .fill(JotTheme.current.accent.opacity(0.25))
                 .frame(width: 40, height: 10)
             Rectangle()
                 .fill(Color.primary.opacity(0.7))
@@ -341,7 +341,7 @@ struct StepDots: View {
             ForEach(0..<count, id: \.self) { i in
                 ZStack {
                     Circle()
-                        .fill(Color.accentColor.opacity(0.9))
+                        .fill(JotTheme.current.accent.opacity(0.9))
                         .frame(width: 12, height: 12)
                     Image(systemName: "checkmark")
                         .font(.system(size: 7, weight: .bold))
@@ -404,11 +404,11 @@ struct PermissionTiles: View {
                 VStack(spacing: 4) {
                     Image(systemName: Self.tiles[i].symbol)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(JotTheme.current.accent)
                         .frame(width: 28, height: 28)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.accentColor.opacity(0.1))
+                                .fill(JotTheme.current.accent.opacity(0.1))
                         )
                     Text(Self.tiles[i].label)
                         .font(.system(size: 8, weight: .medium))
@@ -563,7 +563,7 @@ struct LoginItemGlyph: View {
                     .frame(width: 48, height: 3)
                 Image(systemName: "mic")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(JotTheme.current.accent)
             }
         }
     }
@@ -576,7 +576,7 @@ struct AppUpdate: View {
     var body: some View {
         HStack(spacing: 6) {
             RoundedRectangle(cornerRadius: 4)
-                .fill(Color.accentColor)
+                .fill(JotTheme.current.accent)
                 .frame(width: 22, height: 22)
                 .overlay(
                     Text("J")
@@ -590,12 +590,12 @@ struct AppUpdate: View {
                     .strikethrough()
                 Text("v1.4")
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(JotTheme.current.accent)
             }
             FlowArrow()
             Image(systemName: "arrow.down.circle.fill")
                 .font(.system(size: 14))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
         }
     }
 }
@@ -651,7 +651,7 @@ struct MicDropdown: View {
         HStack(spacing: 6) {
             Image(systemName: "mic.fill")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
             HStack(spacing: 4) {
                 Text("Built-in Microphone")
                     .font(.system(size: 10, weight: .medium))
@@ -837,7 +837,7 @@ struct TestConnectionGlyph: View {
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.accentColor)
+                        .fill(JotTheme.current.accent)
                 )
             HStack(spacing: 10) {
                 HStack(spacing: 3) {

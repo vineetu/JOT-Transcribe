@@ -74,7 +74,7 @@ extension View {
         overlay(
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(
-                    Color.accentColor.opacity(
+                    JotTheme.current.accent.opacity(
                         isHighlighted ? HelpSharedStyle.highlightBorderOpacity : 0
                     ),
                     lineWidth: isHighlighted ? 1.5 : 0

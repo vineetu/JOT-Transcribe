@@ -157,7 +157,7 @@ struct FeedbackSheet: View {
         HStack(spacing: 8) {
             Image(systemName: "envelope.fill")
                 .font(.system(size: 16))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
             Text("Send Feedback")
                 .font(.system(size: 16, weight: .semibold))
             Spacer()

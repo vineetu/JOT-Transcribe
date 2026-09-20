@@ -106,9 +106,9 @@ struct LMStudioRecommendCard: View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
-                Capsule().fill(Color.accentColor.opacity(0.15))
+                Capsule().fill(JotTheme.current.accent.opacity(0.15))
             )
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(JotTheme.current.accent)
     }
 
     private var badgeText: String {

@@ -94,7 +94,7 @@ struct AskRecordingsView: View {
                     .font(.system(size: 14))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 9)
-                    .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .background(JotTheme.current.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .textSelection(.enabled)
             }
         case .assistant:
@@ -151,7 +151,7 @@ struct AskRecordingsView: View {
         HStack(spacing: 6) {
             Text(String(number))
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
             Text(label)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -168,7 +168,7 @@ struct AskRecordingsView: View {
         VStack(spacing: 18) {
             Image(systemName: "sparkles")
                 .font(.system(size: 34, weight: .light))
-                .foregroundStyle(Color.accentColor.gradient)
+                .foregroundStyle(JotTheme.current.accent.gradient)
             VStack(spacing: 6) {
                 Text("Ask about your notes")
                     .font(.system(size: 20, weight: .semibold))
@@ -187,7 +187,7 @@ struct AskRecordingsView: View {
                         HStack(spacing: 9) {
                             Image(systemName: "sparkle")
                                 .font(.system(size: 11))
-                                .foregroundStyle(Color.accentColor)
+                                .foregroundStyle(JotTheme.current.accent)
                             Text(example)
                                 .font(.system(size: 13))
                                 .foregroundStyle(.primary)
@@ -287,7 +287,7 @@ struct AskRecordingsView: View {
             Button(action: submit) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 20))
-                    .foregroundStyle(disabled ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
+                    .foregroundStyle(disabled ? AnyShapeStyle(.tertiary) : AnyShapeStyle(JotTheme.current.accent))
             }
             .buttonStyle(.plain)
             .disabled(disabled)

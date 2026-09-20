@@ -47,47 +47,84 @@ struct RewriteInstructionPanelView: View {
     @State private var animateWave: Bool = false
     @FocusState private var fieldFocused: Bool
 
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// The active theme's panel chrome, or nil for the stock panel.
+    private var skin: RewritePanelStyle? {
+        JotTheme.current.rewritePanelSkin?.style(for: colorScheme)
+    }
+
     var body: some View {
+        if let skin {
+            skinnedChrome(panelContent(skin), skin)
+                .onExitCommand { onCancel() }
+                .onAppear(perform: didAppear)
+        } else {
+            panelContent(nil)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(.regularMaterial)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                // `.onExitCommand` is the primary Esc route for the focused field; the
+                // panel's `cancelOperation` override is the backstop for when focus is
+                // off the field (e.g. just after a chip click).
+                .onExitCommand { onCancel() }
+                .onAppear(perform: didAppear)
+        }
+    }
+
+    private func panelContent(_ skin: RewritePanelStyle?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            header
+            header(skin)
             if let questionLine, !questionLine.isEmpty {
                 Text(questionLine)
                     .font(.system(size: 12.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            field
-            chipRow
+            field(skin)
+            chipRow(skin)
         }
         .padding(16)
         .frame(width: 400, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.regularMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        // `.onExitCommand` is the primary Esc route for the focused field; the
-        // panel's `cancelOperation` override is the backstop for when focus is
-        // off the field (e.g. just after a chip click).
-        .onExitCommand { onCancel() }
-        .onAppear {
-            // Focus on the next runloop tick so the panel is fully key first.
-            DispatchQueue.main.async { fieldFocused = true }
-            animateWave = true
-        }
+    }
+
+    /// Theme chrome: the skin's ground (art, glass, decoration) inside the same
+    /// rounded clip as the stock panel, its border, and its accent as the tint.
+    private func skinnedChrome(_ content: some View, _ skin: RewritePanelStyle) -> some View {
+        content
+            .background(skin.ground.allowsHitTesting(false))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(skin.border, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            // The panel is its own window, outside the app scene's root `.tint`.
+            .tint(skin.accent)
+    }
+
+    private func didAppear() {
+        // Focus on the next runloop tick so the panel is fully key first.
+        DispatchQueue.main.async { fieldFocused = true }
+        animateWave = true
     }
 
     // MARK: - Header (title + live mic state)
 
-    private var header: some View {
+    private func header(_ skin: RewritePanelStyle?) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: "wand.and.stars")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.tint)
+            if let icon = skin?.headerIcon {
+                icon
+            } else {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.tint)
+            }
             if let title, !title.isEmpty {
                 // Picked-prompt pane wears the prompt's name as a tinted pill so
                 // the user sees which prompt they're feeding a detail into.
@@ -96,18 +133,18 @@ struct RewriteInstructionPanelView: View {
                     .foregroundStyle(.tint)
                     .padding(.vertical, 2)
                     .padding(.horizontal, 9)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                    .background(Capsule().fill((skin?.accent ?? Color.accentColor).opacity(0.14)))
             } else {
                 Text("Rewrite selection")
                     .font(.system(size: 13, weight: .semibold))
             }
             Spacer(minLength: 8)
-            micAffordance
+            micAffordance(skin)
         }
     }
 
     @ViewBuilder
-    private var micAffordance: some View {
+    private func micAffordance(_ skin: RewritePanelStyle?) -> some View {
         if hasTyped {
             // Typing pauses the mic (the caller stops it on `onFirstEdit`), so
             // the live-listening affordance is replaced by a static hint.
@@ -120,7 +157,7 @@ struct RewriteInstructionPanelView: View {
             .foregroundStyle(.secondary)
         } else {
             HStack(spacing: 6) {
-                waveform
+                waveform(skin)
                 Text("Listening…")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -148,11 +185,11 @@ struct RewriteInstructionPanelView: View {
 
     /// A small three-bar equalizer that gently pulses while the mic is hot.
     /// Purely decorative (amplitude is not wired) but signals "speaking works".
-    private var waveform: some View {
+    private func waveform(_ skin: RewritePanelStyle?) -> some View {
         HStack(spacing: 2) {
             ForEach(0..<3, id: \.self) { index in
                 Capsule()
-                    .fill(Color.accentColor)
+                    .fill(skin?.accent ?? Color.accentColor)
                     .frame(width: 2.5, height: animateWave ? 12 : 4)
                     .animation(
                         .easeInOut(duration: 0.5)
@@ -167,7 +204,7 @@ struct RewriteInstructionPanelView: View {
 
     // MARK: - Text field
 
-    private var field: some View {
+    private func field(_ skin: RewritePanelStyle?) -> some View {
         TextField(placeholder, text: $text)
             .textFieldStyle(.plain)
             .font(.system(size: 15))
@@ -194,10 +231,20 @@ struct RewriteInstructionPanelView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.primary.opacity(0.06))
-            )
+            .background {
+                if let skin {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(skin.fieldFill)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(skin.fieldRing, lineWidth: 1.5)
+                        )
+                        .shadow(color: skin.fieldGlow, radius: 10)
+                } else {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                }
+            }
     }
 
     // MARK: - Chips
@@ -205,7 +252,7 @@ struct RewriteInstructionPanelView: View {
     /// Chips plus the key hint. With no chips the row collapses to the key hint
     /// alone — the leading `ForEach` contributes nothing and `HStack` spacing
     /// only applies between rendered children, so there's no phantom gutter.
-    private var chipRow: some View {
+    private func chipRow(_ skin: RewritePanelStyle?) -> some View {
         HStack(spacing: 6) {
             ForEach(chips) { chip in
                 Button {
@@ -218,7 +265,7 @@ struct RewriteInstructionPanelView: View {
                 }
                 .buttonStyle(.plain)
                 .background(
-                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule().fill(skin?.chipFill ?? Color.primary.opacity(0.08))
                 )
                 .contentShape(Capsule())
             }

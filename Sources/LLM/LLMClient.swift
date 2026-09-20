@@ -449,6 +449,19 @@ actor LLMClient {
         return copy
     }
 
+    /// True for a 401 from the flavor_1 gateway — i.e. it rejected the JWT we
+    /// sent. Drives the re-auth-and-retry in `performLLMRequest`. Always false
+    /// in builds without the flavor, where the retry arm is unreachable.
+    private func isFlavor1AuthError(_ error: LLMError, provider: LLMProvider) -> Bool {
+        #if JOT_FLAVOR_1
+        guard provider == .flavor1 else { return false }
+        guard case .httpError(let status, _) = error, status == 401 else { return false }
+        return true
+        #else
+        return false
+        #endif
+    }
+
     private func isUnsupportedReasoningEffortError(_ error: LLMError) -> Bool {
         guard case .httpError(let status, let body) = error, status == 400 else { return false }
         let b = body.lowercased()
@@ -596,6 +609,29 @@ actor LLMClient {
                 logLLMError(mapped, provider: provider, request: retry, streaming: useStreaming)
                 throw mapped
             }
+        } catch let error as LLMError where isFlavor1AuthError(error, provider: provider) {
+            #if JOT_FLAVOR_1
+            // The gateway rejected our JWT. Until v1.21.1 this went straight to
+            // the user: the failure kicked off a background refresh, so their
+            // *next* attempt worked and a stale token cost exactly one failed
+            // rewrite every time. Re-sign and retry once instead. Replaying the
+            // request verbatim would 401 again — `reauthorized` swaps in the
+            // fresh bearer. If it can't get one it returns nil in ~5s and we
+            // surface the original 401, which is what puts Sign in on the pill.
+            guard let retry = await Flavor1Client.reauthorized(request) else {
+                logLLMError(error, provider: provider, request: request, streaming: useStreaming)
+                throw error
+            }
+            do {
+                return try await sendLLMRequest(provider: provider, request: retry, useStreaming: useStreaming, onDelta: onDelta)
+            } catch {
+                let mapped = mapError(error)
+                logLLMError(mapped, provider: provider, request: retry, streaming: useStreaming)
+                throw mapped
+            }
+            #else
+            throw error
+            #endif
         } catch {
             let mapped = mapError(error)
             logLLMError(mapped, provider: provider, request: request, streaming: useStreaming)

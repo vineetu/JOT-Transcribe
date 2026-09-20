@@ -8,6 +8,8 @@ xcuserdata/
 *.xcuserstate
 DerivedData/
 build/
+build-*/
+*.profraw
 *.xcscmblueprint
 *.xccheckout
 *.moved-aside

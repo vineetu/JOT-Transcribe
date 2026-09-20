@@ -124,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         #if DEBUG
         HelpInfraTests.runAll()
+        ThemeTests.runAll()
         ChatbotVoiceInputTests.runAll()
         ShortcutsTests.runAll()
         DockActivationPolicyTests.runAll()
@@ -133,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         SpeakerTimelineTextEditTests.runAll()
         TranscriptSearchTests.runAll()
         RecordingSummaryTests.runAll()
+        VocabAskFilterTests.runAll()
         SegmentSlicingTests.runAll()
         ModelSwitchTests.runAll()
         DownloadRetryTests.runAll()
@@ -450,19 +452,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         Task { @MainActor in
             let suppressed = await CorrectionStore.shared.keyboardSuppressedPairs()
             // V2-4: a pair granted "Always replace" auto-applies and never
-            // consumes ask budget (same predicate as `AskPolicy.granted`).
-            // Grants arrive with the review-surface UI; excluding them here
-            // keeps the pill correct the day that ships.
+            // consumes ask budget — via the shared `MacVocabGate.isGranted`
+            // helper (mirrors `AskPolicy.granted`).
             let overrides = await CorrectionStore.shared.snapshot()
-            func isGranted(_ item: AskItem) -> Bool {
+            // V2-3 merge-teach one-shot (DECIDE here, SPEND after surfacing): a
+            // merge-shaped ask ("sri ram" → "Sriram") is offered exactly ONCE per
+            // phrase ever. Read the already-spent set now; the spend
+            // (`noteMergeAsked`) happens in `runAskSequence` when the ask is
+            // actually shown — never inside this decision.
+            let mergeAsked = await CorrectionStore.shared.mergeAskedPairs()
+            let offered = resolved.filter { item in
+                MacVocabGate.shouldOfferAsk(
+                    suppressionKey: item.suppressionKey,
+                    isMerge: item.isMerge,
+                    isGranted: MacVocabGate.isGranted(
+                        originalWord: item.from, term: item.term, in: overrides),
+                    suppressed: suppressed,
+                    mergeAsked: mergeAsked)
+            }
+            // M3(a) prior-desc ranking (mirror AskPolicy's `prior`): surface the
+            // closest-to-automatic asks first, from the SAME overrides snapshot.
+            func prior(_ item: AskItem) -> Int {
                 overrides.first {
                     $0.originalWord == CorrectionKey.normalize(item.from)
                         && $0.term.lowercased() == item.term.lowercased()
-                }?.alwaysReplace == true
+                }?.net ?? 0
             }
-            let askable = resolved
-                .filter { !suppressed.contains($0.suppressionKey) && !isGranted($0) }
-                .prefix(3)
+            let ranked = MacVocabGate.rankByPriorDescending(offered) { prior($0) }
+            // M3(b) mixed-payload drop: cap at 3, then — if any normal ask rides
+            // this batch — drop the merge-teach asks (WITHOUT spending their
+            // one-shot; the spend only fires in runAskSequence for a surfaced merge).
+            let capped = Array(ranked.prefix(3))
+            let askable = MacVocabGate.applyMixedPayload(
+                capped, isMergeTeach: { $0.isMerge }, pairKey: { $0.suppressionKey })
 
             guard !askable.isEmpty else {
                 // Every candidate is suppressed → no ask. Deliver the staged text
@@ -489,12 +511,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let from: String
         let term: String
         let applied: Bool
+        /// 3-option ask (design §2a, alt0): the wider-span alternate — a longer
+        /// term (`altTerm`) over a wider in-text slice (`altFind`). Both nil when
+        /// the gate offered no alternate. Picking it splices `altFind`→`altTerm`.
+        let altTerm: String?
+        let altFind: String?
+        /// Merge-shaped ask ("sri ram" → "Sriram") — gated to one teach ask ever.
+        let isMerge: Bool
 
         /// Build only if the relevant word is present in `text`; returns nil
         /// (drop the ask) when neither anchor survived the downstream rewrite.
         init?(correction c: VocabularyRescorerHolder.UXCorrection, in text: String) {
             self.from = c.from
             self.term = c.to
+            self.isMerge = c.isMerge
             if AppDelegate.containsWholeWord(c.to, in: text) {
                 // The term is in the text → the gate APPLIED it.
                 self.applied = true
@@ -503,6 +533,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 self.applied = false
             } else {
                 return nil
+            }
+            // Carry the alternate only when BOTH sides are present AND the wider
+            // in-text slice is actually present to splice over.
+            if let t = c.altTerm, let f = c.altFind,
+               AppDelegate.containsWholeWord(f, in: text) {
+                self.altTerm = t
+                self.altFind = f
+            } else {
+                self.altTerm = nil
+                self.altFind = nil
             }
         }
 
@@ -576,6 +616,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // it BLOCKED it (matches `anchor` above and the `applied` flag).
         let (contextBefore, contextAfter) = Self.askContext(around: anchor, in: staged)
 
+        // 3-option ask (design §2a, alt0): offer the wider-span alternate only
+        // when the gate produced one AND its in-text slice is STILL present in the
+        // (possibly prior-ask-edited) staged text.
+        let alternate: String? = {
+            guard let altFind = c.altFind, c.altTerm != nil,
+                  Self.containsWholeWord(altFind, in: staged) else { return nil }
+            return c.altTerm
+        }()
+
         // `original` shown on the Keep button is always the word the user spoke
         // (`from`); `term` is always the offered vocabulary term.
         pill.showAskCorrection(
@@ -584,6 +633,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             contextBefore: contextBefore,
             contextAfter: contextAfter,
             applied: c.applied,
+            alternate: alternate,
             onConfirm: {
                 // Confirm → the text should hold the TERM. For an applied
                 // candidate it already does; for a blocked one, splice from→term.
@@ -639,8 +689,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                     Task { await CorrectionStore.shared.noteBlockedKeep(originalWord: c.from, term: c.term) }
                 }
                 Task { @MainActor in await delivery?.deliver(staged, originApp: originApp) }
-            }
+            },
+            onAlternate: (alternate != nil) ? {
+                // Pick the wider-span alternate (design §2a/c): splice altFind →
+                // altTerm in the staged text, then TEACH the CHOSEN mapping ±1 —
+                // mirroring the base `confirm` write (no new ledger code; the live
+                // pill teaches CorrectionStore directly, same as onConfirm).
+                guard let altFind = c.altFind, let altTerm = c.altTerm else {
+                    next(staged); return
+                }
+                let widened = Self.replaceWholeWord(altFind, with: altTerm, in: staged)
+                // KNOWN LIMITATION (M2 / backlog tech.vocab-alt-mapping-auto-apply):
+                // `altFind` is a MULTI-WORD key ("sri ram") and the gate's override
+                // step consults only single-token originalWords, so this confirmed
+                // alternate does NOT auto-apply next time — the pill re-offers it.
+                // This matches the ledger-accounting shape (and iOS's re-offer
+                // behavior), so the write stays; a gate change to consult multi-word
+                // override keys is filed as a cross-platform backlog item.
+                Task { await CorrectionStore.shared.confirm(originalWord: altFind, term: altTerm) }
+                next(widened)
+            } : nil
         )
+
+        // Merge-teach one-shot SPEND (design §1 invariant — decide in the filter,
+        // spend AFTER the ask is surfaced): the pill is now showing this ask, so
+        // burn its single shot. Adjudicated or not (bounded fatigue); never inside
+        // the eligibility decision above.
+        if c.isMerge {
+            Task { await CorrectionStore.shared.noteMergeAsked(originalWord: c.from, term: c.term) }
+        }
     }
 
     /// Whole-word, case-insensitive containment test. Mirrors the gate's

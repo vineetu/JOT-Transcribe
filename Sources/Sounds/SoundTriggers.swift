@@ -53,9 +53,9 @@ final class SoundTriggers {
     /// `.recording` fires `recordingStart`, `recording → transcribing`
     /// fires `recordingStop`, `.rewriting → .idle` is treated as the
     /// paste-back "done" moment and fires `transcriptionComplete`.
-    /// Rewrite (fixed) skips the `.recording` step entirely, so it
-    /// silently passes through capturing → rewriting → idle with only
-    /// the terminal `transcriptionComplete` chime on success.
+    /// Rewrite (fixed) skips the `.recording` step, so it gets the
+    /// `rewriteStart` chime on capturing → rewriting instead — every
+    /// rewrite announces its start, not just the voice one.
     func start(rewrite: RewriteController) {
         rewrite.$state
             .sink { [weak self] next in
@@ -97,6 +97,12 @@ final class SoundTriggers {
             // Entering the mic-live phase from capturing (or error recovery).
             // Uses a dedicated chime (pitch-shifted from recordingStart) so
             // Rewrite with Voice is audibly distinguishable from dictation.
+            player.play(.rewriteStart)
+
+        case (.capturing, .rewriting), (.idle, .rewriting):
+            // No voice step (fixed Rewrite, or a prompt picked without
+            // speaking): the rewrite itself is the start. After a voice step
+            // the chime already played on `.recording`, so it isn't repeated.
             player.play(.rewriteStart)
 
         case (.recording, .transcribing):

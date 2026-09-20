@@ -7,9 +7,7 @@ import SwiftUI
 
 struct GeneralPane: View {
     /// Observed so the Appearance section re-renders on selection.
-    #if JOT_THEMES_ENABLED
     @ObservedObject private var themeStore = ThemeStore.shared
-    #endif
     @AppStorage("jot.inputDeviceUID") private var inputDeviceUID: String = ""
     /// Cached human-readable name for the saved UID. Populated when the
     /// user selects a device from the picker and read by the
@@ -191,9 +189,11 @@ struct GeneralPane: View {
 
             // Deliberately OUTSIDE the `advancedEnabled` gate below: picking a
             // look is a plain preference, not a power-user setting.
-            // Themes: built, working, and deliberately not shipped. Nothing
-            // defines JOT_THEMES_ENABLED, so the picker compiles out of both
-            // either build.
+            // Only when a build registered themes: with Default alone there is
+            // nothing to pick, so the stock build shows no Appearance section.
+            if JotTheme.allCases.count > 1 {
+                appearanceSection
+            }
             // The toggle stays PUT when it is switched on: everything it
             // reveals appears below it. Sitting at the bottom meant flipping
             // it on shoved the control itself further down the page, away
@@ -784,7 +784,6 @@ struct GeneralPane: View {
     ///
     /// Selecting "Default" restores the standard look instantly, and themes
     /// follow the system light/dark setting rather than forcing one.
-    #if JOT_THEMES_ENABLED
     @ViewBuilder
     private var appearanceSection: some View {
         Section("Appearance") {
@@ -803,7 +802,7 @@ struct GeneralPane: View {
                 .foregroundStyle(.secondary)
 
             if themeStore.theme != .default {
-                Text("Themes change colours and chimes only — your transcripts, "
+                Text("Themes change the look and chimes only — your transcripts, "
                      + "shortcuts and settings are untouched. Choose Default to "
                      + "restore the standard look.")
                     .font(.caption)
@@ -811,7 +810,6 @@ struct GeneralPane: View {
             }
         }
     }
-    #endif
 
     // MARK: - Dictation delivery (relocated from TranscriptionPane, advanced-only)
 
@@ -1024,8 +1022,8 @@ struct GeneralPane: View {
                      popoverBody: "A short chime confirms Jot heard your hotkey. When on: you get audible feedback the moment capture starts, without needing to look at the menu bar.",
                      helpAnchor: "sound-recording-chimes")
             chimeRow("Rewrite start", isOn: $soundRewriteStart, effect: .rewriteStart,
-                     help: "Play a chime when a Rewrite with Voice instruction begins.",
-                     popoverBody: "A distinct chime — pitch-shifted from the dictation start chime — plays when Rewrite with Voice opens the mic for your voice instruction. When on: you can hear the difference between a dictation session and a Rewrite without looking at the menu bar.",
+                     help: "Play a chime when a rewrite begins.",
+                     popoverBody: "A distinct chime — pitch-shifted from the dictation start chime — plays when a rewrite begins: when Rewrite with Voice opens the mic for your instruction, or when Rewrite (fixed prompt) starts rewriting. When on: you can hear the difference between a dictation session and a Rewrite without looking at the menu bar.",
                      helpAnchor: "sound-recording-chimes")
             chimeRow("Recording stop", isOn: $soundRecordingStop, effect: .recordingStop,
                      help: "Play a chime when recording stops and transcription starts.",

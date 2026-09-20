@@ -56,7 +56,7 @@ final class PillViewModel: ObservableObject {
         /// when the term is currently in the text (silent-OOV APPLIED case —
         /// the in-text word is `term`) and `false` when the original is in the
         /// text (common-word BLOCKED near-miss — the in-text word is `original`).
-        case askCorrection(original: String, term: String, contextBefore: String, contextAfter: String, applied: Bool)
+        case askCorrection(original: String, term: String, contextBefore: String, contextAfter: String, applied: Bool, alternate: String?)
         case error(message: String)
         /// Press-and-hold progress for the Prompt Picker entry. `progress`
         /// is 0.0 → 1.0 across the (threshold − grace) window — the pill
@@ -174,6 +174,9 @@ final class PillViewModel: ObservableObject {
     /// common-word near-miss stays un-replaced — i.e. the user never has to click
     /// for the gate's default to take effect.
     private var onAskAccept: (() -> Void)?
+    /// 3-option ask (design §2a, alt0): fired when the user picks the third
+    /// choice — a wider-span alternate term. `nil` when the ask has no alternate.
+    private var onAskAlternate: (() -> Void)?
     /// Dedicated dismiss task for the ask timeout. Kept SEPARATE from
     /// `dismissTask` so an unrelated pill transition's `dismissTask?.cancel()`
     /// can never silently kill the ask's auto-resolve (§8 M4/M5).
@@ -205,6 +208,8 @@ final class PillViewModel: ObservableObject {
     private var latestPartial: String?
 
     private var recorderCancellable: AnyCancellable?
+    /// Repaints the pill when the appearance theme changes (see `init`).
+    private var themeCancellable: AnyCancellable?
     private var deliveryCancellable: AnyCancellable?
     private var rewriteCancellable: AnyCancellable?
     private var rewriteResultCancellable: AnyCancellable?
@@ -212,8 +217,8 @@ final class PillViewModel: ObservableObject {
     /// recording pill can surface the per-use augment hint during a
     /// picker-augmented Rewrite with Voice capture.
     private var rewriteAugmentHintCancellable: AnyCancellable?
-    /// Mirrors `RewriteController.typedPanelVisible` so the pill can stand
-    /// down while the panel is saying the same things.
+    /// Mirrors `RewriteController.typedPanelVisible` so the pill can drop its
+    /// hint + stop-key subtitles while the panel is saying the same things.
     private var typedPanelCancellable: AnyCancellable?
     /// Subscriber on `StreamingPartialStore.shared.$partial`. Updates
     /// `latestPartial` and rebuilds the pill state when currently
@@ -243,6 +248,17 @@ final class PillViewModel: ObservableObject {
         self.recorder = recorder
         self.delivery = delivery
         self.rewriteController = rewriteController
+
+        // The pill is hosted in an `NSPanel`, outside the SwiftUI environment, so
+        // it cannot observe `ThemeStore`. It reads `JotTheme.current` at render
+        // time; this nudge is what makes an already-visible pill repaint when the
+        // theme changes instead of waiting for its next state transition.
+        themeCancellable = NotificationCenter.default
+            .publisher(for: ThemeStore.didChangeNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
 
         recorderCancellable = recorder.$state
             .receive(on: DispatchQueue.main)
@@ -654,9 +670,11 @@ final class PillViewModel: ObservableObject {
         contextBefore: String,
         contextAfter: String,
         applied: Bool,
+        alternate: String? = nil,
         onConfirm: @escaping () -> Void,
         onDismiss: @escaping () -> Void,
-        onAccept: @escaping () -> Void
+        onAccept: @escaping () -> Void,
+        onAlternate: (() -> Void)? = nil
     ) {
         // Tear down any in-flight ask WITHOUT delivering — the bridge that
         // started this new ask is the single owner of the deliver() decision and
@@ -666,6 +684,9 @@ final class PillViewModel: ObservableObject {
         onAskConfirm = onConfirm
         onAskDismiss = onDismiss
         onAskAccept = onAccept
+        // Only surface the third choice when BOTH an alternate label and its
+        // handler are present.
+        onAskAlternate = (alternate != nil) ? onAlternate : nil
         isAwaitingAskCorrection = true
         stopTick()
         transition(to: .askCorrection(
@@ -673,7 +694,8 @@ final class PillViewModel: ObservableObject {
             term: term,
             contextBefore: contextBefore,
             contextAfter: contextAfter,
-            applied: applied
+            applied: applied,
+            alternate: onAskAlternate != nil ? alternate : nil
         ))
         // After the linger, auto-ACCEPT the gate's decision (deliver staged
         // as-is) — NOT revert. The user shouldn't have to click for the default
@@ -689,13 +711,16 @@ final class PillViewModel: ObservableObject {
     /// How an ask resolves. `confirm` = apply the offered term (+ learn);
     /// `keepOriginal` = explicit revert to the spoken word; `accept` = take the
     /// gate's current decision unchanged (timeout / outside-click — no click).
-    private enum AskOutcome { case confirm, keepOriginal, accept }
+    private enum AskOutcome { case confirm, keepOriginal, accept, alternate }
 
     /// Confirm the current ask (⏎ / "Use term" button) — apply the offered term.
     func confirmAsk() { resolveAsk(outcome: .confirm) }
 
     /// Explicit keep-original (esc / "Keep" button) — revert to the spoken word.
     func dismissAsk() { resolveAsk(outcome: .keepOriginal) }
+
+    /// Pick the third choice — the wider-span alternate term (design §2a, alt0).
+    func alternateAsk() { resolveAsk(outcome: .alternate) }
 
     /// Non-interactive resolution (10s timeout / outside-click) — accept the
     /// gate's default (staged text as-is), so an ignored ask still delivers.
@@ -715,9 +740,11 @@ final class PillViewModel: ObservableObject {
         let confirm = onAskConfirm
         let dismiss = onAskDismiss
         let accept = onAskAccept
+        let alternate = onAskAlternate
         onAskConfirm = nil
         onAskDismiss = nil
         onAskAccept = nil
+        onAskAlternate = nil
         isAwaitingAskCorrection = false
         askTimeoutTask?.cancel()
         askTimeoutTask = nil
@@ -725,6 +752,7 @@ final class PillViewModel: ObservableObject {
         case .confirm: confirm?()
         case .keepOriginal: dismiss?()
         case .accept: (accept ?? dismiss)?()
+        case .alternate: (alternate ?? dismiss)?()
         }
     }
 
@@ -741,6 +769,7 @@ final class PillViewModel: ObservableObject {
         onAskConfirm = nil
         onAskDismiss = nil
         onAskAccept = nil
+        onAskAlternate = nil
         isAwaitingAskCorrection = false
         askTimeoutTask?.cancel()
         askTimeoutTask = nil

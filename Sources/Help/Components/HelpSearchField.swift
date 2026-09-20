@@ -47,7 +47,7 @@ struct HelpSearchField: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(
                         isFocused
-                            ? Color.accentColor.opacity(0.6)
+                            ? JotTheme.current.accent.opacity(0.6)
                             : Color.primary.opacity(0.12),
                         lineWidth: isFocused ? 1.0 : 0.5
                     )

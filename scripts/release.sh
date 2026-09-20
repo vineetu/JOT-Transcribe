@@ -147,6 +147,13 @@ if [[ -z "${JOT_FLAVOR_NAME}" ]]; then
     "${SCRIPT_DIR}/lib/assert-public-plist.sh" Resources/Info.plist
 fi
 
+# 0e. Optional local-only features stay out of releases. A compile flag
+#     containing THEMES_ENABLED marks a local test build; refuse to ship one
+#     unless explicitly overridden. (Step 3.5 re-checks the exported app.)
+if [[ "${JOT_EXTRA_SWIFT_FLAGS:-}" == *THEMES_ENABLED* && "${JOT_ALLOW_THEMES_IN_RELEASE:-}" != "1" ]]; then
+    fail "JOT_EXTRA_SWIFT_FLAGS contains THEMES_ENABLED (a local test flag). Unset it, or set JOT_ALLOW_THEMES_IN_RELEASE=1 to override."
+fi
+
 # ---- Derive build number from commit count -----------------------------------
 BUILD_NUMBER="$(git rev-list --count HEAD)"
 BUILD_NUMBER=$((BUILD_NUMBER + 1))
@@ -244,6 +251,29 @@ chmod 755 "${REPO_ROOT}/Vendor/jot-cli/jot"
 # ---- 3. Build, sign, notarize ------------------------------------------------
 log "Building DMG"
 bash "${SCRIPT_DIR}/build-dmg.sh"
+
+# ---- 3.5. Exported app must carry no optional theme assets -------------------
+# The Bundle Helpers phase copies theme-* resources only for local test builds;
+# check the app build-dmg.sh exported, before anything is committed or pushed.
+EXPORTED_APP="${REPO_ROOT}/build/export/Jot.app"
+[[ -d "${EXPORTED_APP}" ]] || fail "Expected ${EXPORTED_APP} from build-dmg.sh"
+if [[ "${JOT_ALLOW_THEMES_IN_RELEASE:-}" != "1" ]]; then
+    theme_assets="$(find "${EXPORTED_APP}/Contents/Resources" -maxdepth 1 -name 'theme-*' 2>/dev/null)" || true
+    [[ -z "${theme_assets}" ]] ||
+        fail "exported app contains theme assets (set JOT_ALLOW_THEMES_IN_RELEASE=1 to override):
+${theme_assets}"
+    # The theme code registers an Objective-C class; a stripped binary keeps
+    # its ObjC metadata, so read that. Not `strings`: the neutral registry
+    # holds the class name as a string literal in every build. The tool's
+    # output is captured first: piping into `grep -q` under pipefail turns a
+    # match into a failure (SIGPIPE on the writer).
+    EXPORTED_BIN="${EXPORTED_APP}/Contents/MacOS/Jot"
+    [[ -f "${EXPORTED_BIN}" ]] || fail "Expected ${EXPORTED_BIN}"
+    objc_meta="$(otool -ov "${EXPORTED_BIN}" 2>/dev/null)" || fail "otool could not read ${EXPORTED_BIN}"
+    if grep -Eq '^[[:space:]]*name[[:space:]]+0x[0-9a-f]+ JotThemePackLoader$' <<<"${objc_meta}"; then
+        fail "exported app defines the JotThemePackLoader class (set JOT_ALLOW_THEMES_IN_RELEASE=1 to override)"
+    fi
+fi
 
 # ---- 4. Rename DMG if a custom name was requested ----------------------------
 if [[ "${DMG_FINAL}" != "${DMG_BUILT}" ]]; then

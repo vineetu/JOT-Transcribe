@@ -163,7 +163,7 @@ struct PromptPickerView: View {
                 } label: {
                     Text("Got it")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(JotTheme.current.accent)
                 }
                 .buttonStyle(.plain)
             }
@@ -324,7 +324,7 @@ struct PromptPickerView: View {
             if model.isDefault(row.prompt.id) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 10))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(JotTheme.current.accent)
                     .help("Default — fired by a tap on the Rewrite hotkey")
             }
             if model.isPinned(row.prompt.id) {
@@ -342,7 +342,7 @@ struct PromptPickerView: View {
         .padding(.vertical, 9)
         .background(
             isFocused
-                ? AnyView(Color.accentColor.opacity(0.18))
+                ? AnyView(JotTheme.current.accent.opacity(0.18))
                 : AnyView(Color.clear)
         )
         .contentShape(Rectangle())

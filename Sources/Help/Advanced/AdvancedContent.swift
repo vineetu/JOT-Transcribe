@@ -283,7 +283,7 @@ enum AdvancedContent {
     private static let recordingsLibrary = AdvancedSection(
         id: "recordings-library",
         title: "Recordings & Library",
-        subtitle: "Speaker labels, file import, export, search, and safety nets for everything Jot records.",
+        subtitle: "Speaker labels, file import, export, search, summaries, and safety nets for everything Jot records.",
         cards: [
             AdvancedCardData(
                 id: "recordings-diarization",
@@ -301,7 +301,10 @@ enum AdvancedContent {
                     + "are detected and skipped automatically; the result is computed once and saved. "
                     + "Files you import are diarized automatically right after they transcribe (on by "
                     + "default \u{2014} turn it off in Settings \u{2192} Speaker labels); the speaker model "
-                    + "downloads the first time it's needed. Live mic dictations stay manual-only."
+                    + "downloads the first time it's needed. Live mic dictations stay manual-only. "
+                    + "You can also right-click a selection inside a speaker block to \u{201c}Add to "
+                    + "Vocabulary\u{2026}\u{201d} just like in the plain view \u{2014} a correction made in either view "
+                    + "updates the same occurrence in the other."
             ),
             AdvancedCardData(
                 id: "recordings-file-import",
@@ -378,6 +381,36 @@ enum AdvancedContent {
                     + "click instead of losing it. A startup scan also recovers any orphaned audio "
                     + "left on disk from a crash or an older version, so nothing you recorded is "
                     + "ever silently discarded."
+            ),
+            AdvancedCardData(
+                id: "recordings-find",
+                title: "Find in Transcript",
+                badge: "\u{2318}F",
+                body: "A native find bar searches a recording's transcript as you type, with match stepping.",
+                expansionProse:
+                    "Press \u{2318}F in a recording's detail to open a find bar; type to highlight every "
+                    + "match, and step through them with \u{2318}G / \u{21e7}\u{2318}G (wrapping around the ends). Each "
+                    + "hit scrolls into view. It works in both the plain reading view and the "
+                    + "speaker-labeled view — matches step across speaker blocks. Search is case- and "
+                    + "diacritic-insensitive, so \u{201c}resume\u{201d} finds \u{201c}r\u{00e9}sum\u{00e9}\u{201d}. Esc or Done closes the "
+                    + "bar, and your last query is remembered when you reopen it."
+            ),
+            AdvancedCardData(
+                id: "recordings-summary",
+                title: "AI Summary",
+                badge: "capable AI",
+                body: "Summarize a recording — meeting recap, action items, key points — from its More menu.",
+                expansionProse:
+                    "Open the \u{22ef} More menu in a recording's detail and pick a summary. The options "
+                    + "adapt to the recording: a multi-speaker (diarized) one offers Meeting summary, "
+                    + "Action items, and Key decisions; a single-speaker one offers Summary and Key "
+                    + "points; both also take a Custom prompt. The summary appears above the transcript "
+                    + "and is saved with the recording — it never adds a separate row and never runs on "
+                    + "its own. Summaries route only to a capable provider (OpenAI, Anthropic, Gemini, "
+                    + "Ollama, or LM Studio) configured in Settings \u{2192} AI; Apple Intelligence is "
+                    + "excluded — the action is disabled with a note when it's your selected provider. "
+                    + "For diarized recordings the transcript is sent with speaker labels so items and "
+                    + "decisions can be attributed to who said them."
             ),
         ]
     )

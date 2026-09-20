@@ -83,6 +83,10 @@ enum ResetActions {
             }
         }
 
+        // The domain wipe dropped the stored appearance; bring the in-memory
+        // theme (and the pill/sounds that follow it) back to the default.
+        ThemeStore.shared.reload()
+
         clearAPIKeys(keychain: keychain)
         FirstRunState.shared.reset()
 

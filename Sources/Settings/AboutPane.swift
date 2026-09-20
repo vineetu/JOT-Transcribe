@@ -173,7 +173,7 @@ struct AboutPane: View {
                 HStack(alignment: .center, spacing: 14) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 18))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(JotTheme.current.accent)
                         .frame(width: 28)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -215,7 +215,7 @@ struct AboutPane: View {
                 HStack(alignment: .center, spacing: 14) {
                     Image(systemName: "iphone.gen3")
                         .font(.system(size: 18))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(JotTheme.current.accent)
                         .frame(width: 28)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -271,7 +271,7 @@ struct AboutPane: View {
                 HStack(alignment: .center, spacing: 14) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 18))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(JotTheme.current.accent)
                         .frame(width: 28)
 
                     VStack(alignment: .leading, spacing: 2) {

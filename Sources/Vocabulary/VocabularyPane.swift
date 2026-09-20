@@ -300,7 +300,7 @@ struct VocabularyPane: View {
                 .font(.system(size: 13))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(JotTheme.current.accent)
         .keyboardShortcut("n", modifiers: .command)
     }
 

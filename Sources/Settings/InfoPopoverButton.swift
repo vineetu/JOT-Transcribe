@@ -79,7 +79,7 @@ struct InfoPopoverButton: View {
                 } label: {
                     Text("Learn more →")
                         .font(.footnote)
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(JotTheme.current.accent)
                 }
                 .buttonStyle(.plain)
                 .focusable(false)

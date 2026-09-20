@@ -153,3 +153,88 @@ extension LanguageChoice {
         }
     }
 }
+
+/// Mac-side shared predicates over a `CorrectionStore` override snapshot, so the
+/// live-pill ask filter (and any future consumer) share ONE implementation.
+enum MacVocabGate {
+    /// Whether `(originalWord → term)` carries an "Always replace" grant in
+    /// `overrides`. **Mirrors `JotVocabCore.AskPolicy.granted`** exactly (same
+    /// `CorrectionKey.normalize(originalWord)` + `term.lowercased()` match on
+    /// `alwaysReplace`); duplicated Mac-side pending a public package helper —
+    /// the ask path is Mac-only (UXCorrection-shaped) and doesn't run `AskPolicy`.
+    static func isGranted(
+        originalWord: String, term: String, in overrides: [CorrectionStore.OverrideEntry]
+    ) -> Bool {
+        overrides.first {
+            $0.originalWord == CorrectionKey.normalize(originalWord)
+                && $0.term.lowercased() == term.lowercased()
+        }?.alwaysReplace == true
+    }
+
+    /// Whether a live-pill ask should be OFFERED, given the current cross-recording
+    /// state. Pure decision (no store access) so it's unit-testable:
+    ///   - drop pairs the owner suppressed ("Stop asking" / ≥ threshold keeps),
+    ///   - drop always-replace grants (they auto-apply, never ask),
+    ///   - drop a merge-shaped ask already taught once (design §1 one-shot — the
+    ///     `noteMergeAsked` SPEND happens later, after the ask is surfaced).
+    /// All keys are `CorrectionKey.pairKey`-shaped so they compare byte-identically
+    /// to `keyboardSuppressedPairs()` / `mergeAskedPairs()`.
+    static func shouldOfferAsk(
+        suppressionKey: String,
+        isMerge: Bool,
+        isGranted: Bool,
+        suppressed: Set<String>,
+        mergeAsked: Set<String>
+    ) -> Bool {
+        if suppressed.contains(suppressionKey) { return false }
+        if isGranted { return false }
+        if isMerge, mergeAsked.contains(suppressionKey) { return false }
+        return true
+    }
+
+    /// Whether a gate proposal is admitted as a live-pill ask candidate — a
+    /// UXCorrection-shaped mirror of `AskPolicy.worthAsking`'s admission arms
+    /// (JotVocabCore, not called on this Mac path). A KEPT merge
+    /// ("sri ram" → "Sriram") is the designed teach ask and is EXEMPT from the
+    /// common-word gate (a merge original is a multi-word phrase; single-word
+    /// common-membership doesn't apply). Everything else: an APPLIED correction,
+    /// or a non-common ask candidate. Returns whether to admit + whether it's the
+    /// merge-teach shape (drives the once-ever one-shot + mixed-payload rules).
+    static func admitAsk(
+        outcome: String, shape: String?, askCandidate: Bool, originalIsCommon: Bool
+    ) -> (admit: Bool, isMergeTeach: Bool) {
+        let isMergeTeach = (shape == "merge" && outcome == "kept")
+        let ask = isMergeTeach || (askCandidate && !originalIsCommon)
+        return (admit: outcome == "applied" || ask, isMergeTeach: isMergeTeach)
+    }
+
+    /// Stable prior-descending order — a UXCorrection-shaped mirror of
+    /// `AskPolicy`'s `sorted { prior($0) > prior($1) }` (closest-to-automatic
+    /// first). Ties keep input order.
+    static func rankByPriorDescending<T>(_ items: [T], prior: (T) -> Int) -> [T] {
+        items.enumerated()
+            .sorted { a, b in
+                let pa = prior(a.element), pb = prior(b.element)
+                return pa != pb ? pa > pb : a.offset < b.offset
+            }
+            .map(\.element)
+    }
+
+    /// Mixed-payload rule — a UXCorrection-shaped mirror of `AskPolicy`
+    /// (JotVocabCore) semantics: if ANY non-merge-teach ask is present, drop ALL
+    /// merge-teach asks from THIS batch (a teach card must never ride a paste-
+    /// holding deck) WITHOUT spending their one-shot; otherwise dedupe merge-teach
+    /// asks by pair key. Order is preserved. Pure — the caller performs the
+    /// `noteMergeAsked` spend only for the merges that SURVIVE and are surfaced.
+    static func applyMixedPayload<T>(
+        _ items: [T], isMergeTeach: (T) -> Bool, pairKey: (T) -> String
+    ) -> [T] {
+        let hasNormalAsk = items.contains { !isMergeTeach($0) }
+        var seenMergePairs: Set<String> = []
+        return items.filter { item in
+            guard isMergeTeach(item) else { return true }
+            if hasNormalAsk { return false }
+            return seenMergePairs.insert(pairKey(item)).inserted
+        }
+    }
+}

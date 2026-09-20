@@ -508,11 +508,11 @@ private struct DefaultPromptBadge: View {
     var body: some View {
         Text("Default")
             .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(JotTheme.current.accent)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
-                Capsule().fill(Color.accentColor.opacity(0.15))
+                Capsule().fill(JotTheme.current.accent.opacity(0.15))
             )
     }
 }
@@ -553,7 +553,7 @@ private struct UserPromptRow: View {
                 } label: {
                     Image(systemName: isDefault ? "bolt.fill" : "bolt")
                         .font(.system(size: 12))
-                        .foregroundStyle(isDefault ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(isDefault ? JotTheme.current.accent : Color.secondary)
                 }
                 .buttonStyle(.plain)
                 .help(isDefault ? "Clear default (tap reverts to the shared prompt)" : "Set as default — tap the Rewrite hotkey to fire this prompt")
@@ -563,7 +563,7 @@ private struct UserPromptRow: View {
                 } label: {
                     Image(systemName: isPinned ? "star.fill" : "star")
                         .font(.system(size: 12))
-                        .foregroundStyle(isPinned ? Color.accentColor : Color.secondary)
+                        .foregroundStyle(isPinned ? JotTheme.current.accent : Color.secondary)
                 }
                 .buttonStyle(.plain)
                 .help(isPinned ? "Unpin prompt" : "Pin prompt")
@@ -644,7 +644,7 @@ private struct BrowserRow: View {
             } label: {
                 Image(systemName: promptStore.isDefault(prompt.id) ? "bolt.fill" : "bolt")
                     .font(.system(size: 12))
-                    .foregroundStyle(promptStore.isDefault(prompt.id) ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(promptStore.isDefault(prompt.id) ? JotTheme.current.accent : Color.secondary)
             }
             .buttonStyle(.plain)
             .help(promptStore.isDefault(prompt.id) ? "Clear default (tap reverts to the shared prompt)" : "Set as default — tap the Rewrite hotkey to fire this prompt")
@@ -654,7 +654,7 @@ private struct BrowserRow: View {
             } label: {
                 Image(systemName: promptStore.isPinned(prompt.id) ? "star.fill" : "star")
                     .font(.system(size: 12))
-                    .foregroundStyle(promptStore.isPinned(prompt.id) ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(promptStore.isPinned(prompt.id) ? JotTheme.current.accent : Color.secondary)
             }
             .buttonStyle(.plain)
             .help(promptStore.isPinned(prompt.id) ? "Unpin prompt" : "Pin prompt")

@@ -289,7 +289,7 @@ struct DonationsView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
                 .frame(height: 26)
-                .background(Color.accentColor, in: Capsule(style: .continuous))
+                .background(JotTheme.current.accent, in: Capsule(style: .continuous))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -327,7 +327,7 @@ struct DonationsView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .frame(minHeight: 28)
-                    .background(Color.accentColor, in: Capsule(style: .continuous))
+                    .background(JotTheme.current.accent, in: Capsule(style: .continuous))
             }
             .buttonStyle(.plain)
             .accessibilityHint("Attempts to reload donation totals")

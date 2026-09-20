@@ -97,12 +97,12 @@ struct HomePane: View {
             .padding(10)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(isDropTargeted ? Color.accentColor.opacity(0.06) : Color.clear)
+                    .fill(isDropTargeted ? JotTheme.current.accent.opacity(0.06) : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(
-                        Color.accentColor.opacity(isDropTargeted ? 0.6 : 0),
+                        JotTheme.current.accent.opacity(isDropTargeted ? 0.6 : 0),
                         style: StrokeStyle(lineWidth: 1.5, dash: isDropTargeted ? [5, 4] : [])
                     )
             )
@@ -142,7 +142,7 @@ struct HomePane: View {
         if isDropTargeted {
             Text("Release to transcribe")
                 .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
         } else {
             switch fileIngest.status {
             case .idle:
@@ -424,7 +424,7 @@ private struct AudioFileBrowseLine: View {
             Button("browse", action: onPick)
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
         }
     }
 }

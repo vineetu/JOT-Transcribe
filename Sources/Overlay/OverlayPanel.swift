@@ -19,11 +19,11 @@ import SwiftUI
 /// `PillView`, which calls `OverlayPanel.beginUserDrag()` directly. Both share
 /// this view's `hitTest` for margin click-through.
 final class OverlayDragView: NSView {
-    /// Capsule rect (in THIS view's non-flipped AppKit coordinates) that should
+    /// Pill region (in THIS view's non-flipped AppKit coordinates) that should
     /// grab the mouse for dragging. Controller-installed (with `[weak self]`),
-    /// refreshed whenever the pill's size/expansion changes. `.zero` means the
+    /// refreshed whenever the pill's size/expansion changes. `.empty` means the
     /// whole view is click-through (hidden state).
-    var pillRectProvider: () -> CGRect = { .zero }
+    var pillRegionProvider: () -> PillHitRegion = { .empty }
 
     /// Notifies the controller that a window drag is starting (`true`) / ended
     /// (`false`) so its outside-click monitors can early-return during a drag
@@ -39,7 +39,7 @@ final class OverlayDragView: NSView {
         // SwiftUI controls are ABOVE this view → AppKit already gave them first
         // refusal; we only see pixels they declined. Decide drag-vs-margin by
         // geometry alone — never probe the hosting view.
-        if pillRectProvider().contains(point) { return self }
+        if pillRegionProvider().contains(point) { return self }
         return nil
     }
 
@@ -61,12 +61,12 @@ final class OverlayDragView: NSView {
 /// is visible. Gating `hitTest` to the capsule rect (the SAME rect the drag
 /// view uses) makes everything outside the pill pass through, while taps INSIDE
 /// the capsule still reach SwiftUI controls (ask buttons, drag) exactly as
-/// before. `{ .zero }` ⇒ fully transparent (hidden state).
+/// before. `{ .empty }` ⇒ fully transparent (hidden state).
 final class ClickThroughHostingView: NSHostingView<AnyView> {
-    var pillRectProvider: () -> CGRect = { .zero }
+    var pillRegionProvider: () -> PillHitRegion = { .empty }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        guard pillRectProvider().contains(point) else { return nil }
+        guard pillRegionProvider().contains(point) else { return nil }
         return super.hitTest(point)
     }
 
@@ -84,7 +84,7 @@ final class ClickThroughHostingView: NSHostingView<AnyView> {
 /// *state* changes, not every animation frame).
 final class OverlayPanel: NSPanel {
     /// The geometry-only drag layer below the hosting view. Exposed so the
-    /// controller can install `pillRectProvider` / `isDraggingProvider`.
+    /// controller can install `pillRegionProvider` / `isDraggingProvider`.
     let dragView = OverlayDragView()
     /// The SwiftUI host, exposed so the controller can install the same
     /// capsule-rect provider used by the drag layer — keeping the large canvas

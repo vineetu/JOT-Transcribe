@@ -25,6 +25,7 @@ final class OverlayWindowController {
     private var panel: OverlayPanel?
     private var screenChangeObserver: NSObjectProtocol?
     private var reduceMotionObserver: NSObjectProtocol?
+    private var themeObserver: NSObjectProtocol?
     private var stateCancellable: AnyCancellable?
     private var expansionCancellable: AnyCancellable?
     private var streamingActiveCancellable: AnyCancellable?
@@ -152,13 +153,13 @@ final class OverlayWindowController {
         self.panel = panel
 
         // Movable pill (v2, design §D.1/§D.2): install the geometry-only drag
-        // layer's providers. `pillRectProvider` returns the current capsule rect
+        // layer's providers. `pillRegionProvider` returns the current pill region
         // (refreshed by `applyClickThrough`); `isDraggingProvider` flips the
         // monitor guard around a `performDrag` (HIGH 2). Both capture `[weak
         // self]` to avoid a controller↔panel↔dragView retain cycle (LOW 1).
-        panel.dragView.pillRectProvider = { [weak self, weak panel] in
-            guard let self, let panel else { return .zero }
-            return self.capsuleRect(for: self.model.state, in: panel)
+        panel.dragView.pillRegionProvider = { [weak self, weak panel] in
+            guard let self, let panel else { return .empty }
+            return self.hitRegion(for: self.model.state, in: panel)
         }
         panel.dragView.isDraggingProvider = { [weak self] dragging in
             guard let self else { return }
@@ -187,6 +188,18 @@ final class OverlayWindowController {
         // display plug/unplug, HiDPI toggle, dock re-positioning.
         screenChangeObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateFrame()
+            }
+        }
+
+        // A theme can change the pill's size while it is showing (a skin owns
+        // its own size), so re-run the on-screen clamp against the new size.
+        themeObserver = NotificationCenter.default.addObserver(
+            forName: ThemeStore.didChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -359,6 +372,9 @@ final class OverlayWindowController {
         }
         if let observer = reduceMotionObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        if let observer = themeObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
         if let observer = windowMoveObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -611,6 +627,11 @@ final class OverlayWindowController {
     }
 
     private func pillSize(for state: PillViewModel.PillState) -> NSSize {
+        // A theme skin that draws this state owns its size (its drawn surface
+        // and this rect must stay in lockstep — see `hitRegion`).
+        if let skinned = JotTheme.current.pillSkin?.layout(for: state, expanded: model.isPillExpanded) {
+            return skinned.size
+        }
         // Expanded recording: taller multi-line transcript view.
         if model.isPillExpanded, case .recording = state {
             return NSSize(
@@ -684,19 +705,19 @@ final class OverlayWindowController {
         switch state {
         case .hidden:
             stopCursorTracking()
-            panel.dragView.pillRectProvider = { .zero }
-            panel.hostingView.pillRectProvider = { .zero }
+            panel.dragView.pillRegionProvider = { .empty }
+            panel.hostingView.pillRegionProvider = { .empty }
             panel.ignoresMouseEvents = true
         default:
             // The capsule rect routes taps to the right view WHILE the window is
             // hittable; the cursor tracker decides WHEN it's hittable (only over
             // the capsule), so clicks/selection pass through everywhere else.
-            let capsule: () -> CGRect = { [weak self, weak panel] in
-                guard let self, let panel else { return .zero }
-                return self.capsuleRect(for: self.model.state, in: panel)
+            let region: () -> PillHitRegion = { [weak self, weak panel] in
+                guard let self, let panel else { return .empty }
+                return self.hitRegion(for: self.model.state, in: panel)
             }
-            panel.dragView.pillRectProvider = capsule
-            panel.hostingView.pillRectProvider = capsule
+            panel.dragView.pillRegionProvider = region
+            panel.hostingView.pillRegionProvider = region
             startCursorTracking()
             updateClickThroughForCursor()   // apply for the first frame, pre-timer
         }
@@ -731,8 +752,8 @@ final class OverlayWindowController {
             if panel.ignoresMouseEvents { panel.ignoresMouseEvents = false }
             return
         }
-        let capsuleScreenRect = panel.convertToScreen(capsuleRect(for: model.state, in: panel))
-        let shouldIgnore = !capsuleScreenRect.contains(NSEvent.mouseLocation)
+        let mouse = panel.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let shouldIgnore = !hitRegion(for: model.state, in: panel).contains(mouse)
         if panel.ignoresMouseEvents != shouldIgnore {
             panel.ignoresMouseEvents = shouldIgnore
         }
@@ -758,5 +779,21 @@ final class OverlayWindowController {
             height: pill.height
         )
     }
-}
 
+    /// The pill's hit/drag region in the drag view's non-flipped coordinates.
+    /// Stock pills are their capsule rect. A theme skin supplies rects in its
+    /// own top-left space; they are flipped into the capsule's frame
+    /// (`y = capsule.maxY - rect.maxY`) so the region hugs the drawn shape
+    /// instead of its bounding box.
+    private func hitRegion(for state: PillViewModel.PillState, in panel: OverlayPanel) -> PillHitRegion {
+        let capsule = capsuleRect(for: state, in: panel)
+        guard let layout = JotTheme.current.pillSkin?.layout(for: state, expanded: model.isPillExpanded) else {
+            return PillHitRegion(rects: [capsule])
+        }
+        let rects = layout.hitRects
+        guard !rects.isEmpty else { return PillHitRegion(rects: [capsule]) }
+        return PillHitRegion(rects: rects.map { r in
+            CGRect(x: capsule.minX + r.minX, y: capsule.maxY - r.maxY, width: r.width, height: r.height)
+        })
+    }
+}

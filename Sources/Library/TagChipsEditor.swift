@@ -88,15 +88,15 @@ struct TagChip: View {
                         .font(.system(size: 10))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor.opacity(0.7))
+                .foregroundStyle(JotTheme.current.accent.opacity(0.7))
                 .accessibilityLabel("Remove tag \(tag)")
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(Capsule().fill(Color.accentColor.opacity(selected ? 0.30 : 0.14)))
-        .overlay(Capsule().strokeBorder(Color.accentColor.opacity(selected ? 0.6 : 0)))
-        .foregroundStyle(Color.accentColor)
+        .background(Capsule().fill(JotTheme.current.accent.opacity(selected ? 0.30 : 0.14)))
+        .overlay(Capsule().strokeBorder(JotTheme.current.accent.opacity(selected ? 0.6 : 0)))
+        .foregroundStyle(JotTheme.current.accent)
     }
 }
 

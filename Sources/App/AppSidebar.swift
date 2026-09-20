@@ -144,6 +144,11 @@ struct AppSidebar: View {
                 .tag(AppSidebarSelection.about)
         }
         .listStyle(.sidebar)
+        // A theme's sidebar ground. `.default` supplies no colour, so the
+        // stock build keeps the system's own sidebar material untouched —
+        // hiding the scroll background is only worth doing when something
+        // is going to be painted behind it.
+        .themedSurface(JotTheme.current.sidebarSurface)
         .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
     }
 

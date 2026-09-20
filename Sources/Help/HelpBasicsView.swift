@@ -239,11 +239,11 @@ private struct SparkleAskJotButton: View {
         Button(action: onTap) {
             Image(systemName: "sparkles")
                 .font(.caption)
-                .foregroundStyle(isHovering ? Color.accentColor : Color.secondary)
+                .foregroundStyle(isHovering ? JotTheme.current.accent : Color.secondary)
                 .frame(width: 22, height: 22)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isHovering ? Color.accentColor.opacity(0.1) : Color.clear)
+                        .fill(isHovering ? JotTheme.current.accent.opacity(0.1) : Color.clear)
                 )
                 .contentShape(Rectangle())
         }

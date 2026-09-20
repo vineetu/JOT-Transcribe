@@ -294,7 +294,7 @@ struct AskJotView: View {
 
             Image(systemName: "sparkles")
                 .font(.system(size: 40, weight: .medium))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
                 .opacity(0.3)
 
             Text(Self.unavailableHeadline(for: reason))
@@ -323,7 +323,7 @@ struct AskJotView: View {
                     setSidebarSelection(.help)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(JotTheme.current.accent)
             }
 
             Spacer()
@@ -402,7 +402,7 @@ struct AskJotView: View {
                 .fill(.thinMaterial)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 0.5)
+                        .strokeBorder(JotTheme.current.accent.opacity(0.35), lineWidth: 0.5)
                 )
         } else {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -446,7 +446,7 @@ struct AskJotView: View {
 
     private var micTint: Color {
         switch voiceInput.state {
-        case .recording, .transcribing, .condensing: return Color.accentColor
+        case .recording, .transcribing, .condensing: return JotTheme.current.accent
         case .error: return Color.red
         default: return Color.secondary
         }
@@ -522,7 +522,7 @@ struct AskJotView: View {
                 .frame(width: 30, height: 30)
                 .background(
                     RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(canSend ? Color.accentColor : Color.primary.opacity(0.08))
+                        .fill(canSend ? JotTheme.current.accent : Color.primary.opacity(0.08))
                 )
         }
         .buttonStyle(.plain)

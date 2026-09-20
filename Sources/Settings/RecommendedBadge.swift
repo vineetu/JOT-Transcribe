@@ -8,16 +8,16 @@ struct RecommendedBadge: View {
         Text("Recommended")
             .font(.system(size: 9, weight: .semibold))
             .tracking(0.3)
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(JotTheme.current.accent)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color.accentColor.opacity(0.15))
+                    .fill(JotTheme.current.accent.opacity(0.15))
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .stroke(Color.accentColor.opacity(0.35), lineWidth: 0.5)
+                    .stroke(JotTheme.current.accent.opacity(0.35), lineWidth: 0.5)
             )
             .accessibilityLabel("Recommended")
     }
