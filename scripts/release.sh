@@ -363,6 +363,47 @@ if [[ ${#RESTORE_CMDS[@]} -gt 0 ]]; then
     RESTORE_CMDS=()
 fi
 
+# ---- 6.6. Flavor doc overrides ----------------------------------------------
+# A flavor's README and LICENSE are not the public ones: different download
+# links and website, no surfaces that flavor does not have, and a different
+# license. The replacements live OUTSIDE the repo (JOT_FLAVOR_DOC_OVERRIDES,
+# a gitignored directory) and are copied in just long enough to be committed,
+# then the public originals are put back — the same contract as the Info.plist
+# overrides above, so a flavor's README can never land in a public release.
+DOC_OVERRIDES="${JOT_FLAVOR_DOC_OVERRIDES:-}"
+DOC_BACKUP_DIR=""
+restore_docs() {
+    [[ -n "${DOC_BACKUP_DIR}" && -d "${DOC_BACKUP_DIR}" ]] || return 0
+    local f name
+    for f in "${DOC_BACKUP_DIR}"/*; do
+        [[ -e "${f}" ]] || continue
+        name="$(basename "${f}")"
+        cp -f "${f}" "${REPO_ROOT}/${name}"
+        rm -f "${f}"
+    done
+    rmdir "${DOC_BACKUP_DIR}" 2>/dev/null || true
+    DOC_BACKUP_DIR=""
+    log "Public README/LICENSE restored in the worktree"
+}
+if [[ -n "${DOC_OVERRIDES}" ]]; then
+    [[ "${JOT_PUSH_REMOTES}" != *public* ]] \
+        || fail "JOT_FLAVOR_DOC_OVERRIDES is set for a PUBLIC release — refusing"
+    [[ -d "${DOC_OVERRIDES}" ]] || fail "JOT_FLAVOR_DOC_OVERRIDES is not a directory: ${DOC_OVERRIDES}"
+    DOC_BACKUP_DIR="$(mktemp -d)"
+    # Chain, don't replace: the Info.plist trap installed at step 0 is still
+    # armed. It is a no-op by now (step 6.5 restored and cleared the list),
+    # but a later edit could change that, and a silently dropped plist
+    # restore would leave a flavor endpoint in the worktree.
+    trap 'restore_docs; if [[ ${#RESTORE_CMDS[@]} -gt 0 ]]; then restore_plist; fi' EXIT
+    for src in "${DOC_OVERRIDES}"/*; do
+        [[ -f "${src}" ]] || continue
+        name="$(basename "${src}")"
+        [[ -f "${REPO_ROOT}/${name}" ]] && cp -f "${REPO_ROOT}/${name}" "${DOC_BACKUP_DIR}/${name}"
+        cp -f "${src}" "${REPO_ROOT}/${name}"
+        log "Flavor doc in place: ${name}"
+    done
+fi
+
 # ---- 7. Commit and push ------------------------------------------------------
 # Stage everything that belongs in a release commit via an explicit allowlist.
 # Deliberately not using `git add -A` / `git add .` — those would sweep in any
@@ -377,6 +418,7 @@ RELEASE_STAGE_PATHS=(
     website
     scripts
     README.md
+    LICENSE
     CLAUDE.md
     .gitignore
     # The helper rebuilt in step 2.7, plus its source. Without these the
