@@ -84,14 +84,22 @@ enum ClipboardSandwich {
     /// for the suppression interval while we post keeps the synthetic
     /// ⌘V intact even if keys are still physically down.
     static func postCommandV() throws {
-        try postShortcut(virtualKey: CGKeyCode(kVK_ANSI_V), flags: .maskCommand)
+        try postShortcut(virtualKey: shortcutKey("v", qwerty: kVK_ANSI_V), flags: .maskCommand)
     }
 
     /// Post a synthetic ⌘C. Used by RewriteController to grab the
     /// current selection before recording the instruction. Same
     /// hold-down-modifier hazard applies as `postCommandV`.
     static func postCommandC() throws {
-        try postShortcut(virtualKey: CGKeyCode(kVK_ANSI_C), flags: .maskCommand)
+        try postShortcut(virtualKey: shortcutKey("c", qwerty: kVK_ANSI_C), flags: .maskCommand)
+    }
+
+    /// The key that types `letter` in the active layout (see
+    /// `KeyboardLayoutKeyCode`), looked up per shortcut because people
+    /// switch layouts mid-session. Falls back to the QWERTY position.
+    private static func shortcutKey(_ letter: Character, qwerty: Int) -> CGKeyCode {
+        KeyboardLayoutKeyCode.keyCode(typing: letter, preferred: CGKeyCode(qwerty))
+            ?? CGKeyCode(qwerty)
     }
 
     /// Post a synthetic Return with no modifiers. Used when the
