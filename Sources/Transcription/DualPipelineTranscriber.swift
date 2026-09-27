@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import os.log
 import JotTextPipeline
 import JotVocabCore
 
@@ -30,7 +31,19 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     private let finalEngine: FinalEngine
     private let streamingEngine: StreamingEngine
     private let pendingLock = NSLock()
-    private var pendingNemotronFinal: String?
+    /// The live session's streamed final, set by `finishStreaming()` and
+    /// consumed by the next live `transcribe(_:recordsProvenance:)`.
+    private var pendingNemotronFinal: PendingStreamedFinal?
+    /// Generation of the most recent `startStreaming`, so a streamed final is
+    /// only ever used for the session that produced it.
+    private var streamingGeneration: UInt64?
+
+    private struct PendingStreamedFinal {
+        let streamed: NemotronStreamedFinal
+        let flushSeconds: TimeInterval
+    }
+
+    private static let log = Logger(subsystem: "com.jot.Jot", category: "DualPipelineTranscriber")
 
     /// Filler-cleaning language code for the Nemotron final transcript
     /// (`LanguageChoice.fillerLanguageCode` semantics): `"en"` runs the full
@@ -225,13 +238,13 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         }
     }
 
-    /// Shared Nemotron one-shot final path for BOTH the live dictation stop
+    /// Shared Nemotron final path for BOTH the live dictation stop
     /// (`transcribe`) and the multilingual file import (`transcribeFile`).
-    /// `consumeStreamedPayload` is `true` ONLY on the live path: the pending
-    /// streamed CTC vocab payload was accumulated from the RECORDING's audio,
-    /// so an import must never consume it (it would gate the file's transcript
-    /// against detections from someone else's dictation) — imports always run
-    /// the one-shot spot over their own samples.
+    /// `consumeStreamedPayload` is `true` ONLY on the live path: the streamed
+    /// final text and the streamed CTC vocab payload both came from the
+    /// RECORDING's audio, so an import must never consume them (it would
+    /// return or gate against someone else's dictation) — imports always run
+    /// the one-shot decode and spot over their own samples.
     private func nemotronTranscribe(
         _ samples: [Float],
         engine nemotron: any NemotronStreamingEngine,
@@ -246,6 +259,7 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             // transcript against THIS recording's audio detections.
             if consumeStreamedPayload {
                 _ = await VocabularyRescorerHolder.shared.takePendingStreamedPayload()
+                clearPendingNemotronFinal()
             }
             throw TranscriberError.audioTooShort
         }
@@ -257,29 +271,45 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         if recordsProvenance {
             await CorrectionProvenance.shared.clearPending()
         }
-        // The final transcript is ALWAYS a fresh one-shot decode over the
-        // full captured audio — never the live streamed accumulation.
+        // Live dictation: the final is the text the streaming session already
+        // decoded, flushed by `finishStreaming()` right after capture stopped.
+        // It is the same decode a one-shot would produce (streamed vs one-shot
+        // was byte-identical on 20 recordings from 3.7 s to 30 min, head
+        // included), without re-decoding the whole buffer at stop (~23 s on a
+        // 30-min recording).
         //
-        // Why: on a cold model the streaming consumer only starts decoding
-        // ~1s into the recording (model warm-up), and `finish()` drains the
-        // backlog with a bounded timeout, so the accumulated text can be
-        // missing the head (~1s of speech). This was verified directly: the
-        // saved audio is always complete, and a one-shot decode over it
-        // reproduces the full transcript (head intact) at any chunk size,
-        // while the live streamed-final does not. Re-decoding the complete
-        // `samples` here is the authoritative, head-complete result.
-        // Streaming stays on purely for the live preview (and the CTC vocab
-        // spotter, which is independent of this handoff). We then run the
-        // custom-vocabulary spot+gate over the audio — this is the live
-        // dictation path for Nemotron, so vocab MUST run here (it was
-        // previously only wired into `Transcriber.transcribeWithNemotron`,
-        // which this path never calls).
-        clearPendingNemotronFinal()
-        let started = Date()
-        let raw = try await nemotron.transcribeOneShot(samples)
-        let processingTime = Date().timeIntervalSince(started)
+        // The head-loss this path once guarded against with a one-shot was
+        // not the stream: it was app-side races — the launch prewarm and the
+        // session consumer each loading their own manager (audio fed one,
+        // `finish()` read the other), and `cancel()`'s detached reset landing
+        // inside the next session. Both engines now single-flight the load
+        // and order all manager work, so the streamed text is complete.
+        //
+        // One-shot runs only when the stream can't vouch for the recording:
+        // `finish()` failed (load/process failure, cancellation, no session),
+        // the session isn't the one being finalized, or the stream decoded a
+        // different number of samples than the recording holds. File import,
+        // re-transcribe, and segment slicing have no live session and always
+        // take the one-shot. We then run the custom-vocabulary spot+gate over
+        // the audio — this is the live dictation path for Nemotron, so vocab
+        // MUST run here (the CTC spotter ran on the same streamed audio).
+        let raw: String
+        let tokenTimings: [EngineTokenTiming]
+        let processingTime: TimeInterval
+        if consumeStreamedPayload, let streamed = takeStreamedFinal(sampleCount: samples.count) {
+            raw = streamed.streamed.text
+            tokenTimings = streamed.streamed.tokenTimings
+            processingTime = streamed.flushSeconds
+        } else {
+            let started = Date()
+            let decode = try await nemotron.transcribeOneShotWithTimings(samples)
+            raw = decode.text
+            tokenTimings = decode.tokenTimings
+            processingTime = Date().timeIntervalSince(started)
+        }
         return await Self.nemotronResult(
             raw: raw,
+            tokenTimings: tokenTimings,
             samples: samples,
             processingTime: processingTime,
             recordsProvenance: recordsProvenance,
@@ -378,7 +408,7 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         generation: UInt64,
         onPartial: @escaping @Sendable (String, UInt64) -> Void
     ) async {
-        clearPendingNemotronFinal()
+        beginPendingNemotronSession(generation: generation)
         switch streamingEngine {
         case .nemotron(let nemotron):
             await nemotron.start(generation: generation, onPartial: onPartial)
@@ -407,31 +437,42 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
             await scheduler.quiesce()
             final = nil
         case .nemotron(let nemotron):
+            let started = Date()
             do {
-                final = try await nemotron.finish()
+                let streamed = try await nemotron.finish()
+                final = streamed.text
+                // Hand the streamed text to the live `transcribe` as the final
+                // transcript — only when Nemotron IS the final engine (the
+                // retired v3-batch pairing keeps its batch final).
+                if case .nemotron = finalEngine {
+                    setPendingNemotronFinal(PendingStreamedFinal(
+                        streamed: streamed,
+                        flushSeconds: Date().timeIntervalSince(started)
+                    ))
+                }
             } catch {
+                #if DEBUG
+                DictationReplayProbe.noteFinishFailure(Self.streamingFailureReason(error))
+                #endif
                 await ErrorLog.shared.error(
                     component: "DualPipelineTranscriber",
-                    message: "Nemotron finish failed",
-                    context: ["error": ErrorLog.redactedAppleError(error)]
+                    message: "Nemotron finish failed (final falls back to one-shot)",
+                    context: ["error": Self.streamingFailureReason(error)]
                 )
                 final = nil
             }
         }
-
-        // The streamed text is NOT used as the final transcript anymore (the
-        // final is a one-shot decode over the full captured audio in
-        // `transcribe(_:recordsProvenance:)` — see the head-drop note there).
-        // `finish()` is still called to drain + flush the streaming session
-        // cleanly; its return value is intentionally discarded.
         return final
     }
 
-    func cancelStreaming() async {
+    /// Cancels the streaming session `generation`; a no-op once a newer
+    /// session has started, so a late cleanup can't end the wrong one.
+    func cancelStreaming(generation: UInt64) async {
+        guard currentStreamingGeneration() == generation else { return }
         clearPendingNemotronFinal()
         switch streamingEngine {
         case .nemotron(let nemotron):
-            await nemotron.cancel()
+            await nemotron.cancel(generation: generation)
         case .batchPreview(let scheduler):
             await scheduler.cancel()
         }
@@ -445,6 +486,80 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
         pendingLock.unlock()
     }
 
+    private func currentStreamingGeneration() -> UInt64? {
+        pendingLock.lock()
+        defer { pendingLock.unlock() }
+        return streamingGeneration
+    }
+
+    private func beginPendingNemotronSession(generation: UInt64) {
+        pendingLock.lock()
+        pendingNemotronFinal = nil
+        streamingGeneration = generation
+        pendingLock.unlock()
+    }
+
+    private func setPendingNemotronFinal(_ pending: PendingStreamedFinal) {
+        pendingLock.lock()
+        pendingNemotronFinal = pending
+        pendingLock.unlock()
+    }
+
+    /// Takes the pending streamed final (consume-once) if it belongs to the
+    /// latest session and decoded exactly `sampleCount` samples — the
+    /// recorder hands the stream and the recording the same converted chunks,
+    /// so equal counts prove the stream covered the whole recording. Logs
+    /// which path produces the final; never logs transcript content.
+    private func takeStreamedFinal(sampleCount: Int) -> PendingStreamedFinal? {
+        pendingLock.lock()
+        let pending = pendingNemotronFinal
+        let generation = streamingGeneration
+        pendingNemotronFinal = nil
+        pendingLock.unlock()
+
+        let fallbackReason: String
+        if let pending {
+            if pending.streamed.generation != generation {
+                fallbackReason = "sessionMismatch"
+            } else if pending.streamed.decodedSampleCount != sampleCount {
+                fallbackReason = "sampleCountMismatch"
+            } else {
+                Self.log.info("Nemotron final: streamed (flush \(pending.flushSeconds, format: .fixed(precision: 3)) s)")
+                #if DEBUG
+                DictationReplayProbe.noteFinalPath("streamed", reason: nil)
+                #endif
+                return pending
+            }
+        } else {
+            // Expected whenever no live session ran (or `finish()` already
+            // logged its failure) — not worth a jot.log entry.
+            Self.log.info("Nemotron final: one-shot (noStreamedFinal)")
+            #if DEBUG
+            DictationReplayProbe.noteFinalPath("oneShot", reason: "noStreamedFinal")
+            #endif
+            return nil
+        }
+        Self.log.info("Nemotron final: one-shot (\(fallbackReason, privacy: .public))")
+        #if DEBUG
+        DictationReplayProbe.noteFinalPath("oneShot", reason: fallbackReason)
+        #endif
+        Task {
+            await ErrorLog.shared.warn(
+                component: "DualPipelineTranscriber",
+                message: "Nemotron final fell back to one-shot",
+                context: ["reason": fallbackReason]
+            )
+        }
+        return nil
+    }
+
+    private static func streamingFailureReason(_ error: Error) -> String {
+        if let failure = error as? NemotronStreamingFailure {
+            return "\(failure)"
+        }
+        return ErrorLog.redactedAppleError(error)
+    }
+
     /// Build the Nemotron final result, running the custom-vocabulary spot+gate
     /// pass over the audio — the SAME no-fork CTC-spotter path as
     /// `Transcriber.transcribeWithNemotron`. Best-effort: any spotter/gate
@@ -456,6 +571,7 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
     /// multilingual ships — see `nemotronGateLanguage`).
     private static func nemotronResult(
         raw: String,
+        tokenTimings: [EngineTokenTiming],
         samples: [Float],
         processingTime: TimeInterval,
         recordsProvenance: Bool,
@@ -482,9 +598,18 @@ final class DualPipelineTranscriber: Transcribing, @unchecked Sendable {
                 payload = try await holder.spotDetections(audioSamples: samples)
             }
             if let payload {
+                let gateStart = Date()
+                defer {
+                    let seconds = Date().timeIntervalSince(gateStart)
+                    Task { await ErrorLog.shared.info(
+                        component: "DualPipelineTranscriber",
+                        message: "vocabulary gate timing",
+                        context: ["seconds": String(format: "%.2f", seconds)]) }
+                }
                 let gated = await holder.gateDetections(
                     transcript: raw,
                     payload: payload,
+                    tokenTimings: tokenTimings,
                     language: gateLanguage,
                     recordsProvenance: recordsProvenance
                 )

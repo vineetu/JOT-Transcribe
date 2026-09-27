@@ -754,10 +754,10 @@
 /* Begin XCRemoteSwiftPackageReference section */
 		A000000000000000000000C1 /* XCRemoteSwiftPackageReference "FluidAudio" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/FluidInference/FluidAudio";
+			repositoryURL = "https://github.com/vineetu/FluidAudio";
 			requirement = {
-				kind = exactVersion;
-				version = 0.15.4;
+				kind = revision;
+				revision = f941d646fe67aed52203b04d87eb33cf673c4e3b;
 			};
 		};
 		A000000000000000000000C2 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {

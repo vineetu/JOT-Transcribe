@@ -57,7 +57,7 @@ public protocol ModelDownloading: Sendable {
 /// Two independent callers fetching the SAME model — e.g. the background
 /// startup self-heal AND the Settings → Transcription "Download" button — used
 /// to construct separate `ModelDownloader` instances and both call
-/// `DownloadUtils.downloadRepo(...)` into the SAME staging directory. That
+/// `ModelHub.download(...)` into the SAME staging directory. That
 /// races FluidAudio's file-move step ("CFNetworkDownload_*.tmp couldn't be
 /// moved to decoder_joint.mlmodelc because the folder doesn't exist" — one
 /// task removes/recreates the parent dir while the other moves into it).
@@ -137,7 +137,7 @@ actor DownloadCoordinator {
         // parent Task is cancelled mid-download, a `defer` on the initiator's
         // await would clear the entry while the shared Task is still running,
         // and a new caller arriving in that window would start a 2nd colliding
-        // `downloadRepo`. So the shared Task itself removes the entry as its
+        // `ModelHub.download`. So the shared Task itself removes the entry as its
         // final step (success AND failure), hopping back onto this actor
         // BEFORE it returns — so by the time any awaiter's `task.value`
         // resolves, the entry is already gone and `isDownloading(id)` is false.
@@ -250,7 +250,7 @@ public actor ModelDownloader: ModelDownloading {
         let targetDir = cache.cacheURL(for: id)
         let version = id.fluidAudioVersion
 
-        let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
+        let progressHandler: ProgressHandler = { snapshot in
             let clamped = max(0.0, min(1.0, snapshot.fractionCompleted))
             progress(clamped)
         }
@@ -309,7 +309,7 @@ public actor ModelDownloader: ModelDownloading {
     /// jumping at bundle boundaries. The combined stream is forced
     /// **monotonic** via a high-water-mark wrapper: FluidAudio's
     /// per-component download (`AsrModels.download` runs one
-    /// `DownloadUtils.loadModels` per CoreML file and resets `fractionCompleted`
+    /// `ModelHub.loadModels` per CoreML file and resets `fractionCompleted`
     /// each time) would otherwise cause the bar to jump backwards
     /// inside the batch phase.
     private func downloadMultiBundle(
@@ -433,7 +433,7 @@ public actor ModelDownloader: ModelDownloading {
         let targetDir = cache.cacheURL(for: id)
         let version = id.fluidAudioVersion
 
-        let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
+        let progressHandler: ProgressHandler = { snapshot in
             progress(max(0.0, min(1.0, snapshot.fractionCompleted)))
         }
 
@@ -472,18 +472,18 @@ public actor ModelDownloader: ModelDownloading {
         }
     }
 
-    /// The upper bound of FluidAudio `DownloadUtils.downloadRepo`'s **download**
-    /// phase. `downloadRepo` reports `fractionCompleted` in `[0, 0.5]` while
+    /// The upper bound of FluidAudio `ModelHub.download`'s **download**
+    /// phase. Its repo download reports `fractionCompleted` in `[0, 0.5]` while
     /// fetching bytes and reserves `[0.5, 1.0]` for the CoreML compile step
-    /// (which `downloadRepo` alone never runs). COUPLED to the SDK — re-check on
-    /// every FluidAudio bump (see `DownloadUtils.swift`, the `0.5 *` factors in
-    /// `downloadRepo`'s progress reports).
+    /// (which a bare repo download never runs). COUPLED to the SDK — re-check on
+    /// every FluidAudio bump (see `ModelHub.swift`, the `downloadPhaseWeight: 0.5`
+    /// passed to the repo download's `ProgressReporter`).
     static let repoDownloadBandCeiling: Double = 0.5
 
-    /// Rescale a `DownloadUtils.downloadRepo` progress snapshot to a per-side
+    /// Rescale a `ModelHub.download` progress snapshot to a per-side
     /// [0, 1] fraction.
     ///
-    /// `downloadRepo` already reports **byte-weighted, monotonic** progress (it
+    /// `ModelHub.download` already reports **byte-weighted, monotonic** progress (it
     /// sums `totalBytes` from the HF listing and drives a per-byte
     /// `URLSessionDownloadDelegate`), but it confines the *download* phase to
     /// the `[0, repoDownloadBandCeiling]` band. Our streaming-side fetches only
@@ -507,13 +507,13 @@ public actor ModelDownloader: ModelDownloading {
             throw ModelDownloadError.corrupted
         }
 
-        let progressHandler: DownloadUtils.ProgressHandler = { snapshot in
+        let progressHandler: ProgressHandler = { snapshot in
             progress(Self.repoDownloadFraction(snapshot.fractionCompleted))
         }
 
         do {
             try? FileManager.default.removeItem(at: stagingRoot)
-            try await DownloadUtils.downloadRepo(
+            try await ModelHub.download(
                 .nemotronStreaming1120,
                 to: stagingRoot,
                 variant: nil,

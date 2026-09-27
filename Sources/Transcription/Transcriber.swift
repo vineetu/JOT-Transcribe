@@ -39,6 +39,9 @@ public actor Transcriber: Transcribing {
 
     private var manager: AsrManager?
     private var nemotronBatch: NemotronStreamingTranscriber?
+    /// The in-flight (or completed) model load every `ensureLoaded()` caller
+    /// shares. See `ensureLoaded()`.
+    private var loadTask: Task<LoadedModel, Error>?
     private var isTranscribing: Bool = false
 
     public init(
@@ -54,11 +57,61 @@ public actor Transcriber: Transcribing {
     /// Load Parakeet into memory if it isn't already. Idempotent — safe to
     /// call from the UI layer speculatively (e.g. right after the model
     /// download finishes) to front-load the ANE warm-up.
+    ///
+    /// Single-flight: concurrent callers (the launch prewarm, a file import's
+    /// "preparing" load, the transcribe path) all await ONE load task, so a
+    /// second model is never built while the first is still loading.
     public func ensureLoaded() async throws {
         switch modelID {
         case .nemotron_en:
             if nemotronBatch != nil { return }
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
+            // Not an `AsrManager` model; loads through a dedicated streaming
+            // transcriber built by `JotComposition.transcriberFactory`
+            // (DualPipelineTranscriber), never this wrapper. Reaching here is a
+            // routing bug.
+            throw TranscriberError.modelMissing
+        case .tdt_0_6b_v3,
+             .tdt_0_6b_v3_int4,
+             .tdt_0_6b_ja,
+             .tdt_0_6b_v2_en_streaming,
+             .tdt_0_6b_v3_nemotron_streaming,
+             .tdt_0_6b_v3_eou_streaming:
+            if manager != nil { return }
+        }
 
+        let task: Task<LoadedModel, Error>
+        if let loadTask {
+            task = loadTask
+        } else {
+            task = Task { try await self.loadModel() }
+            loadTask = task
+        }
+        do {
+            let loaded = try await task.value
+            // `unload()` during the load drops the result instead of
+            // resurrecting the model it was asked to evict.
+            guard loadTask == task else { return }
+            switch loaded {
+            case .parakeet(let manager):
+                self.manager = manager
+            case .nemotron(let transcriber):
+                nemotronBatch = transcriber
+            }
+        } catch {
+            // Forget only this failed attempt so the next caller retries.
+            if loadTask == task { loadTask = nil }
+            throw error
+        }
+    }
+
+    private enum LoadedModel: Sendable {
+        case parakeet(AsrManager)
+        case nemotron(NemotronStreamingTranscriber)
+    }
+
+    private func loadModel() async throws -> LoadedModel {
+        if modelID == .nemotron_en {
             guard cache.isCached(modelID) else {
                 throw TranscriberError.modelMissing
             }
@@ -69,31 +122,13 @@ public actor Transcriber: Transcribing {
             do {
                 let transcriber = NemotronStreamingTranscriber(bundleDirectory: directory)
                 try await transcriber.ensureLoaded()
-                nemotronBatch = transcriber
                 log.info("Nemotron loaded")
+                return .nemotron(transcriber)
             } catch {
                 await ErrorLog.shared.error(component: "Transcriber", message: "Nemotron load failed", context: ["modelID": modelID.rawValue, "error": ErrorLog.redactedAppleError(error)])
                 throw TranscriberError.fluidAudio(error)
             }
-            return
-
-        case .nemotron_multilingual, .nemotron_multilingual_latin:
-            // Not an `AsrManager` model; loads through a dedicated streaming
-            // transcriber built by `JotComposition.transcriberFactory`
-            // (DualPipelineTranscriber), never this wrapper. Reaching here is a
-            // routing bug.
-            throw TranscriberError.modelMissing
-
-        case .tdt_0_6b_v3,
-             .tdt_0_6b_v3_int4,
-             .tdt_0_6b_ja,
-             .tdt_0_6b_v2_en_streaming,
-             .tdt_0_6b_v3_nemotron_streaming,
-             .tdt_0_6b_v3_eou_streaming:
-            break
         }
-
-        if manager != nil { return }
 
         let directory = cache.cacheURL(for: modelID)
         guard cache.isCached(modelID) else {
@@ -108,8 +143,8 @@ public actor Transcriber: Transcribing {
             )
             let manager = AsrManager()
             try await manager.loadModels(models)
-            self.manager = manager
             log.info("Parakeet loaded")
+            return .parakeet(manager)
         } catch let error as TranscriberError {
             await ErrorLog.shared.error(component: "Transcriber", message: "Parakeet load failed", context: ["modelID": modelID.rawValue, "error": ErrorLog.redactedAppleError(error)])
             throw error
@@ -125,6 +160,7 @@ public actor Transcriber: Transcribing {
     public func unload() {
         manager = nil
         nemotronBatch = nil
+        loadTask = nil
     }
 
     /// Transcribe a 16 kHz mono Float32 buffer (the exact shape
@@ -547,10 +583,10 @@ public actor Transcriber: Transcribing {
         // dependent CTC rescorer (`ctcTokenRescore`) is INERT here. Instead we
         // run the CTC keyword SPOTTER on the AUDIO: it acoustically detects each
         // vocab term + its audio time range WITHOUT needing transcript timings.
-        // We then place the detections onto the decoded transcript via the gate's
-        // own plausibility metric + proportional position, and apply the SAME
-        // `VocabularyGate`. See `VocabularyRescorerHolder.spotDetections` /
-        // `gateDetections`.
+        // We then place the detections on the word Nemotron wrote at that moment
+        // (its own token timings), add the model-free corrector's detections,
+        // and apply the SAME `VocabularyGate`. See
+        // `VocabularyRescorerHolder.spotDetections` / `gateDetections`.
         //
         // CONCURRENCY: the spotter (Mel + Encoder + CtcHead on the ANE) depends
         // ONLY on `audioSamples`, so phase 1 runs CONCURRENTLY with the Nemotron
@@ -576,9 +612,13 @@ public actor Transcriber: Transcribing {
         }()
 
         // Decode (source of truth for fallback). Runs side-by-side with phase 1.
+        // The token timings place the spotter's detections on words (R10).
         let raw: String
+        let tokenTimings: [EngineTokenTiming]
         do {
-            raw = try await nemotronBatch.transcribeOneShot(samples)
+            let decode = try await nemotronBatch.transcribeOneShotWithTimings(samples)
+            raw = decode.text
+            tokenTimings = decode.tokenTimings
         } catch {
             // Surface the placeholder task so its result is awaited (the spotter
             // is cancellation-tolerant; we ignore its result on the error path).
@@ -594,6 +634,7 @@ public actor Transcriber: Transcribing {
             let gated = await holder.gateDetections(
                 transcript: raw,
                 payload: payload,
+                tokenTimings: tokenTimings,
                 language: language,
                 recordsProvenance: recordsProvenance
             )

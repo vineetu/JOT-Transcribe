@@ -14,8 +14,8 @@ import Foundation
 /// (`SegmentSlicingTests`) can exercise the math without an engine.
 enum SegmentSlicing {
 
-    /// Context pad on each side of a run's diarizer boundary. VBx boundaries
-    /// are frame-quantized and can shave the first/last phoneme; ±0.2s
+    /// Context pad on each side of a run's diarizer boundary. Diarizer
+    /// boundaries are frame-quantized and can shave the first/last phoneme; ±0.2s
     /// recovers word edges without pulling in a meaningful amount of the
     /// neighbor's speech.
     static let padSeconds: Double = 0.2
@@ -31,6 +31,11 @@ enum SegmentSlicing {
     /// whole path exists to fix; (c) a post-coalescing run this short is
     /// almost always a backchannel ("yeah", "mm-hm") with negligible content.
     /// Dropping ~a word of backchannel beats mis-attributing it.
+    ///
+    /// Diarized runs never reach this floor in practice:
+    /// `DiarizationProjection.foldShortRuns` folds any run shorter than
+    /// `DiarizationProjection.minRunSeconds` (this same value) into a
+    /// neighbour before slicing, so no audio is left untranscribed (A1).
     static let minRunSeconds: Double = 1.2
 
     /// Canonical pipeline rate (`AudioFormat.sampleRate`).

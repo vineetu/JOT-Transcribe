@@ -229,7 +229,7 @@ final class TranscriberHolder: ObservableObject {
     /// to seed `activeLanguage`; written by `setLanguage(_:)` and by the
     /// one-shot language migration. `jot.defaultModelID` remains the model
     /// source of truth.
-    static let languageKey = "jot.transcriptionLanguage"
+    nonisolated static let languageKey = "jot.transcriptionLanguage"
 
     /// Persisted **intent** for a manual model/language switch whose download
     /// hasn't finished (design: download-retry §4). Written when a background

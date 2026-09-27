@@ -22,12 +22,14 @@ enum VocabAskFilterTests {
         test_mixedPayload_dropsMergeWhenNormalPresent()
         test_mixedPayload_dedupesMergeWhenNoNormal()
         test_rankByPriorDescending_stable()
+        test_rankForAsk_weakestEvidenceFirst()
         test_alternateOffer_reGatedByStagedText()
         test_widerSpanSplice_firstOccurrenceOnly()
     }
 
     private struct FlagItem { let key: String; let merge: Bool }
     private struct PriorItem { let key: String; let prior: Int }
+    private struct EvidenceItem { let key: String; let evidence: String?; let prior: Int }
 
     // MARK: - shouldOfferAsk (pure ask-filter decision)
 
@@ -109,10 +111,16 @@ enum VocabAskFilterTests {
 
     static func test_admitAsk_mergeLaneAndAddendumGate() {
         // A KEPT merge is the teach ask — admitted EVEN when the gate marks it
-        // askCandidate=false and even if the phrase were "common".
+        // askCandidate=false.
         let merge = MacVocabGate.admitAsk(
-            outcome: "kept", shape: "merge", askCandidate: false, originalIsCommon: true)
+            outcome: "kept", shape: "merge", askCandidate: false, originalIsCommon: false)
         assert(merge.admit && merge.isMergeTeach, "kept merge admitted as teach, got \(merge)")
+        // …but not when its original is common: the store refuses to learn it,
+        // so the one-shot must not burn (matches iOS AskPolicy).
+        let commonMerge = MacVocabGate.admitAsk(
+            outcome: "kept", shape: "merge", askCandidate: false, originalIsCommon: true)
+        assert(!commonMerge.admit && !commonMerge.isMergeTeach,
+               "common-original merge must not be a teach ask, got \(commonMerge)")
         // An applied correction is admitted (not a merge teach).
         let applied = MacVocabGate.admitAsk(
             outcome: "applied", shape: nil, askCandidate: false, originalIsCommon: false)
@@ -156,6 +164,20 @@ enum VocabAskFilterTests {
         // Highest prior first; ties keep input order (b before d).
         assert(out.map(\.key) == ["b", "d", "c", "a"],
                "prior-desc stable order, got \(out.map(\.key))")
+    }
+
+    // MARK: - Evidence-first ranking (design A5)
+
+    static func test_rankForAsk_weakestEvidenceFirst() {
+        let items = [EvidenceItem(key: "a", evidence: "acoustic", prior: 2),
+                     EvidenceItem(key: "b", evidence: "textual", prior: 0),
+                     EvidenceItem(key: "c", evidence: nil, prior: 1),
+                     EvidenceItem(key: "d", evidence: "textual", prior: 1)]
+        let out = MacVocabGate.rankForAsk(items, evidence: { $0.evidence }, prior: { $0.prior })
+        // Textual (string-only) first, prior-desc within a kind; legacy nil ranks
+        // with acoustic.
+        assert(out.map(\.key) == ["d", "b", "a", "c"],
+               "evidence-first stable order, got \(out.map(\.key))")
     }
 
     // MARK: - Alternate offer re-gate + repeat-phrase splice (L1 limitation)

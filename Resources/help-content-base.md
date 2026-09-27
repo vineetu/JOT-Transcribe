@@ -48,7 +48,7 @@ Library items (recordings + rewrite sessions) and transcripts kept on-device, co
 
 ## Files & Library
 recordings-file-import: drag an audio/video file onto Recents (or browse) to transcribe like a live recording; near-universal formats via AVFoundation + bundled ffmpeg. A dictation pauses an import; it auto-resumes after.
-recordings-diarization: Detect speakers labels who spoke when, on-device; right-click a speaker → Rename speaker. Best for clean meeting/call audio, not same-room mic; single-speaker skipped. Imported files auto-diarize by default (Settings → Speaker labels, Advanced).
+recordings-diarization: Detect speakers labels who spoke when, on-device; right-click a speaker → Rename speaker. Works on meetings/calls, even one room mic, up to 8 speakers; single-speaker skipped. Imported files auto-diarize by default (Settings → Speaker labels, Advanced).
 recordings-summary: AI Summary — summarize a recording from its More menu; needs a capable provider, not Apple Intelligence.
 Also: find in transcript with ⌘F (recordings-find), WebVTT export (recordings-webvtt-export), jot CLI (recordings-cli), AI search (recordings-ai-search), import progress (recordings-progress), never-lost audio (recordings-never-lose-audio).
 

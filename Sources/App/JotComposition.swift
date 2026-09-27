@@ -189,8 +189,8 @@ struct AppServices {
     /// soon as `build()` returns and holding Rewrite would silently
     /// no-op (Codex review, 2026-05-17).
     let promptPicker: PromptPickerController
-    /// Speaker diarization (offline VBx): lifecycle owner for the FluidAudio
-    /// `OfflineDiarizerManager` + PLDA transform. `.notDownloaded` until the
+    /// Speaker diarization (Nemotron 3): lifecycle owner for the FluidAudio
+    /// `Nemotron3Diarizer` models. `.notDownloaded` until the
     /// user taps "Detect speakers" or opens the repurposed Settings pane —
     /// no launch-time warmup (design D4: manual, on-demand only).
     let diarizerHolder: DiarizerHolder
@@ -232,6 +232,97 @@ extension AppServices {
 /// owns the cancellables and observers that those side effects produce.
 @MainActor
 enum JotComposition {
+
+    /// Live `Transcribing` for `modelID` + `language` — the production
+    /// `TranscriberHolder` factory. Extracted so the DEBUG dictation replay
+    /// harness builds the exact same transcriber without running `build`.
+    static func liveTranscriber(modelID: ParakeetModelID, language: LanguageChoice) -> any Transcribing {
+        switch modelID {
+        case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
+            // English (v2, ineligible hardware) and every European
+            // language (v3) now drive their live preview through the
+            // batch-pseudo-streaming `PreviewScheduler` — the SAME
+            // engine validated for JA — instead of the EOU streaming
+            // bundle. The scheduler re-runs the SAME batch `Transcriber`
+            // instance over a trailing window, so the preview re-uses
+            // the already-loaded `AsrModels` (single model load) and
+            // tracks the final pass closely (design §8). `spaceless` is
+            // `false` for Latin/Cyrillic, so `join` keeps the word
+            // separator. The final transcript path is unchanged (batch
+            // `Transcriber.transcribe`; v2-gated post-processing + vocab
+            // on stop).
+            //
+            let batch = Transcriber(modelID: modelID, language: language)
+            return DualPipelineTranscriber(
+                batch: batch,
+                batchPreview: PreviewScheduler(
+                    transcriber: batch,
+                    spaceless: language.isSpaceless
+                )
+            )
+        case .tdt_0_6b_v3_nemotron_streaming:
+            // Pre-v1.12 pairing kept for users who land here briefly
+            // before `runV12EouRenameIfNeeded` rewrites their
+            // stored default. Defensive — the migration runs first
+            // in `JotComposition.build`, so this branch is
+            // effectively dead in production but preserved for
+            // rollback / debug paths.
+            guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
+                return Transcriber(modelID: modelID, language: language)
+            }
+            return DualPipelineTranscriber(
+                batch: Transcriber(modelID: modelID, language: language),
+                nemotronStreaming: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
+            )
+        case .nemotron_en:
+            guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
+                return Transcriber(modelID: modelID, language: language)
+            }
+            return DualPipelineTranscriber(
+                nemotron: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
+            )
+        case .nemotron_multilingual, .nemotron_multilingual_latin:
+            // One streaming manager powers preview + final, like
+            // `.nemotron_en`. The bundle dir is id-keyed (the id bakes in
+            // the latin/multilingual ship); the active language is pinned
+            // as a `setLanguage` prompt hint within that ship.
+            let variantURL = ModelCache.shared.streamingPartialCacheURL(for: modelID)
+                ?? ModelCache.shared.cacheURL(for: modelID)
+            return DualPipelineTranscriber(
+                nemotronMultilingual: NemotronMultilingualStreamingTranscriber(
+                    bundleDirectory: variantURL,
+                    languageCode: language.nemotronLanguageCode,
+                    vocabularyProvider: { await VocabularyRescorerHolder.shared.canonicalTerms }
+                ),
+                language: language
+            )
+        case .tdt_0_6b_ja:
+            // Japanese: batch final transcript + batch-pseudo-streaming
+            // live preview. JA has no paired streaming bundle
+            // (`supportsStreaming == false`), so the `PreviewScheduler`
+            // re-runs the SAME batch model over a trailing window to
+            // drive the pill — the only path to a JA live preview
+            // (docs/batch-pseudo-streaming/japanese-preview.md).
+            //
+            // The scheduler is constructed over the SAME `Transcriber`
+            // instance passed as `batch:`, so the preview re-uses the
+            // already-loaded `AsrModels` (no second model load), and
+            // `spaceless: true` makes the preview join CJK text without
+            // spurious inter-word spaces. The final transcript still
+            // runs the JA batch model + `JapaneseVocabularySubstituter`
+            // on stop (vocab deferred to the final pass, same as v2/v3).
+            let jaBatch = Transcriber(modelID: modelID, language: language)
+            return DualPipelineTranscriber(
+                batch: jaBatch,
+                batchPreview: PreviewScheduler(
+                    transcriber: jaBatch,
+                    spaceless: language.isSpaceless
+                )
+            )
+        case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
+            return Transcriber(modelID: modelID, language: language)
+        }
+    }
 
     static func build(systemServices: SystemServices) throws -> AppServices {
         let overrides = systemServices.seamOverrides
@@ -338,90 +429,7 @@ enum JotComposition {
                 if let override = overrides?.transcriber {
                     return override
                 }
-                switch modelID {
-                case .tdt_0_6b_v2_en_streaming, .tdt_0_6b_v3_eou_streaming:
-                    // English (v2, ineligible hardware) and every European
-                    // language (v3) now drive their live preview through the
-                    // batch-pseudo-streaming `PreviewScheduler` — the SAME
-                    // engine validated for JA — instead of the EOU streaming
-                    // bundle. The scheduler re-runs the SAME batch `Transcriber`
-                    // instance over a trailing window, so the preview re-uses
-                    // the already-loaded `AsrModels` (single model load) and
-                    // tracks the final pass closely (design §8). `spaceless` is
-                    // `false` for Latin/Cyrillic, so `join` keeps the word
-                    // separator. The final transcript path is unchanged (batch
-                    // `Transcriber.transcribe`; v2-gated post-processing + vocab
-                    // on stop).
-                    //
-                    let batch = Transcriber(modelID: modelID, language: language)
-                    return DualPipelineTranscriber(
-                        batch: batch,
-                        batchPreview: PreviewScheduler(
-                            transcriber: batch,
-                            spaceless: language.isSpaceless
-                        )
-                    )
-                case .tdt_0_6b_v3_nemotron_streaming:
-                    // Pre-v1.12 pairing kept for users who land here briefly
-                    // before `runV12EouRenameIfNeeded` rewrites their
-                    // stored default. Defensive — the migration runs first
-                    // in `JotComposition.build`, so this branch is
-                    // effectively dead in production but preserved for
-                    // rollback / debug paths.
-                    guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
-                        return Transcriber(modelID: modelID, language: language)
-                    }
-                    return DualPipelineTranscriber(
-                        batch: Transcriber(modelID: modelID, language: language),
-                        nemotronStreaming: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
-                    )
-                case .nemotron_en:
-                    guard let streamingURL = ModelCache.shared.streamingPartialCacheURL(for: modelID) else {
-                        return Transcriber(modelID: modelID, language: language)
-                    }
-                    return DualPipelineTranscriber(
-                        nemotron: NemotronStreamingTranscriber(bundleDirectory: streamingURL)
-                    )
-                case .nemotron_multilingual, .nemotron_multilingual_latin:
-                    // One streaming manager powers preview + final, like
-                    // `.nemotron_en`. The bundle dir is id-keyed (the id bakes in
-                    // the latin/multilingual ship); the active language is pinned
-                    // as a `setLanguage` prompt hint within that ship.
-                    let variantURL = ModelCache.shared.streamingPartialCacheURL(for: modelID)
-                        ?? ModelCache.shared.cacheURL(for: modelID)
-                    return DualPipelineTranscriber(
-                        nemotronMultilingual: NemotronMultilingualStreamingTranscriber(
-                            bundleDirectory: variantURL,
-                            languageCode: language.nemotronLanguageCode
-                        ),
-                        language: language
-                    )
-                case .tdt_0_6b_ja:
-                    // Japanese: batch final transcript + batch-pseudo-streaming
-                    // live preview. JA has no paired streaming bundle
-                    // (`supportsStreaming == false`), so the `PreviewScheduler`
-                    // re-runs the SAME batch model over a trailing window to
-                    // drive the pill — the only path to a JA live preview
-                    // (docs/batch-pseudo-streaming/japanese-preview.md).
-                    //
-                    // The scheduler is constructed over the SAME `Transcriber`
-                    // instance passed as `batch:`, so the preview re-uses the
-                    // already-loaded `AsrModels` (no second model load), and
-                    // `spaceless: true` makes the preview join CJK text without
-                    // spurious inter-word spaces. The final transcript still
-                    // runs the JA batch model + `JapaneseVocabularySubstituter`
-                    // on stop (vocab deferred to the final pass, same as v2/v3).
-                    let jaBatch = Transcriber(modelID: modelID, language: language)
-                    return DualPipelineTranscriber(
-                        batch: jaBatch,
-                        batchPreview: PreviewScheduler(
-                            transcriber: jaBatch,
-                            spaceless: language.isSpaceless
-                        )
-                    )
-                case .tdt_0_6b_v3, .tdt_0_6b_v3_int4:
-                    return Transcriber(modelID: modelID, language: language)
-                }
+                return liveTranscriber(modelID: modelID, language: language)
             },
             installedModelIDs: installedModelIDs
         )
@@ -727,7 +735,7 @@ enum JotComposition {
             return (body: prompt.body, title: prompt.title)
         }
 
-        // Speaker diarization (offline VBx, design D4): no launch-time
+        // Speaker diarization (Nemotron 3, design D4): no launch-time
         // warmup, no hardware gate. `.notDownloaded` until the user opens
         // the repurposed Settings pane or taps "Detect speakers" for the
         // first time.

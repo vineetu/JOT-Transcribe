@@ -30,7 +30,9 @@ enum ModelPaths {
         root.appendingPathComponent("parakeet-tdt-0.6b-v3-coreml", isDirectory: true)
     }
 
-    /// Default offline-diarizer root: `.../Jot/Models/Diarizer`.
+    /// Diarizer root: `.../Jot/Models/Diarizer` — the app's
+    /// `DiarizerHolder.cacheDirectory`. The Nemotron 3 model lives in its
+    /// `nemotron-3-diarization/` subfolder (`DiarizeEngine.repoDirectory`).
     static var diarizerRoot: URL {
         jotModelsRoot.appendingPathComponent("Diarizer", isDirectory: true)
     }

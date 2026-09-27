@@ -11,8 +11,8 @@ import Foundation
 /// there is no global identity store to reconcile.
 ///
 /// Engine-agnostic: this schema, and the pure functions below, survived the
-/// Sortformer → offline VBx engine swap (`docs/speaker-diarization/design.md`)
-/// untouched. They know nothing about which diarizer produced the segments.
+/// Sortformer → offline VBx → Nemotron 3 engine swaps
+/// (`docs/speaker-diarization/design.md`, `nemotron-migration.md`) untouched. They know nothing about which diarizer produced the segments.
 struct SpeakerTimelineSegment: Codable, Sendable, Equatable {
     let speakerLabel: String
     let startSec: Double
@@ -35,7 +35,7 @@ struct SpeakerTimelinePayload: Codable, Sendable {
 }
 
 /// Pure, engine-agnostic helpers shared by whichever diarizer builds the
-/// timeline. `DiarizationTimelineBuilder` (offline VBx, `Sources/Diarization/
+/// timeline. `DiarizationTimelineBuilder` (`Sources/Diarization/
 /// DiarizationTimelineBuilder.swift`) is the only caller today; these
 /// functions take plain `(label, start, end)` triples and a transcript
 /// string, so they have no engine coupling at all.
@@ -237,7 +237,7 @@ enum SpeakerTimelineBuilder {
 
     /// Group consecutive same-label segments into one display block —
     /// render-time belt-and-suspenders over the builder-level run coalescing
-    /// (`DiarizationTimelineBuilder.coalesceSameSpeakerRuns`), and the ONLY
+    /// (`DiarizationProjection.coalesceSameSpeakerRuns`), and the ONLY
     /// coalescing old already-persisted payloads (which still carry the
     /// fine-grained per-turn segments) ever get. Empty-text segments are
     /// dropped — they render as a bare header otherwise. Rename (D5) is

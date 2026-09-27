@@ -14,6 +14,11 @@ public actor ErrorLog: LogSink {
     public enum Level: String { case error = "ERROR", warn = "WARN", info = "INFO" }
 
     public static var logFileURL: URL {
+        #if DEBUG
+        if let root = DictationReplayEnvironment.sandboxRoot {
+            return root.appendingPathComponent("Logs/jot.log")
+        }
+        #endif
         let dir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
             .appendingPathComponent("Logs", isDirectory: true)
             .appendingPathComponent("Jot", isDirectory: true)

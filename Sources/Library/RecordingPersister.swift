@@ -100,7 +100,7 @@ final class RecordingPersister {
         // detached `.utility` task so it never hitches the save path or the UI.
         RecordingIndexer.shared?.index(recordingID: recordingID, text: transcript)
 
-        // Speaker diarization (offline VBx, design D4) is manual + on-demand
+        // Speaker diarization (Nemotron 3, design D4) is manual + on-demand
         // only — there is deliberately NO automatic post-stop pass here.
         // The user taps "Detect speakers" in the recording detail view
         // (`RecordingDetailView.detectSpeakers()`), which writes

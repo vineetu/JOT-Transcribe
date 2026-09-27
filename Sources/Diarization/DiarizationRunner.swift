@@ -6,8 +6,8 @@ import os.log
 /// `RecordingDetailView.detectSpeakers()` (design `docs/auto-diarize-imports/design.md`)
 /// so both the manual detail-view action AND automatic post-import
 /// diarization run the exact same steps: `prepareIfNeeded` (downloads the
-/// ~22 MB model on first use) → decode the recording's audio to 16 kHz mono
-/// Float32 → `process(samples:)` → timeline build.
+/// ~190 MB Nemotron 3 model on first use) → decode the recording's audio to
+/// 16 kHz mono Float32 → `process(samples:)` → timeline build.
 ///
 /// Multi-speaker text strategy: when the caller supplies `sliceTranscribe`,
 /// each coalesced speaker run's OWN audio slice is transcribed
@@ -34,8 +34,8 @@ enum DiarizationRunner {
 
     /// Result of a full pipeline run.
     ///
-    /// `payload == nil` means single-speaker (the `DiarizationTimelineBuilder`
-    /// dominance gate, design D7) — callers should treat that as "nothing to
+    /// `payload == nil` means single-speaker (the `DiarizationProjection`
+    /// solo gate, or folding left one voice) — callers should treat that as "nothing to
     /// label," not an error.
     ///
     /// `slicedTranscript` is non-nil ONLY when the segment-sliced path
@@ -73,12 +73,10 @@ enum DiarizationRunner {
         guard !samples.isEmpty else {
             throw RunnerError.emptyAudio
         }
-        let result = try await holder.process(samples: samples)
+        let segments = try await holder.process(samples: samples)
         let duration = Double(samples.count) / 16_000.0
 
-        guard DiarizationTimelineBuilder.multiSpeaker(result),
-              let merged = DiarizationTimelineBuilder.coalescedRuns(segments: result.segments)
-        else {
+        guard let merged = DiarizationTimelineBuilder.coalescedRuns(segments: segments, duration: duration) else {
             return Outcome(payload: nil, slicedTranscript: nil)
         }
 

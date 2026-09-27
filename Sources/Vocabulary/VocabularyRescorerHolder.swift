@@ -55,6 +55,13 @@ public actor VocabularyRescorerHolder {
         spotter != nil && rescorer != nil && (vocabulary?.terms.isEmpty == false)
     }
 
+    /// The active vocabulary's canonical spellings (no aliases), for the
+    /// Nemotron multilingual decoder's decode-time bias. Empty when boosting
+    /// is off or not yet prepared.
+    public var canonicalTerms: [String] {
+        vocabulary?.terms.map(\.text) ?? []
+    }
+
     /// True when a prepare() call is currently executing. Caller (e.g.
     /// the Vocabulary pane's Download button) reads this to show a
     /// spinner.
@@ -104,7 +111,12 @@ public actor VocabularyRescorerHolder {
                 // `modelsExist` lie; on load failure, nuke it so the
                 // next retry starts from a known-empty state instead
                 // of sticking on a corrupt bundle forever.
-                cache.removeCache()
+                var purge = true
+                #if DEBUG
+                // Replay harness reads the owner's models in place: never purge.
+                if DictationReplayEnvironment.isActive { purge = false }
+                #endif
+                if purge { cache.removeCache() }
                 log.error("CTC bundle load failed — cache cleared: \(error.localizedDescription)")
                 throw error
             }
@@ -238,6 +250,9 @@ public actor VocabularyRescorerHolder {
         /// "kept"`. Drives the once-ever teach gate + mixed-payload drop. (Applied
         /// merges are ordinary asks, not teach cards, so they are NOT flagged here.)
         public let isMerge: Bool
+        /// What the correction rests on (`Proposal.evidence`) — the live ask
+        /// ranks the weakest evidence first (`AskPolicy.evidenceRank`).
+        public let evidence: String?
     }
 
     /// The result of a gated rescore: the gated text plus the de-duped applied
@@ -363,11 +378,19 @@ public actor VocabularyRescorerHolder {
         for t in vocabulary.terms {
             termAliasMap[t.text.lowercased(), default: []] += (t.aliases ?? [])
         }
+        // R2: the spotter's detections ARE acoustic evidence — a real CTC
+        // log-prob score. (They were built without the flag, so the §6 ceiling
+        // never saw them and the gate treated them like string matches.) No
+        // decoder confidence exists on this path; none is invented.
+        // NOT a live safeguard: the §6 ceiling ramp only loosens above
+        // `VocabularyGate.acousticScoreFloor` (−1.8), and this spotter's scores
+        // run −6 to −11, so the ramp never fires here — detections get the flat
+        // 0.45 ceiling like any other.
         let detections: [VocabularyGate.Detection] = spotResult.detections.map { d in
             VocabularyGate.Detection(
                 term: d.term.text,
                 aliases: termAliasMap[d.term.text.lowercased()] ?? (d.term.aliases ?? []),
-                score: d.score,
+                evidence: .acoustic(score: d.score, confidence: nil),
                 startTime: d.startTime,
                 endTime: d.endTime
             )
@@ -403,12 +426,18 @@ public actor VocabularyRescorerHolder {
         return pendingStreamedPayload
     }
 
-    /// **Phase 2 (placement + gate).** Place the phase-1 detections onto the
-    /// (now-known) Nemotron transcript via the gate's plausibility metric +
-    /// proportional position, run the SAME `VocabularyGate`, and emit the verdict
+    /// **Phase 2 (placement + gate).** One `VocabularyPass` over two evidence
+    /// sources (design A5 / R10 interim): the phase-1 spotter detections as
+    /// `.acoustic` evidence, placed on the word Nemotron wrote at that moment via
+    /// its own token timings (dropped — never placed proportionally — when the
+    /// timings can't be aligned to the transcript), plus the model-free
+    /// corrector's `.textual` detections for the user's terms. Then the verdict
     /// tail (provenance + UX payload) shared with the TDT path. Returns the gated
     /// text + de-duped corrections, or a byte-identical pass-through when there's
     /// nothing to place.
+    ///
+    /// Runs only when the spotter ran (vocabulary on, CTC model ready): the term
+    /// list comes from the same loaded vocabulary context.
     ///
     /// - Parameter language: the active transcription language, threaded from
     ///   the caller (`Transcriber` or `DualPipelineTranscriber`). Selects the
@@ -420,26 +449,39 @@ public actor VocabularyRescorerHolder {
     public func gateDetections(
         transcript: String,
         payload: SpotPayload,
+        tokenTimings: [EngineTokenTiming],
         language: LanguageChoice?,
         recordsProvenance: Bool
     ) async -> RescoreResult {
-        guard !payload.detections.isEmpty else {
+        let terms = (vocabulary?.terms ?? []).map {
+            VocabTerm(text: $0.text, aliases: $0.aliases ?? [])
+        }
+        guard !payload.detections.isEmpty || !terms.isEmpty else {
             return RescoreResult(text: transcript, corrections: [])
         }
         let overrides = await CorrectionStore.shared.snapshot()
+        let wordTimes = WordTimeline.wordTimes(
+            for: transcript,
+            pieces: tokenTimings.map {
+                TimedPiece(token: $0.token, startTime: $0.startTime, endTime: $0.endTime)
+            })
 
         // Seam 2 — common-word guard via the Bundle.main-backed provider keyed by
         // the active language's resource (nil ⇒ no list ships ⇒ brake no-ops).
-        let gated = VocabularyGate.applyFromDetections(
-            originalTranscript: transcript,
-            detections: payload.detections,
-            totalAudioDuration: payload.totalAudioDuration,
+        // The corrector runs only where its own measured table AND a list serve
+        // the language (`correctorLanguage` is nil otherwise — fail closed).
+        let gated = VocabularyPass.run(
+            transcript: transcript,
+            acoustic: payload.detections,
+            wordTimes: wordTimes,
+            terms: terms,
+            correctorLanguage: language?.correctorLanguage,
             commonWords: MacCommonWordsProvider.shared,
             commonWordsResource: language?.commonWordsResource,
             overrides: overrides,
             diagnostics: MacVocabCore.diagnostics
         )
-        log.info("spot-gated \(payload.detections.count) detection(s) → applied \(gated.applied), blocked \(gated.blocked.count)")
+        log.info("spot-gated \(payload.detections.count) detection(s), word times \(wordTimes == nil ? "unaligned" : "aligned") → applied \(gated.applied), blocked \(gated.blocked.count)")
 
         return await emitVerdicts(gated: gated, language: language, recordsProvenance: recordsProvenance)
     }
@@ -542,6 +584,8 @@ public actor VocabularyRescorerHolder {
                     "outcome": p.outcome,
                     "conf": String(format: "%.3f", p.confidence),
                     "margin": String(format: "%.2f", p.margin),
+                    "evidence": p.evidence ?? "—",
+                    "score": p.score.map { String(format: "%.2f", $0) } ?? "—",
                 ]
             )
         }
@@ -578,11 +622,9 @@ public actor VocabularyRescorerHolder {
         // iOS KEYBOARD ask policy would never surface — but Mac's live pill reads
         // the flag directly, so a straight adoption would resurrect the pill spam
         // Mac's fork guards existed to kill. Suppress the ask for any correction
-        // whose ORIGINAL is a common word (membership via the SAME Bundle.main
-        // provider + active-language resource the gate used, matching the old
-        // `CommonWords.isCommon` lowercased lookup). Fuzzy sounds-like matching and
-        // the teach lane are preserved — only the PILL surfacing is gated.
-        let commonSet = MacCommonWordsProvider.shared.words(forResource: language?.commonWordsResource)
+        // whose ORIGINAL is common by the ONE predicate the store's learning
+        // guard uses (R9: the gate's any-word test, active language). Fuzzy
+        // sounds-like matching is preserved — only the PILL surfacing is gated.
         var seen = Set<String>()
         var corrections: [UXCorrection] = []
         for p in gated.proposals {
@@ -591,7 +633,7 @@ public actor VocabularyRescorerHolder {
             // though the gate marks it `askCandidate == false`, so `isMerge`
             // surfaces and the one-shot spend can fire. Non-merge admission is the
             // addendum gate (§ADDENDUM): applied, or a non-common ask candidate.
-            let originalIsCommon = commonSet.contains(p.originalWord.lowercased())
+            let originalIsCommon = MacVocabCore.isCommonOriginal(p.originalWord)
             let admission = MacVocabGate.admitAsk(
                 outcome: p.outcome, shape: p.shape,
                 askCandidate: p.askCandidate, originalIsCommon: originalIsCommon)
@@ -609,7 +651,8 @@ public actor VocabularyRescorerHolder {
                     askCandidate: ask,
                     altTerm: p.alternates.first?.term,
                     altFind: p.alternates.first?.find,
-                    isMerge: admission.isMergeTeach
+                    isMerge: admission.isMergeTeach,
+                    evidence: p.evidence
                 )
             )
         }

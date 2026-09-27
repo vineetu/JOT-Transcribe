@@ -49,15 +49,15 @@ let usage = """
                             is missing, so `doctor` works as a precondition
                             check.
       --components <list>  Comma-separated: asr, stream-en, stream-zh,
-                            diarizer, ffmpeg. Defaults to asr, stream-en and
-                            ffmpeg; --all covers everything.
+                            diarizer, vad, ffmpeg. Defaults to asr, stream-en
+                            and ffmpeg; --all covers everything.
 
     OPTIONS:
-      --diarize            Run offline speaker diarization and label cues
-                            <v Speaker N>. Diarization is only reliable on
-                            clean, separate-audio-per-voice input (e.g. a
-                            Zoom/Meet recording's own soundtrack) — not audio
-                            captured acoustically through speakers into a mic.
+      --diarize            Label cues <v Speaker N> with on-device speaker
+                            diarization (NVIDIA Nemotron 3). Works on meetings
+                            and calls, including one mic in a room, with up to
+                            8 speakers. Needs the diarizer model (~190 MB):
+                            `\(programName) setup --components diarizer`.
       -o, --output <path>  Write WebVTT to <path> instead of stdout.
       --model-dir <dir>    Override the Parakeet model directory (defaults to
                             ~/Library/Application Support/Jot/Models/Parakeet,
@@ -79,6 +79,11 @@ let usage = """
     }
     exit(code)
 }
+
+// FluidAudio's logger defaults to `.debug` on the console, and its ASR debug
+// lines can carry recognised words. Warnings and up only, before any
+// FluidAudio type builds a logger. stderr stays for our own messages.
+AppLogger.minimumLevel = .warning
 
 var args = Array(CommandLine.arguments.dropFirst())
 
@@ -220,32 +225,31 @@ let diarizerRoot = ModelPaths.diarizerRoot
 }
 
 @MainActor func buildDiarizedVTT(samples: [Float], asr: AsrEngine.Result) async -> String {
-    let diarization: DiarizationResult
+    let segments: [DiarSegment]
     do {
-        diarization = try await DiarizeEngine.diarize(samples: samples, modelRoot: diarizerRoot)
+        segments = try DiarizeEngine.diarize(samples: samples, modelRoot: diarizerRoot)
     } catch {
         FileHandle.standardError.write(
-            Data("\(programName): warning: diarization failed (\(error)) — falling back to plain transcript\n".utf8))
+            Data("\(programName): warning: \(error) — falling back to plain transcript\n".utf8))
         return buildPlainVTT(asr: asr)
     }
 
-    let rawSegments = diarization.segments.map {
-        (speakerId: $0.speakerId, start: Double($0.startTimeSeconds), end: Double($0.endTimeSeconds))
-    }
-    let merged = CueBuilder.mergeAdjacent(rawSegments)
-    guard !merged.isEmpty else {
+    // Same geometry as the app (`DiarizationProjection`, a shared file): solo
+    // gate, phantom fold, merge + coalesce, gap fill, short-run fold.
+    let duration = Double(samples.count) / 16_000.0
+    guard let runs = DiarizationProjection.speakerRuns(from: segments, duration: duration) else {
         FileHandle.standardError.write(
-            Data("\(programName): note: no distinct speaker segments detected (single speaker, or audio not clean per-voice) — falling back to plain transcript\n".utf8))
+            Data("\(programName): note: single speaker detected — writing the plain transcript\n".utf8))
         return buildPlainVTT(asr: asr)
     }
 
-    let labels = CueBuilder.labels(for: merged)
+    let labels = CueBuilder.labels(for: runs)
     let diarizedSegments: [(speaker: String, start: Double, end: Double, text: String)]
     if let tokenTimings = asr.tokenTimings, !tokenTimings.isEmpty {
         let words = WordReassembly.words(from: tokenTimings)
-        diarizedSegments = CueBuilder.diarizedSegments(words: words, segments: merged, labels: labels)
+        diarizedSegments = CueBuilder.diarizedCues(words: words, runs: runs, labels: labels)
     } else {
-        diarizedSegments = CueBuilder.distributeText(transcript: asr.text, segments: merged, labels: labels)
+        diarizedSegments = CueBuilder.distributeText(transcript: asr.text, segments: runs, labels: labels)
     }
     return WebVTT.vtt(diarizedSegments: diarizedSegments)
 }

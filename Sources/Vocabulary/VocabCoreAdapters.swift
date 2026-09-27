@@ -99,15 +99,61 @@ enum MacVocabCore {
     /// `Application Support/Vocabulary/…` files. (`vocabulary.txt` is relocated
     /// there from the legacy `Jot/Vocabulary/` path by `VocabMigration` before
     /// the store actors are first touched — design §3, L3.)
-    static let containerRoot: URL? = try? FileManager.default.url(
-        for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+    static let containerRoot: URL? = {
+        #if DEBUG
+        // Replay harness: a temp copy of the owner's `Vocabulary/` tree, so
+        // corrections / provenance writes never reach the real one.
+        if let root = DictationReplayEnvironment.sandboxRoot { return root }
+        #endif
+        return try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+    }()
 }
 
 /// The single main-app correction store (was the in-tree `CorrectionStore.shared`,
-/// now the package actor with the app's root + sink injected).
+/// now the package actor with the app's root + sink injected), with the learning
+/// guard wired (design A3/R9): a rule whose original is common — by the gate's
+/// own any-word test — is never learned or granted.
 extension CorrectionStore {
     static let shared = CorrectionStore(
-        containerRoot: MacVocabCore.containerRoot, diagnostics: MacVocabCore.diagnostics)
+        containerRoot: MacVocabCore.containerRoot, diagnostics: MacVocabCore.diagnostics,
+        isCommonOriginal: MacVocabCore.isCommonOriginal)
+}
+
+extension MacVocabCore {
+    /// The ONE common-original predicate (design R9), used by the store's
+    /// learning guard, the live-ask filter and the merge-teach lane alike: the
+    /// gate's own `VocabularyGate.isCommonOriginal` (ANY word common) over the
+    /// ACTIVE transcription language's list. `MacCommonWordsProvider` caches
+    /// and locks, so this is cheap and safe from the store actor.
+    @Sendable static func isCommonOriginal(_ original: String) -> Bool {
+        VocabularyGate.isCommonOriginal(original, commonWords: activeCommonWords())
+    }
+
+    private static func activeCommonWords() -> Set<String> {
+        let raw = UserDefaults.standard.string(forKey: TranscriberHolder.languageKey)
+        let language = raw.flatMap(LanguageChoice.init(rawValue:)) ?? .english
+        return MacCommonWordsProvider.shared.words(forResource: language.commonWordsResource)
+    }
+
+    private static let commonRuleMigrationKey = "jot.vocabulary.commonRuleMigrationDone"
+
+    /// One-time (A3): drop learned rules whose original is common — they were
+    /// learned before the guard existed. Marked done only when the active
+    /// language actually has a list AND corrections.json was loaded, so a
+    /// missing list or an unreadable ledger retries next launch.
+    static func migrateCommonOriginalRulesIfNeeded() async {
+        guard !UserDefaults.standard.bool(forKey: commonRuleMigrationKey),
+              !activeCommonWords().isEmpty,
+              let dropped = await CorrectionStore.shared.dropCommonOriginalRules() else { return }
+        UserDefaults.standard.set(true, forKey: commonRuleMigrationKey)
+        if dropped > 0 {
+            await ErrorLog.shared.info(
+                component: "VocabularyGate",
+                message: "dropped learned rules with a common original",
+                context: ["count": "\(dropped)"])
+        }
+    }
 }
 
 /// The single main-app provenance store (was the in-tree `CorrectionProvenance.shared`).
@@ -154,6 +200,18 @@ extension LanguageChoice {
     }
 }
 
+extension LanguageChoice {
+    /// The model-free corrector's language code (primary subtag), or nil when
+    /// the language ships no everyday-word list — the corrector then never runs
+    /// (no brake ⇒ no run). A language WITH a list still has to clear the
+    /// corrector's own measured table (`VocabularyCorrector.isServed` fails
+    /// closed on sl / hr), which `VocabularyCorrector.detections` enforces.
+    var correctorLanguage: String? {
+        guard let resource = commonWordsResource else { return nil }
+        return String(resource.dropFirst("common-words-".count))
+    }
+}
+
 /// Mac-side shared predicates over a `CorrectionStore` override snapshot, so the
 /// live-pill ask filter (and any future consumer) share ONE implementation.
 enum MacVocabGate {
@@ -195,15 +253,16 @@ enum MacVocabGate {
     /// Whether a gate proposal is admitted as a live-pill ask candidate — a
     /// UXCorrection-shaped mirror of `AskPolicy.worthAsking`'s admission arms
     /// (JotVocabCore, not called on this Mac path). A KEPT merge
-    /// ("sri ram" → "Sriram") is the designed teach ask and is EXEMPT from the
-    /// common-word gate (a merge original is a multi-word phrase; single-word
-    /// common-membership doesn't apply). Everything else: an APPLIED correction,
-    /// or a non-common ask candidate. Returns whether to admit + whether it's the
+    /// ("sri ram" → "Sriram") is the designed teach ask — unless its original
+    /// is common, because the store refuses to learn it and the one-shot would
+    /// burn for nothing (matches iOS). Everything else: an APPLIED correction,
+    /// or a non-common ask candidate. `originalIsCommon` is
+    /// `MacVocabCore.isCommonOriginal`, the store's own guard. Returns whether to admit + whether it's the
     /// merge-teach shape (drives the once-ever one-shot + mixed-payload rules).
     static func admitAsk(
         outcome: String, shape: String?, askCandidate: Bool, originalIsCommon: Bool
     ) -> (admit: Bool, isMergeTeach: Bool) {
-        let isMergeTeach = (shape == "merge" && outcome == "kept")
+        let isMergeTeach = (shape == "merge" && outcome == "kept" && !originalIsCommon)
         let ask = isMergeTeach || (askCandidate && !originalIsCommon)
         return (admit: outcome == "applied" || ask, isMergeTeach: isMergeTeach)
     }
@@ -212,8 +271,19 @@ enum MacVocabGate {
     /// `AskPolicy`'s `sorted { prior($0) > prior($1) }` (closest-to-automatic
     /// first). Ties keep input order.
     static func rankByPriorDescending<T>(_ items: [T], prior: (T) -> Int) -> [T] {
+        rankForAsk(items, evidence: { _ in nil }, prior: prior)
+    }
+
+    /// The live ask's order — a UXCorrection-shaped mirror of `AskPolicy`'s
+    /// ranking (design A5): weakest evidence first (`AskPolicy.evidenceRank`:
+    /// a string-only change before an acoustic one), then prior descending,
+    /// then input order.
+    static func rankForAsk<T>(_ items: [T], evidence: (T) -> String?, prior: (T) -> Int) -> [T] {
         items.enumerated()
             .sorted { a, b in
+                let ea = AskPolicy.evidenceRank(evidence(a.element))
+                let eb = AskPolicy.evidenceRank(evidence(b.element))
+                if ea != eb { return ea < eb }
                 let pa = prior(a.element), pb = prior(b.element)
                 return pa != pb ? pa > pb : a.offset < b.offset
             }

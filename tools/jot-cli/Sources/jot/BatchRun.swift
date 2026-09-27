@@ -13,7 +13,8 @@ import Foundation
 ///   --model-version v2|v3    which Parakeet checkpoint (default v3)
 ///   --vad                    gate out non-speech with Silero VAD before ASR
 ///                            (tests "skip the silence" — kills noise-only
-///                            segments that make the decoder hallucinate)
+///                            segments that make the decoder hallucinate).
+///                            Needs `setup --components vad` first.
 ///   --model-dir <dir>        override Parakeet root
 ///   -o, --output <path>      write JSONL here instead of stdout
 @MainActor
@@ -55,6 +56,12 @@ func runBatch(_ rawArgs: [String]) async {
         .filter { !$0.isEmpty }
     guard !paths.isEmpty else { fail("batch: manifest is empty") }
 
+    // Never download from here: `setup` is the only command that fetches the
+    // VAD. Checked before the (slow) ASR load so a missing model fails fast.
+    if useVad, !Setup.Component.vad.isReady {
+        fail("batch: Silero VAD is not installed — \(Setup.Component.vad.hint)")
+    }
+
     let version: AsrModelVersion = (versionStr == "v2") ? .v2 : .v3
     let root = ModelPaths.parakeetRoot(override: modelDirOverride)
     // Only the parent (the Parakeet root) matters to AsrModels.load — it
@@ -77,6 +84,9 @@ func runBatch(_ rawArgs: [String]) async {
 
     var vad: VadManager?
     if useVad {
+        // Presence was checked up front; offline mode stops FluidAudio's
+        // corrupt-model recovery from re-downloading behind our back.
+        ModelHub.offlineMode = true
         FileHandle.standardError.write(Data("batch: loading Silero VAD…\n".utf8))
         do {
             vad = try await VadManager()

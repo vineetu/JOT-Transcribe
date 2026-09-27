@@ -44,3 +44,8 @@ any NOTICE files ship with the packages themselves.
 
 Speech models are fetched at runtime by FluidAudio and are covered by
 their own upstream licenses (Parakeet: MIT/Apache-2.0).
+
+- NVIDIA Nemotron 3 Diarization (speaker labels; CoreML conversion by
+  FluidInference, `FluidInference/nemotron-3-diarization-coreml`) —
+  OpenMDW License Agreement 1.1. Full text:
+  `Vendor/licenses/OpenMDW-1.1.txt` <https://openmdw.ai/license/1-1/>

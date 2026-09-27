@@ -22,6 +22,9 @@ struct VocabRow: View {
     let onDelete: () -> Void
 
     @AppStorage(AdvancedFlag.storageKey) private var advancedEnabled: Bool = false
+    /// The active transcription language — picks the everyday-word list the
+    /// hygiene warning checks against.
+    @AppStorage(TranscriberHolder.languageKey) private var languageRaw: String = ""
 
     @State private var isHovered = false
     @State private var newAlias = ""
@@ -53,6 +56,13 @@ struct VocabRow: View {
                     .help("Delete term")
                     .transition(.opacity)
                 }
+            }
+
+            if let hygiene = hygieneWarning {
+                Text(hygiene)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if advancedEnabled {
@@ -155,38 +165,30 @@ struct VocabRow: View {
     }
 
     /// Live inline warning for obvious footguns. Never blocks save —
-    /// user is trusted. Two heuristics per research §7:
-    ///   • Empty-ish terms (<=2 chars after trim) are too short for the
-    ///     CTC rescorer's `minTermLength: 3` and will be silently dropped.
-    ///   • Exact matches on very common English words cause false
-    ///     replacements. We ship a small hardcoded watchlist rather than
-    ///     pull in a 10k-word frequency file for MVP.
+    /// user is trusted. Terms of 2 characters or fewer are too short for the
+    /// CTC rescorer's `minTermLength: 3` and are silently dropped.
     private var warningMessage: String? {
         let t = term.text.trimmingCharacters(in: .whitespaces).lowercased()
         if t.isEmpty { return nil }
         if t.count <= 2 {
             return "Too short — terms under 3 characters are skipped to avoid false replacements."
         }
-        if Self.commonEnglishWatchlist.contains(t) {
-            return "Common English word — may cause false replacements in transcripts that use the word normally."
-        }
         return nil
     }
 
-    /// Curated watchlist of common English words that are very likely
-    /// to collide with ordinary speech. Deliberately small — a bigger
-    /// list belongs in a bundled frequency file in a future phase.
-    private static let commonEnglishWatchlist: Set<String> = [
-        "the", "and", "for", "that", "with", "this", "from", "have",
-        "they", "will", "one", "all", "would", "their", "what", "out",
-        "about", "which", "when", "make", "like", "time", "just", "him",
-        "know", "take", "into", "year", "your", "good", "some", "could",
-        "them", "see", "other", "than", "then", "now", "look", "only",
-        "come", "over", "think", "also", "back", "after", "use", "two",
-        "how", "our", "work", "first", "well", "way", "even", "new",
-        "want", "any", "give", "day", "most", "very", "find", "thing",
-        "tell", "say", "get", "made", "part", "get", "yes", "yeah",
-    ]
+    /// Vocabulary hygiene (shared `VocabularyHygiene`, design A4): the term's
+    /// first word is an everyday word, or it opens with an everyday function
+    /// word ("And…" in "Andalamma"). Checked against the active language's
+    /// list (English when none is stored). Shown inline under the field.
+    private var hygieneWarning: String? {
+        let language = LanguageChoice(rawValue: languageRaw) ?? .english
+        let resource = language.commonWordsResource
+        return VocabularyHygiene.warning(
+            for: term.text,
+            commonWords: MacCommonWordsProvider.shared.words(forResource: resource),
+            language: language.correctorLanguage
+        )?.message
+    }
 }
 
 /// Minimal wrapping flow layout for the alias chips so several short

@@ -33,6 +33,11 @@ struct RecordingDetailView: View {
     @State private var isDetectingSpeakers = false
     @State private var detectSpeakersError: String?
     @State private var detectSpeakersStatus: String?
+    /// Re-running "Detect speakers" replaces the stored timeline — labels,
+    /// renames, and per-segment text edits (design A8). Set when the user
+    /// asks to re-detect on a recording that already has one; the alert
+    /// confirms before `detectSpeakers()` runs.
+    @State private var confirmReplaceTimeline = false
     /// Per-recording speaker rename (design D5): the label currently being
     /// renamed (`nil` when the rename alert is dismissed) and the draft text.
     @State private var renameTargetLabel: String?
@@ -103,15 +108,19 @@ struct RecordingDetailView: View {
     }
 
     var body: some View {
+        // Decode the speaker timeline ONCE per body evaluation and share it
+        // between the playback bar and the transcript (the 10 Hz playback
+        // tick re-renders this view).
+        let segments = speakerSegments
         // ScrollViewReader so find-in-transcript next/prev can scroll a target
         // speaker block (possibly off-screen in the LazyVStack) into view before
         // its NSTextView applies the fine `scrollRangeToVisible`.
-        ScrollViewReader { proxy in
+        return ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: DetailMetrics.blockSpacing) {
                     header
                     TagChipsEditor(recording: recording) { try? context.save() }
-                    playbackBlock
+                    playbackBlock(segments: segments)
                     // Summary sits ABOVE the transcript (the Zoom/Teams recap
                     // placement): it's the read-first derived artifact, the
                     // transcript is the evidence below it — and it appears
@@ -122,7 +131,7 @@ struct RecordingDetailView: View {
                         summarySection
                             .id("summarySection")
                     }
-                    transcriptBlock
+                    transcriptBlock(segments: segments)
                     if let reviewModel, !reviewModel.records.isEmpty {
                         CorrectionReviewSection(model: reviewModel)
                     }
@@ -233,6 +242,15 @@ struct RecordingDetailView: View {
             Text(detectSpeakersError ?? "")
         }
         .alert(
+            "Detect speakers again?",
+            isPresented: $confirmReplaceTimeline
+        ) {
+            Button("Detect Again", role: .destructive) { detectSpeakers() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces the current speaker labels, including any names and text edits you've made.")
+        }
+        .alert(
             "Export failed",
             isPresented: Binding(
                 get: { exportError != nil },
@@ -295,8 +313,11 @@ struct RecordingDetailView: View {
 
     // MARK: - Playback (slim bar; real waveform is a later release)
 
-    private var playbackBlock: some View {
-        HStack(spacing: 12) {
+    /// Speaker-coloured seek bar when the recording has ≥2 speakers; otherwise
+    /// the plain `Slider`, unchanged.
+    private func playbackBlock(segments: [SpeakerTimelineSegment]?) -> some View {
+        let multiSpeaker = segments.map { Set($0.map(\.speakerLabel)).count >= 2 } ?? false
+        return HStack(alignment: multiSpeaker ? .top : .center, spacing: 12) {
             Button {
                 player.toggle()
             } label: {
@@ -307,15 +328,26 @@ struct RecordingDetailView: View {
             .buttonStyle(.borderless)
             .disabled(!player.isReady)
 
-            Slider(
-                value: Binding(
-                    get: { player.currentTime },
-                    set: { player.seek(to: $0) }
-                ),
-                in: 0...max(player.duration, 0.001)
-            )
-            .controlSize(.small)
-            .disabled(!player.isReady)
+            if multiSpeaker, let segments {
+                SpeakerSeekBar(
+                    segments: segments,
+                    colorMap: Self.colorMap(for: segments),
+                    currentTime: player.currentTime,
+                    duration: player.duration,
+                    isEnabled: player.isReady,
+                    onSeek: { player.seek(to: $0) }
+                )
+            } else {
+                Slider(
+                    value: Binding(
+                        get: { player.currentTime },
+                        set: { player.seek(to: $0) }
+                    ),
+                    in: 0...max(player.duration, 0.001)
+                )
+                .controlSize(.small)
+                .disabled(!player.isReady)
+            }
 
             Text("\(format(player.currentTime)) / \(format(player.duration))")
                 .font(.system(size: 11))
@@ -378,12 +410,11 @@ struct RecordingDetailView: View {
         return map
     }
 
-    private var transcriptBlock: some View {
-        // Decode the timeline once per body evaluation. During playback
-        // the 100 ms tick re-renders this view; without the hoist the
-        // downstream reads (label text, toggle visibility, ForEach body)
-        // each re-decode the JSON payload.
-        let segments = speakerSegments
+    private func transcriptBlock(segments: [SpeakerTimelineSegment]?) -> some View {
+        // `segments` is decoded once per body evaluation (hoisted in `body`).
+        // During playback the 100 ms tick re-renders this view; without the
+        // hoist the downstream reads (label text, toggle visibility, ForEach
+        // body) each re-decode the JSON payload.
         let colorMap = segments.map { Self.colorMap(for: $0) }
         let useLabeledView = segments != nil && !showRawTranscript
 
@@ -1073,7 +1104,11 @@ struct RecordingDetailView: View {
 
             if Features.speakerLabels {
                 Button {
-                    detectSpeakers()
+                    if recording.speakerTimeline != nil {
+                        confirmReplaceTimeline = true
+                    } else {
+                        detectSpeakers()
+                    }
                 } label: {
                     if isDetectingSpeakers {
                         Label("Detecting speakers…", systemImage: "person.wave.2")
@@ -1082,7 +1117,7 @@ struct RecordingDetailView: View {
                     }
                 }
                 .disabled(isDetectingSpeakers || isRetranscribing || isEditing)
-                .help("Label who said what in this recording. Runs entirely on this Mac. Best for meeting & call recordings where each person is on clean, separate audio — not audio captured through speakers or a single room mic.")
+                .help("Label who said what in this recording, up to 8 speakers. Works on meetings and calls, even from a single mic. Runs entirely on this Mac.")
             }
 
             Button {
@@ -1217,7 +1252,7 @@ struct RecordingDetailView: View {
                 )
                 await MainActor.run {
                     guard let payload = outcome.payload else {
-                        // Solo recording (design D7 dominance gate) — nothing
+                        // Solo recording (the single-speaker gate) — nothing
                         // to label. Clear any stale timeline from a prior run.
                         recording.speakerTimeline = nil
                         detectSpeakersStatus = "Single speaker — nothing to label."
@@ -1227,12 +1262,8 @@ struct RecordingDetailView: View {
                     if let data = try? JSONEncoder().encode(payload) {
                         recording.speakerTimeline = data
                         try? context.save()
-                        // Honest scope note (design ask: diarization is only
-                        // reliable on clean, separate-audio-per-voice input —
-                        // e.g. a meeting/call recording — not audio captured
-                        // acoustically through one shared mic/speakers).
                         let speakerCount = Set(payload.segments.map(\.speakerLabel)).count
-                        detectSpeakersStatus = "Labeled \(speakerCount) speakers. Best for meeting & call recordings where each person is on clean, separate audio."
+                        detectSpeakersStatus = "Labeled \(speakerCount) speakers."
                     }
                 }
             } catch is CancellationError {

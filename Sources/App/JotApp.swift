@@ -9,6 +9,20 @@ struct JotApp: App {
     @State private var navHistory = NavigationHistory()
 
     init() {
+        #if DEBUG
+        // Headless dictation replay harness: runs before any scene or
+        // AppDelegate launch work exists, then exits (never returns).
+        if DictationReplayEnvironment.isActive {
+            DictationReplay.runAndExit()
+        }
+        #endif
+        // FluidAudio's logger defaults to `.debug` mirrored to the console,
+        // and its ASR debug lines can carry recognised words. Quiet it before
+        // any FluidAudio type builds a logger: warnings and up, unified log
+        // only (message text is private there).
+        AppLogger.minimumLevel = .warning
+        AppLogger.mirrorsToConsole = false
+
         // Register any bundled themes before anything reads the stored theme
         // (the scene's `ThemeStore.shared`, the pill, the sound player). The
         // stock build has none, so this is a no-op there.

@@ -1,11 +1,10 @@
 #if DEBUG
-import FluidAudio
 import Foundation
 
 /// DEBUG-only runtime tests for the diarization timeline pipeline —
-/// `SpeakerTimelineBuilder.distributeText` sentence snapping,
-/// `DiarizationTimelineBuilder` run coalescing / isolated-segment smoothing /
-/// phantom re-fold, and the render-time display grouping. Same
+/// `DiarizationProjection` (frame projection, solo gate, phantom fold, run
+/// coalescing, gap fill, short-run fold), `SpeakerTimelineBuilder.distributeText`
+/// sentence snapping, and the render-time display grouping. Same
 /// `assert()`-in-`#if DEBUG` idiom as `WebVTTExporterTests` — the app target
 /// doesn't link XCTest, so these run once at startup via `runAll()` and are
 /// stripped from release builds.
@@ -21,26 +20,35 @@ enum SpeakerTimelineTests {
         test_snap_neverEmptiesTrailingSegment()
         test_snap_forwardSnapCannotEmptyFollowingSegment()
         test_isSentenceEnd_abbreviationsAndInitials()
-        test_smoothing_isolatedShortFlipReassigned()
-        test_smoothing_alternatingDialogueUntouched()
-        test_smoothing_allShortAlternationUnchanged()
-        test_smoothing_thenPhantomFoldRemovesEmptiedSpeaker()
-        test_buildPayloadCore_singleSpeakerAfterSmoothingReturnsNil()
+        test_projection_argmaxAboveThresholdOwnsFrame()
+        test_projection_recordsCoSpeaker()
+        test_projection_emptyAndSilentInput()
+        test_gapFill_tilesWholeDurationAtMidpoints()
+        test_foldShortRuns_prefersCoSpeakerThenLongerNeighbor()
+        test_foldShortRuns_leavesLoneRunAlone()
+        test_phantomFold_relabelsBelowFloorSpeaker()
+        test_speakerRuns_soloGateReturnsNil()
+        test_speakerRuns_gapFreeAndNoRunBelowSlicingFloor()
+        test_speakerRuns_shortRealTurnsFoldToSingleSpeakerReturnsNil()
         test_repro_48SegmentsThreeSpeakers()
     }
 
     // MARK: - Helpers
 
-    private static func timed(
-        _ id: String, _ start: Double, _ end: Double, q: Float = 0.8
-    ) -> TimedSpeakerSegment {
-        TimedSpeakerSegment(
-            speakerId: id,
-            embedding: [],
-            startTimeSeconds: Float(start),
-            endTimeSeconds: Float(end),
-            qualityScore: q
-        )
+    private static func seg(
+        _ id: String, _ start: Double, _ end: Double, co: String? = nil
+    ) -> DiarSegment {
+        DiarSegment(speakerId: id, start: start, end: end, coSpeakerId: co)
+    }
+
+    /// `[frames * 8]` probability matrix where `rows[f]` lists the
+    /// `(slot, p)` pairs active in frame `f`; every other cell is 0.
+    private static func probabilities(_ rows: [[(Int, Float)]]) -> [Float] {
+        var out = [Float](repeating: 0, count: rows.count * 8)
+        for (f, row) in rows.enumerated() {
+            for (slot, p) in row { out[f * 8 + slot] = p }
+        }
+        return out
     }
 
     // MARK: - FIX 1: run coalescing
@@ -48,18 +56,14 @@ enum SpeakerTimelineTests {
     static func test_coalesce_sameSpeakerRunsAcrossGaps() {
         // Three same-speaker segments separated by 2-5s natural pauses (well
         // above mergeAdjacent's 0.5s tolerance) must collapse to ONE.
-        let spans: [(speakerId: String, start: Double, end: Double)] = [
-            ("A", 0, 8), ("A", 10, 20), ("A", 25, 40),
-        ]
-        let out = DiarizationTimelineBuilder.coalesceSameSpeakerRuns(spans)
+        let spans = [seg("A", 0, 8), seg("A", 10, 20), seg("A", 25, 40)]
+        let out = DiarizationProjection.coalesceSameSpeakerRuns(spans)
         assert(out.count == 1, "3 same-speaker segments should coalesce to 1, got \(out.count)")
         assert(out[0].start == 0 && out[0].end == 40, "coalesced span should cover 0-40")
 
         // A speaker change still breaks the run.
-        let mixed: [(speakerId: String, start: Double, end: Double)] = [
-            ("A", 0, 8), ("B", 9, 14), ("A", 15, 20),
-        ]
-        let out2 = DiarizationTimelineBuilder.coalesceSameSpeakerRuns(mixed)
+        let mixed = [seg("A", 0, 8), seg("B", 9, 14), seg("A", 15, 20)]
+        let out2 = DiarizationProjection.coalesceSameSpeakerRuns(mixed)
         assert(out2.count == 3, "A/B/A must stay 3 runs, got \(out2.count)")
     }
 
@@ -180,94 +184,156 @@ enum SpeakerTimelineTests {
         assert(SpeakerTimelineBuilder.isSentenceEnd("42."), "number+period with no continuation ends a sentence")
     }
 
-    // MARK: - FIX 3: isolated-segment smoothing
+    // MARK: - Projection (D4)
 
-    static func test_smoothing_isolatedShortFlipReassigned() {
-        // 2s flip to B between two agreeing A neighbors, low quality → A.
-        let segs = [
-            timed("A", 0, 10, q: 0.9),
-            timed("B", 10, 12, q: 0.2),
-            timed("A", 12, 20, q: 0.9),
+    static func test_projection_argmaxAboveThresholdOwnsFrame() {
+        // 0.00-0.03 slot 0 alone; 0.03-0.05 both above 0.5 with slot 1
+        // higher → slot 1 owns them; 0.05-0.06 nobody above 0.5 → silence;
+        // 0.06-0.08 slot 1 alone.
+        let rows: [[(Int, Float)]] = [
+            [(0, 0.9)], [(0, 0.9)], [(0, 0.8)],
+            [(0, 0.6), (1, 0.7)], [(0, 0.6), (1, 0.9)],
+            [(0, 0.4), (1, 0.3)],
+            [(1, 0.9)], [(1, 0.9)],
         ]
-        let out = DiarizationTimelineBuilder.smoothIsolatedSegments(segs)
-        assert(out.allSatisfy { $0.speakerId == "A" }, "isolated low-quality flip should be reassigned to A")
+        let out = DiarizationProjection.project(
+            probabilities: probabilities(rows), frameCount: rows.count, numSpeakers: 8)
+        assert(out.map(\.speakerId) == ["S1", "S2", "S2"], "owners wrong: \(out.map(\.speakerId))")
+        assert(abs(out[0].end - 0.03) < 1e-9 && abs(out[1].start - 0.03) < 1e-9, "overlap frames must go to the higher slot")
+        assert(abs(out[1].end - 0.05) < 1e-9 && abs(out[2].start - 0.06) < 1e-9, "sub-threshold frame must be silence")
+        assert(abs(out[2].end - 0.08) < 1e-9, "last run must end at the last frame")
+        for pair in zip(out, out.dropFirst()) {
+            assert(pair.0.end <= pair.1.start + 1e-9, "projected runs must never overlap")
+        }
     }
 
-    static func test_smoothing_alternatingDialogueUntouched() {
-        // Legitimate 10s/8s/12s alternation — nothing is short, nothing moves.
-        let dialogue = [
-            timed("A", 0, 10), timed("B", 10, 18), timed("A", 18, 30),
+    static func test_projection_recordsCoSpeaker() {
+        // Slot 2 owns every frame; slot 5 is also above threshold in two of
+        // them → it is the run's co-speaker. A run with no overlap has none.
+        let rows: [[(Int, Float)]] = [
+            [(2, 0.9)], [(2, 0.9), (5, 0.6)], [(2, 0.8), (5, 0.7)], [(2, 0.9)],
         ]
-        let out = DiarizationTimelineBuilder.smoothIsolatedSegments(dialogue)
-        assert(out.map(\.speakerId) == ["A", "B", "A"], "long alternating dialogue must not be smoothed")
+        let out = DiarizationProjection.project(
+            probabilities: probabilities(rows), frameCount: rows.count, numSpeakers: 8)
+        assert(out.count == 1 && out[0].speakerId == "S3", "one S3 run expected, got \(out)")
+        assert(out[0].coSpeakerId == "S6", "co-speaker should be S6, got \(String(describing: out[0].coSpeakerId))")
 
-        // Short middle segment but DISAGREEING neighbors → untouched.
-        let threeWay = [
-            timed("A", 0, 10), timed("B", 10, 13), timed("C", 13, 20),
-        ]
-        let out2 = DiarizationTimelineBuilder.smoothIsolatedSegments(threeWay)
-        assert(out2.map(\.speakerId) == ["A", "B", "C"], "disagreeing neighbors must not trigger smoothing")
-
-        // Run of TWO short same-speaker segments — neighbors of each include
-        // the other B, so the run survives (no cascade by design).
-        let shortRun = [
-            timed("A", 0, 10), timed("B", 10, 13), timed("B", 13.5, 16), timed("A", 16, 26),
-        ]
-        let out3 = DiarizationTimelineBuilder.smoothIsolatedSegments(shortRun)
-        assert(out3.map(\.speakerId) == ["A", "B", "B", "A"], "a short same-speaker RUN must not be smoothed away")
+        let solo = DiarizationProjection.project(
+            probabilities: probabilities([[(0, 0.9)], [(0, 0.9)]]), frameCount: 2, numSpeakers: 8)
+        assert(solo.first?.coSpeakerId == nil, "a run with no overlap must have no co-speaker")
     }
 
-    static func test_smoothing_allShortAlternationUnchanged() {
-        // Adversarial-review counterexample (F2): all-short genuine
-        // alternation A/B/A/B with uniform scores. Without the long-neighbor
-        // requirement the two middle turns SWAP speakers (each sees agreeing
-        // ORIGINAL neighbors). Must come through unchanged.
-        let segs = [
-            timed("A", 0, 3), timed("B", 3, 6), timed("A", 6, 9), timed("B", 9, 12),
-        ]
-        let out = DiarizationTimelineBuilder.smoothIsolatedSegments(segs)
-        assert(out.map(\.speakerId) == ["A", "B", "A", "B"], "all-short alternation must not be smoothed/swapped, got \(out.map(\.speakerId))")
+    static func test_projection_emptyAndSilentInput() {
+        assert(DiarizationProjection.project(probabilities: [], frameCount: 0, numSpeakers: 8).isEmpty)
+        let silent = probabilities(Array(repeating: [(0, 0.2)], count: 50))
+        assert(DiarizationProjection.project(probabilities: silent, frameCount: 50, numSpeakers: 8).isEmpty,
+               "all-below-threshold frames must project to no runs")
+        // frameCount larger than the buffer must not read out of bounds.
+        let short = probabilities([[(0, 0.9)]])
+        assert(DiarizationProjection.project(probabilities: short, frameCount: 99, numSpeakers: 8).count == 1)
     }
 
-    static func test_smoothing_thenPhantomFoldRemovesEmptiedSpeaker() {
-        // B originally totals 8s (above the 6s floor). Smoothing flips its
-        // isolated 3s low-quality segment to A, dropping B to 5s — the
-        // phantom fold (running AFTER smoothing) must then fold B entirely.
-        let segs = [
-            timed("A", 0, 10, q: 0.9),
-            timed("B", 10, 13, q: 0.1),
-            timed("A", 13, 20, q: 0.9),
-            timed("B", 20, 25, q: 0.9),
-        ]
-        let smoothed = DiarizationTimelineBuilder.smoothIsolatedSegments(segs)
-        let folded = DiarizationTimelineBuilder.foldPhantomSpeakers(smoothed)
-        assert(folded.allSatisfy { $0.speakerId == "A" }, "speaker emptied below the 6s floor by smoothing must fold away")
+    // MARK: - Gap fill + short-run fold (A1)
+
+    static func test_gapFill_tilesWholeDurationAtMidpoints() {
+        let runs = [seg("A", 2, 10), seg("B", 14, 20), seg("A", 21, 30)]
+        let out = DiarizationProjection.gapFilled(runs, duration: 35)
+        assert(out[0].start == 0, "leading silence must go to the first run")
+        assert(out[0].end == 12 && out[1].start == 12, "4s gap must split at its midpoint (12)")
+        assert(out[1].end == 20.5 && out[2].start == 20.5, "1s gap must split at its midpoint (20.5)")
+        assert(out[2].end == 35, "trailing silence must go to the last run")
     }
 
-    static func test_buildPayloadCore_singleSpeakerAfterSmoothingReturnsNil() {
-        // F3: a "secondary" made of two isolated 3.5s low-quality flips
-        // totals 7s — enough to pass the multiSpeaker gate — but smoothing
-        // reassigns both and the fold collapses to one speaker. The payload
-        // must be nil (designed "Single speaker" path), never a one-label
-        // payload that would toast "Labeled 1 speakers.".
-        let segs = [
-            timed("A", 0, 10, q: 0.9),
-            timed("B", 10, 13.5, q: 0.1),
-            timed("A", 13.5, 25, q: 0.9),
-            timed("B", 25, 28.5, q: 0.1),
-            timed("A", 28.5, 40, q: 0.9),
-        ]
-        // Confirm the shape would clear the D7 gate (largest secondary ≥ 6s).
-        let totals = DiarizationTimelineBuilder.perSpeakerSeconds(segs)
-        let largestSecondary = totals.values.sorted(by: >).dropFirst().first ?? 0
-        assert(largestSecondary >= DiarizationTimelineBuilder.minSecondarySeconds, "test shape must pass the multiSpeaker gate, secondary = \(largestSecondary)")
+    static func test_foldShortRuns_prefersCoSpeakerThenLongerNeighbor() {
+        // 0.8s B turn between a long A and a shorter C, but C was also
+        // talking over it → it folds into C, not the longer A.
+        let withCo = [seg("A", 0, 20), seg("B", 20, 20.8, co: "C"), seg("C", 20.8, 25)]
+        let out = DiarizationProjection.foldShortRuns(withCo)
+        assert(out.map(\.speakerId) == ["A", "C"], "short run should fold into its co-speaker, got \(out.map(\.speakerId))")
+        assert(out[1].start == 20, "C must absorb the short run's span")
 
+        // No co-speaker → the longer neighbour wins.
+        let noCo = [seg("A", 0, 20), seg("B", 20, 20.8), seg("C", 20.8, 25)]
+        let out2 = DiarizationProjection.foldShortRuns(noCo)
+        assert(out2.map(\.speakerId) == ["A", "C"] && out2[0].end == 20.8,
+               "short run should fold into the longer neighbour, got \(out2)")
+
+        // Folding into a neighbour that matches the run on the other side
+        // re-coalesces them into one turn.
+        let sandwich = [seg("A", 0, 10), seg("B", 10, 10.5), seg("A", 10.5, 20), seg("C", 20, 30)]
+        let out3 = DiarizationProjection.foldShortRuns(sandwich)
+        assert(out3.map(\.speakerId) == ["A", "C"] && out3[0].end == 20,
+               "A/short-B/A must re-coalesce into one A turn, got \(out3)")
+        assert(out3.allSatisfy { $0.duration >= DiarizationProjection.minRunSeconds })
+    }
+
+    static func test_foldShortRuns_leavesLoneRunAlone() {
+        let out = DiarizationProjection.foldShortRuns([seg("A", 0, 0.5)])
+        assert(out.count == 1, "a lone run has nowhere to fold and must survive")
+    }
+
+    // MARK: - Solo gate + phantom fold (D5)
+
+    static func test_phantomFold_relabelsBelowFloorSpeaker() {
+        // C totals 3s (< 6s floor) and sits nearer B → relabelled B.
+        let segs = [seg("A", 0, 20), seg("C", 21, 24), seg("B", 24.5, 40)]
+        let out = DiarizationProjection.foldPhantomSpeakers(segs)
+        assert(out.map(\.speakerId) == ["A", "B", "B"], "phantom C should fold into nearer B, got \(out.map(\.speakerId))")
+    }
+
+    static func test_speakerRuns_soloGateReturnsNil() {
+        // Largest secondary speaks 5s in total (two 2.5s bursts) — below the
+        // 6s gate, so the recording is single-speaker.
+        let segs = [seg("A", 0, 30), seg("B", 31, 33.5), seg("A", 34, 60), seg("B", 61, 63.5)]
+        assert(!DiarizationProjection.multiSpeaker(segs), "5s secondary must not pass the 6s gate")
+        assert(DiarizationProjection.speakerRuns(from: segs, duration: 65) == nil)
         let payload = DiarizationTimelineBuilder.buildPayloadCore(
-            segments: segs,
-            transcript: "Some words spoken here. More words follow after that.",
-            duration: 40
-        )
-        assert(payload == nil, "single-speaker collapse after smoothing must return nil, got \(String(describing: payload?.segments.map(\.speakerLabel)))")
+            segments: segs, transcript: "Some words here.", duration: 65)
+        assert(payload == nil, "solo recording must build no payload")
+    }
+
+    static func test_speakerRuns_gapFreeAndNoRunBelowSlicingFloor() {
+        // Speech-only runs with silences, a 0.4s backchannel, and leading /
+        // trailing silence. The result must tile [0, duration] exactly —
+        // every second of audio lands in some slice — and no run may be
+        // shorter than the slicer's empty-text floor.
+        let segs = [
+            seg("S1", 1.0, 12.0), seg("S2", 13.5, 25.0), seg("S1", 25.3, 25.7, co: "S2"),
+            seg("S2", 26.0, 40.0), seg("S1", 44.0, 58.0),
+        ]
+        guard let runs = DiarizationProjection.speakerRuns(from: segs, duration: 61) else {
+            assertionFailure("two real speakers must survive")
+            return
+        }
+        assert(runs.first?.start == 0 && runs.last?.end == 61, "runs must cover 0…duration, got \(runs)")
+        for pair in zip(runs, runs.dropFirst()) {
+            assert(abs(pair.0.end - pair.1.start) < 1e-9, "runs must be contiguous: \(pair.0.end) vs \(pair.1.start)")
+            assert(pair.0.speakerId != pair.1.speakerId, "adjacent runs must be different speakers")
+        }
+        assert(runs.allSatisfy { $0.duration >= SegmentSlicing.minRunSeconds }, "no run may fall below the slicing floor")
+        assert(runs.map(\.speakerId) == ["S1", "S2", "S1"], "backchannel should fold into the S2 turn, got \(runs.map(\.speakerId))")
+
+        // Every slice is transcribed (none nil) and together they tile the file.
+        let bounds = SegmentSlicing.sliceBounds(runs: runs.map { ($0.start, $0.end) }, duration: 61)
+        assert(bounds.allSatisfy { $0 != nil }, "gap-free runs must all be sliced")
+        assert(bounds.first??.startSec == 0 && bounds.last??.endSec == 61, "slices must span the whole file")
+    }
+
+    static func test_speakerRuns_shortRealTurnsFoldToSingleSpeakerReturnsNil() {
+        // B passes the 6s gate only in total — seven 1s turns, each shorter
+        // than the slicing floor once gap-filled between long A turns. Every
+        // B turn folds away, leaving one voice: that is the single-speaker
+        // path, never a one-label payload ("Labeled 1 speakers.").
+        var segs: [DiarSegment] = []
+        var t = 0.0
+        for _ in 0..<7 {
+            segs.append(seg("A", t, t + 10))
+            segs.append(seg("B", t + 10, t + 11))
+            t += 11
+        }
+        assert(DiarizationProjection.multiSpeaker(segs), "shape must pass the gate")
+        assert(DiarizationProjection.speakerRuns(from: segs, duration: t) == nil,
+               "collapse to one speaker must return nil")
     }
 
     // MARK: - Repro-shaped end-to-end (48 segments / 3 speakers / 6 flips)
@@ -280,22 +346,21 @@ enum SpeakerTimelineTests {
         let runs: [(String, Int)] = [
             ("S1", 11), ("S2", 2), ("S1", 11), ("S3", 2), ("S1", 10), ("S2", 2), ("S1", 10),
         ]
-        var raw: [TimedSpeakerSegment] = []
+        var raw: [DiarSegment] = []
         var t = 0.0
         for (speaker, count) in runs {
             for _ in 0..<count {
-                raw.append(timed(speaker, t, t + 5))
+                raw.append(seg(speaker, t, t + 5))
                 t += 8 // 5s speech + 3s pause
             }
         }
         assert(raw.count == 48, "repro shape must have 48 segments")
 
-        // Same pipeline order as buildPayload.
-        let smoothed = DiarizationTimelineBuilder.smoothIsolatedSegments(raw)
-        let folded = DiarizationTimelineBuilder.foldPhantomSpeakers(smoothed)
-        let merged = DiarizationTimelineBuilder.coalesceSameSpeakerRuns(
-            DiarizationTimelineBuilder.mergeAdjacent(folded)
-        )
+        // Same pipeline as `DiarizationTimelineBuilder.buildPayloadCore`.
+        guard let merged = DiarizationProjection.speakerRuns(from: raw, duration: t) else {
+            assertionFailure("repro shape must stay multi-speaker")
+            return
+        }
         assert(merged.count == 7, "48 repro segments should coalesce to 7 blocks, got \(merged.count)")
         let survivors = Set(merged.map(\.speakerId))
         assert(survivors == ["S1", "S2", "S3"], "all 3 real speakers must survive, got \(survivors)")

@@ -160,6 +160,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // touch below, so no `save()` can write to the new path while the file
         // still sits at the old one (or race the move).
         VocabMigration.relocateVocabularyFileIfNeeded()
+        // One-time: drop learned rules whose original is an everyday word (the
+        // learning guard refuses new ones). After the relocation above.
+        Task { await MacVocabCore.migrateCommonOriginalRulesIfNeeded() }
 
         preConstructionSetup()
 
@@ -370,7 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // pre-existing shipped orphan).
         services.orphanRecordingScanner.start()
 
-        // Speaker diarization (offline VBx): deliberately NO launch-time
+        // Speaker diarization (Nemotron 3): deliberately NO launch-time
         // warmup (design D4). The model downloads/loads lazily the first
         // time the user opens Settings → Speaker labels or taps "Detect
         // speakers" — there is no background cost to eagerly pay at launch.
@@ -470,15 +473,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                     suppressed: suppressed,
                     mergeAsked: mergeAsked)
             }
-            // M3(a) prior-desc ranking (mirror AskPolicy's `prior`): surface the
-            // closest-to-automatic asks first, from the SAME overrides snapshot.
+            // M3(a) ranking (mirror AskPolicy): weakest evidence first — the ask
+            // exists to catch a wrong apply — then closest-to-automatic, from the
+            // SAME overrides snapshot.
             func prior(_ item: AskItem) -> Int {
                 overrides.first {
                     $0.originalWord == CorrectionKey.normalize(item.from)
                         && $0.term.lowercased() == item.term.lowercased()
                 }?.net ?? 0
             }
-            let ranked = MacVocabGate.rankByPriorDescending(offered) { prior($0) }
+            let ranked = MacVocabGate.rankForAsk(offered, evidence: { $0.evidence }, prior: prior)
             // M3(b) mixed-payload drop: cap at 3, then — if any normal ask rides
             // this batch — drop the merge-teach asks (WITHOUT spending their
             // one-shot; the spend only fires in runAskSequence for a surfaced merge).
@@ -518,6 +522,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let altFind: String?
         /// Merge-shaped ask ("sri ram" → "Sriram") — gated to one teach ask ever.
         let isMerge: Bool
+        /// What the correction rests on — ranks the ask (weakest first).
+        let evidence: String?
 
         /// Build only if the relevant word is present in `text`; returns nil
         /// (drop the ask) when neither anchor survived the downstream rewrite.
@@ -525,6 +531,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             self.from = c.from
             self.term = c.to
             self.isMerge = c.isMerge
+            self.evidence = c.evidence
             if AppDelegate.containsWholeWord(c.to, in: text) {
                 // The term is in the text → the gate APPLIED it.
                 self.applied = true

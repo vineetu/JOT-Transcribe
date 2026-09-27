@@ -1,13 +1,14 @@
 import SwiftUI
 
-/// Speaker labels: Settings sidebar pane for the offline VBx diarization
-/// feature (`docs/speaker-diarization/design.md`).
+/// Speaker labels: Settings sidebar pane for the on-device Nemotron 3
+/// diarization feature (`docs/speaker-diarization/design.md`,
+/// `nemotron-migration.md`).
 ///
 /// This is configuration, NOT a master switch (design decision — see the
-/// design doc's "Settings & discoverability" section): offline VBx has no
+/// design doc's "Settings & discoverability" section): the diarizer has no
 /// background cost. It only runs when the user taps "Detect speakers" in a
-/// recording's detail view, for a fraction of a second, then goes fully
-/// idle. There is nothing to toggle off, so this pane is just: a short
+/// recording's detail view (or an import auto-diarizes), for a few seconds,
+/// then goes fully idle. There is nothing to toggle off, so this pane is just: a short
 /// explainer, the one-time model download state, and the model's
 /// attribution line. Owner auto-ID (recognizing "your" voice and labeling
 /// it automatically) was removed — its match threshold lived in an
@@ -47,7 +48,7 @@ struct SpeakerLabelsPane: View {
                         .font(.headline)
                     ExperimentalBadge()
                 }
-                Text("Open a recording and tap \"Detect speakers\" to label who said what — each voice gets an anonymous \"Speaker 1\", \"Speaker 2\", etc., which you can rename directly in the transcript. Best for meeting & call recordings where each person is on clean, separate audio, entirely on this Mac.")
+                Text("Open a recording and tap \"Detect speakers\" to label who said what — each voice gets an anonymous \"Speaker 1\", \"Speaker 2\", etc., which you can rename directly in the transcript. Works on meetings and calls, including one mic picking up the whole room, with up to 8 speakers. Runs entirely on this Mac.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
@@ -65,7 +66,7 @@ struct SpeakerLabelsPane: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Speaker-recognition model")
                             .font(.system(size: 13))
-                        Text("About 22 MB. Downloads once, the first time you use speaker labels.")
+                        Text("About 190 MB. Downloads once, the first time you use speaker labels.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -82,6 +83,15 @@ struct SpeakerLabelsPane: View {
                     Text("Downloading speaker-recognition model…")
                         .font(.system(size: 12, weight: .medium))
                     ProgressView(value: progress)
+                }
+            }
+        case .preparing:
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Preparing speaker-recognition model…")
+                        .font(.system(size: 12, weight: .medium))
+                    ProgressView()
+                        .progressViewStyle(.linear)
                 }
             }
         case .failed(let message):
@@ -126,7 +136,7 @@ struct SpeakerLabelsPane: View {
     @ViewBuilder
     private var attributionSection: some View {
         Section {
-            Text("Speaker recognition uses the pyannote community-1 model (CC-BY-4.0), running entirely on this Mac. Voice data never leaves your device.")
+            Text("Speaker recognition uses NVIDIA Nemotron 3 Diarization (OpenMDW-1.1), running entirely on this Mac. Voice data never leaves your device.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)

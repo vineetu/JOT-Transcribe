@@ -9,7 +9,9 @@ It is **self-contained**: `otool -L` shows no non-system dylibs (FluidAudio and
 the Swift runtime are statically linked), and it needs no sidecar resource
 bundle. At runtime it finds `ffmpeg` as its sibling in `Contents/Helpers/` and
 loads transcription/diarization models from the app's model dir
-(`~/Library/Application Support/Jot/Models/`). It never downloads models.
+(`~/Library/Application Support/Jot/Models/`). `transcribe` (including
+`--diarize`) and `batch --vad` never download; `jot-cli setup` fetches models,
+and `--stream` still downloads its own on first run.
 
 ## Rebuild (after changing `tools/jot-cli/`)
 
@@ -21,6 +23,10 @@ chmod 755 ../../Vendor/jot-cli/jot
 ```
 
 Then rebuild the app; the "Bundle Helpers" phase re-copies + re-signs it.
+`release.sh` does this rebuild itself, but a plain `xcodebuild` test install
+does NOT — rebuild `Vendor/jot-cli/jot` by hand first whenever `tools/jot-cli/`
+(or the shared `Sources/Diarization/DiarizationProjection.swift` it symlinks)
+changed, or the installed app ships a stale CLI.
 
 ## Usage
 
@@ -28,4 +34,5 @@ Then rebuild the app; the "Bundle Helpers" phase re-copies + re-signs it.
 jot-cli transcribe <file> [--diarize] [-o out.vtt]
 ```
 Output is WebVTT. `--diarize` adds `<v Speaker N>` voice tags (needs the
-diarizer model — run "Detect speakers" in the app once to download it).
+Nemotron 3 diarizer model, ~190 MB — `jot-cli setup --components diarizer`, or
+run "Detect speakers" in the app once).

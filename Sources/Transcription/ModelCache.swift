@@ -93,7 +93,7 @@ public struct ModelCache: Sendable {
     }
 
     /// Temporary FluidAudio-shaped root used while downloading Nemotron.
-    /// `DownloadUtils.downloadRepo(.nemotronStreaming1120, to:)` appends
+    /// `ModelHub.download(.nemotronStreaming1120, to:)` appends
     /// `nemotron-streaming/1120ms`; after a successful download Jot moves
     /// that produced directory into `streamingPartialCacheURL(for:)`.
     func streamingNemotronStagingRoot(for id: ParakeetModelID) -> URL? {
@@ -211,13 +211,13 @@ public struct ModelCache: Sendable {
         case .tdt_0_6b_v3_nemotron_streaming, .nemotron_en:
             return ModelNames.NemotronStreaming.requiredModels.allSatisfy { has($0) }
         case .nemotron_multilingual, .nemotron_multilingual_latin:
-            // Match FluidAudio's loader contract (preloadShared): preprocessor +
-            // encoder + metadata + tokenizer are mandatory; bare decoder/joint
+            // Match FluidAudio's loader contract (preloadShared): encoder +
+            // metadata + tokenizer are mandatory; bare decoder/joint
             // are OPTIONAL — a "lean B1 ship" omits them and ships a fused
             // decode bundle instead. A valid bundle needs ONE usable decode
             // path: any fused decoder_joint*, OR the bare decoder+joint pair.
-            let core = ["preprocessor.mlmodelc", "encoder.mlmodelc",
-                        "metadata.json", "tokenizer.json"]
+            // No preprocessor.mlmodelc: since 0.17.4 FluidAudio computes mel in Swift and never loads it.
+            let core = ["encoder.mlmodelc", "metadata.json", "tokenizer.json"]
             guard core.allSatisfy({ has($0) }) else { return false }
             let hasDecodePath =
                 has("decoder_joint.mlmodelc")

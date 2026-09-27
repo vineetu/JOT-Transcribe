@@ -45,102 +45,69 @@ enum CueBuilder {
 
     // MARK: - Diarized
 
-    struct MergedSpeakerSegment {
-        let speakerId: String
-        let start: Double
-        let end: Double
-    }
-
-    /// Merge adjacent same-speaker segments within `gapTolerance` seconds of
-    /// each other. Mirrors the app's `DiarizationTimelineBuilder.mergeAdjacent`
-    /// (minus the owner-ID / phantom-folding policy layered on top there —
-    /// out of scope for a headless CLI with no "owner" concept; see the CLI
-    /// design doc §8 R6 and the task's requested deviation list).
-    static func mergeAdjacent(
-        _ segments: [(speakerId: String, start: Double, end: Double)],
-        gapTolerance: Double = 0.5
-    ) -> [MergedSpeakerSegment] {
-        let sorted = segments.sorted { $0.start < $1.start }
-        var merged: [MergedSpeakerSegment] = []
-        for seg in sorted {
-            guard seg.end > seg.start else { continue }
-            if let last = merged.last, last.speakerId == seg.speakerId, seg.start - last.end <= gapTolerance {
-                merged[merged.count - 1] = MergedSpeakerSegment(
-                    speakerId: last.speakerId, start: last.start, end: max(last.end, seg.end))
-            } else {
-                merged.append(MergedSpeakerSegment(speakerId: seg.speakerId, start: seg.start, end: seg.end))
-            }
-        }
-        return merged
-    }
-
     /// "Speaker 1" / "Speaker 2" / … assigned by first-appearance order —
-    /// the CLI has no owner-voiceprint concept, so every speaker is anonymous
-    /// (unlike the in-app `DiarizationTimelineBuilder.resolveLabels`, which
-    /// can label one speaker as the recording's owner).
-    static func labels(for segments: [MergedSpeakerSegment]) -> [String: String] {
+    /// every speaker is anonymous, same as the app's
+    /// `DiarizationTimelineBuilder.resolveLabels`.
+    static func labels(for runs: [DiarSegment]) -> [String: String] {
         var labels: [String: String] = [:]
         var next = 1
-        for seg in segments where labels[seg.speakerId] == nil {
-            labels[seg.speakerId] = "Speaker \(next)"
+        for run in runs where labels[run.speakerId] == nil {
+            labels[run.speakerId] = "Speaker \(next)"
             next += 1
         }
         return labels
     }
 
-    /// Best case: Parakeet's per-word timings are available. Assign each
-    /// word to the merged segment whose time range contains its start time
-    /// (falling back to the nearest segment by boundary distance for a word
-    /// that lands in a gap between segments), then join per-segment.
-    /// This is a materially more accurate alignment than the app's current
-    /// time-proportional fallback (`SpeakerTimelineBuilder.distributeText`)
-    /// since it uses real per-word timestamps instead of guessing from
-    /// audio-time share — possible precisely because the CLI always runs
-    /// ASR before diarization (serialized, never concurrent).
-    static func diarizedSegments(
+    /// Best case: Parakeet's per-word timings are available. Each word goes
+    /// to the speaker run containing its midpoint (the runs from
+    /// `DiarizationProjection.speakerRuns` tile the whole file, so every
+    /// word lands in one; the nearest-boundary fallback only covers float
+    /// edges), then each run is cut into sentence-sized cues with
+    /// `cues(fromWords:)` so a long coalesced turn doesn't become one
+    /// minutes-long cue. Every word is kept — attribution, not slicing.
+    static func diarizedCues(
         words: [WordReassembly.Word],
-        segments: [MergedSpeakerSegment],
+        runs: [DiarSegment],
         labels: [String: String]
     ) -> [(speaker: String, start: Double, end: Double, text: String)] {
-        guard !segments.isEmpty else { return [] }
-        var buckets: [[String]] = Array(repeating: [], count: segments.count)
+        guard !runs.isEmpty else { return [] }
+        var buckets: [[WordReassembly.Word]] = Array(repeating: [], count: runs.count)
 
         for word in words {
             let mid = (word.start + word.end) / 2
-            if let idx = segments.firstIndex(where: { mid >= $0.start && mid < $0.end }) {
-                buckets[idx].append(word.text)
+            if let idx = runs.firstIndex(where: { mid >= $0.start && mid < $0.end }) {
+                buckets[idx].append(word)
                 continue
             }
-            // Gap word — attach to whichever segment boundary is nearest.
             var bestIdx = 0
             var bestDist = Double.greatestFiniteMagnitude
-            for (idx, seg) in segments.enumerated() {
-                let dist = mid < seg.start ? seg.start - mid : mid - seg.end
+            for (idx, run) in runs.enumerated() {
+                let dist = mid < run.start ? run.start - mid : mid - run.end
                 if dist < bestDist {
                     bestDist = dist
                     bestIdx = idx
                 }
             }
-            buckets[bestIdx].append(word.text)
+            buckets[bestIdx].append(word)
         }
 
-        return segments.enumerated().map { idx, seg in
-            (
-                speaker: labels[seg.speakerId] ?? seg.speakerId,
-                start: seg.start,
-                end: seg.end,
-                text: buckets[idx].joined(separator: " ")
-            )
+        var out: [(speaker: String, start: Double, end: Double, text: String)] = []
+        for (idx, run) in runs.enumerated() {
+            let speaker = labels[run.speakerId] ?? run.speakerId
+            for cue in cues(fromWords: buckets[idx]) {
+                out.append((speaker, cue.start, cue.end, cue.text))
+            }
         }
+        return out
     }
 
     /// Fallback when there are no per-word timings (Nemotron): apportion the
-    /// transcript across segments proportionally to each segment's share of
-    /// total speech time. Ported from the app's
+    /// transcript across runs proportionally to each run's share of total
+    /// time, one cue per run. Ported from the app's
     /// `SpeakerTimelineBuilder.distributeText`.
     static func distributeText(
         transcript: String,
-        segments: [MergedSpeakerSegment],
+        segments: [DiarSegment],
         labels: [String: String]
     ) -> [(speaker: String, start: Double, end: Double, text: String)] {
         guard !segments.isEmpty else { return [] }

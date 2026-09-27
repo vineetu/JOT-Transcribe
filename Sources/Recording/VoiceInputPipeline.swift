@@ -85,9 +85,18 @@ final class VoiceInputPipeline {
     /// a crash rather than being blocked forever. `phase` is the single source
     /// of truth for the mic being open, hence publishing from its `didSet`:
     /// there is no path to `.recording` that can forget to announce itself.
-    static let captureMarkerURL: URL = FileManager.default
-        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("Jot/capture-in-progress.json")
+    static let captureMarkerURL: URL = {
+        #if DEBUG
+        // The replay harness must never announce (or clear) a live mic on
+        // behalf of the owner's installed Jot.
+        if let root = DictationReplayEnvironment.sandboxRoot {
+            return root.appendingPathComponent("Jot/capture-in-progress.json")
+        }
+        #endif
+        return FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Jot/capture-in-progress.json")
+    }()
 
     private static func publishCaptureMarker(for phase: Phase) {
         let fm = FileManager.default
@@ -166,6 +175,11 @@ final class VoiceInputPipeline {
     /// the spotter's heavy log-prob passes DURING recording so the vocab spot
     /// is ~done at stop instead of adding a 2–3 s post-stop wait.
     private var activeStreamingCtc: StreamingCtcSpotter?
+    /// Generation of the session that owns `activeStreamingDual`. A graceful
+    /// drain that the watchdog abandoned can finish after a new session has
+    /// started (possibly on the same dual); comparing generations keeps it
+    /// from touching the new session's state.
+    private var activeStreamingGeneration: UInt64?
 
     /// "Never lose audio" safety net (docs/resilient-transcription/design.md).
     /// Set the instant `capture.stop()` finalizes the WAV inside
@@ -249,7 +263,12 @@ final class VoiceInputPipeline {
         // every recording path — dictation, Rewrite with Voice, the picker's
         // voice augment, Ask Jot voice — funnels through this one call. Opt-in,
         // and a no-op when nothing else is playing.
-        if UserDefaults.standard.bool(forKey: "jot.audio.silenceOthersWhileRecording") {
+        var takeOverAudio = UserDefaults.standard.bool(forKey: "jot.audio.silenceOthersWhileRecording")
+        #if DEBUG
+        // The replay harness never mutes the owner's other audio.
+        if DictationReplayEnvironment.isActive { takeOverAudio = false }
+        #endif
+        if takeOverAudio {
             AudioTakeover.shared.begin()
         }
 
@@ -357,13 +376,6 @@ final class VoiceInputPipeline {
             throw PipelineError.transcribeFailed(error)
         }
 
-        // Order: stop audio first → flush streaming engine's tail
-        // (ordering matters; finishing before stop would race with
-        // late buffers from the writer queue) → clear the partial
-        // store. The audio sink was set in `beginStreamingSession`;
-        // it's idempotent to clear it here on every path.
-        await endStreamingSession(graceful: true)
-
         // Voice-command owners (Rewrite with Voice, future Ask Jot
         // voice input) explicitly do NOT persist the captured WAV.
         // Voice instruction audio is intentionally dropped — only the
@@ -376,6 +388,34 @@ final class VoiceInputPipeline {
         if token.owner != .recorder {
             try? FileManager.default.removeItem(at: recording.fileURL)
         }
+
+        // Capture is over: from here the session is transcribing, so an Esc
+        // during the (possibly long) streaming drain takes `cancel`'s
+        // transcribing branch, which deletes the finalized recorder WAV.
+        phase = .transcribing(token)
+
+        // The streaming drain, the readiness check, and the final decode all
+        // run under the stop watchdog (see `transcribe(recording:token:)`).
+        let output = try await transcribe(recording: recording, token: token)
+        return StopAndTranscribeResult(
+            text: output.text,
+            recording: recording,
+            partialDueToDisconnect: output.disconnected,
+            corrections: output.corrections
+        )
+    }
+
+    /// Stop-time work between capture stop and the final decode. Runs under
+    /// the stop watchdog because the drain waits for the streaming engine to
+    /// decode its whole backlog, which a hung model would never finish.
+    /// Returns whether the input device disconnected mid-session.
+    private func drainStreamingAndCheckReady(token: Token) async throws -> Bool {
+        // Order: stop audio first → flush streaming engine's tail
+        // (ordering matters; finishing before stop would race with
+        // late buffers from the writer queue) → clear the partial
+        // store. The audio sink was set in `beginStreamingSession`;
+        // it's idempotent to clear it here on every path.
+        await endStreamingSession(graceful: true)
 
         guard phaseMatches(token) else {
             throw PipelineError.tokenStale
@@ -390,8 +430,8 @@ final class VoiceInputPipeline {
             throw PipelineError.disconnectedMidVoiceCommand
         }
 
-        phase = .transcribing(token)
-
+        // After the drain, never before: on a cold first dictation the
+        // streaming consumer is what loads the model.
         let ready = await transcriber.isReady
         guard phaseMatches(token) else {
             throw PipelineError.tokenStale
@@ -400,14 +440,7 @@ final class VoiceInputPipeline {
             clearIfMatching(token)
             throw PipelineError.modelMissing
         }
-
-        let output = try await transcribe(recording: recording, token: token)
-        return StopAndTranscribeResult(
-            text: output.text,
-            recording: recording,
-            partialDueToDisconnect: disconnected,
-            corrections: output.corrections
-        )
+        return disconnected
     }
 
     func cancel(token: Token) async {
@@ -472,6 +505,7 @@ final class VoiceInputPipeline {
 
         store.beginSession(token: token.generation)
         activeStreamingDual = dual
+        activeStreamingGeneration = token.generation
 
         let publish: @Sendable (String, UInt64) -> Void = { text, generation in
             Task { @MainActor in
@@ -523,8 +557,9 @@ final class VoiceInputPipeline {
     /// call). Capturing per session bounds the leak to "until the
     /// pipeline is cleared".
     private func endStreamingSession(graceful: Bool) async {
-        guard let dual = activeStreamingDual else { return }
-        defer { activeStreamingDual = nil }
+        guard let dual = activeStreamingDual,
+              let generation = activeStreamingGeneration
+        else { return }
         await capture.setStreamingSink(nil)
         let ctc = activeStreamingCtc
         activeStreamingCtc = nil
@@ -532,14 +567,50 @@ final class VoiceInputPipeline {
             // Finish the Nemotron stream + the streaming CTC concurrently, then
             // hand the CTC payload to the Nemotron transcribe path (consumed in
             // `nemotronResult`). On cancel we just drop the CTC work.
-            async let streamFinal = dual.finishStreaming()
+            let t0 = Date()
+            async let streamFinal: Double = {
+                _ = await dual.finishStreaming()
+                return Date().timeIntervalSince(t0)
+            }()
             let payload = await ctc?.finish() ?? nil
-            _ = await streamFinal
+            let ctcSeconds = Date().timeIntervalSince(t0)
+            let streamSeconds = await streamFinal
+            await ErrorLog.shared.info(
+                component: "VoiceInputPipeline",
+                message: "stop drain timing",
+                context: ["streamFinish": String(format: "%.2f", streamSeconds),
+                          "ctcFinish": String(format: "%.2f", ctcSeconds)]
+            )
+            // The stop watchdog may have abandoned this session mid-drain
+            // (`abandonStreamingSession`) and a new one may own the state now.
+            guard activeStreamingGeneration == generation else { return }
             await VocabularyRescorerHolder.shared.setPendingStreamedPayload(payload)
         } else {
-            await dual.cancelStreaming()
+            await dual.cancelStreaming(generation: generation)
             ctc?.cancel()
         }
+        guard activeStreamingGeneration == generation else { return }
+        detachStreamingSession()
+    }
+
+    /// Stop-watchdog cleanup for a session whose graceful drain hung. Clears
+    /// the session state synchronously (so the next dictation starts clean)
+    /// and cancels the Nemotron session, which ends its consumer. The sink
+    /// was already cleared when the drain began; the streaming CTC spotter
+    /// was handed to that drain and its payload is discarded by the
+    /// generation check there.
+    private func abandonStreamingSession(generation: UInt64) {
+        guard activeStreamingGeneration == generation,
+              let dual = activeStreamingDual
+        else { return }
+        detachStreamingSession()
+        Task { await dual.cancelStreaming(generation: generation) }
+    }
+
+    private func detachStreamingSession() {
+        activeStreamingDual = nil
+        activeStreamingCtc = nil
+        activeStreamingGeneration = nil
         StreamingPartialStore.shared.endSession()
     }
 
@@ -563,10 +634,25 @@ final class VoiceInputPipeline {
     private struct TranscribeOutput {
         let text: String
         let corrections: [VocabularyRescorerHolder.UXCorrection]
+        let disconnected: Bool
+    }
+
+    /// The stop-time watchdog exists to catch a HUNG model, not slow long
+    /// audio. Batch models re-decode the full buffer at stop, and Nemotron
+    /// still does when its streamed final can't be used (one-shot fallback),
+    /// so the honest cost scales with length: Nemotron multilingual measured
+    /// ~23–42 s for a 30-minute one-shot on an M2 Pro (~40–75× realtime),
+    /// which a fixed 30 s budget killed. The budget also covers the
+    /// streaming drain that precedes the final decode (one budget for the
+    /// whole stop), since a model that hangs mid-drain would otherwise park
+    /// the stop forever. Keep the 30 s floor for ordinary dictations and
+    /// add a budget that assumes only 8× realtime, leaving headroom for
+    /// slower chips and ANE contention.
+    static func transcribeWatchdogSeconds(forAudioDuration duration: TimeInterval) -> Double {
+        30 + max(0, duration) / 8
     }
 
     private func transcribe(recording: AudioRecording, token: Token) async throws -> TranscribeOutput {
-        let transcriber = self.transcriber
         // True iff this session is running on the ACTIVE model (no Phase-5
         // transient fallback override). A successful transcription on the
         // active model proves it loaded fine — used to self-clear a stale
@@ -590,21 +676,28 @@ final class VoiceInputPipeline {
                 }
             }
 
+            let watchdogSeconds = Self.transcribeWatchdogSeconds(forAudioDuration: recording.duration)
             transcribeWatchdog?.cancel()
-            transcribeWatchdog = Task { @MainActor [weak self] in
+            let watchdog = Task { @MainActor [weak self] in
                 do {
-                    try await Task.sleep(for: .seconds(30))
+                    try await Task.sleep(for: .seconds(watchdogSeconds))
                 } catch {
                     return
                 }
                 guard let self, self.phaseMatches(token) else { return }
-                self.log.warning("Transcribing watchdog fired after 30 s — invalidating token")
+                self.log.warning("Transcribing watchdog fired after \(Int(watchdogSeconds)) s — invalidating token")
+                // A hung drain still holds the streaming session; release it
+                // so the next dictation starts clean.
+                self.abandonStreamingSession(generation: token.generation)
                 self.invalidateIfMatching(token)
                 resumeOnce(.failure(PipelineError.transcribeFailed(TranscribeTimeoutError())))
             }
+            transcribeWatchdog = watchdog
 
             Task {
                 do {
+                    let disconnected = try await self.drainStreamingAndCheckReady(token: token)
+                    let transcriber = self.transcriber
                     // Only recorder-owned dictations own the shared provenance
                     // slot. Rewrite / Ask-Jot voice flows (other `Owner`s) run
                     // during a real dictation's async transform window, so they
@@ -614,8 +707,7 @@ final class VoiceInputPipeline {
                         recordsProvenance: token.owner == .recorder
                     )
                     await MainActor.run {
-                        self.transcribeWatchdog?.cancel()
-                        self.transcribeWatchdog = nil
+                        self.cancelTranscribeWatchdog(watchdog)
                         guard self.phaseMatches(token) else {
                             resumeOnce(.failure(PipelineError.tokenStale))
                             return
@@ -630,13 +722,20 @@ final class VoiceInputPipeline {
                         }
                         resumeOnce(.success(TranscribeOutput(
                             text: result.text,
-                            corrections: result.corrections
+                            corrections: result.corrections,
+                            disconnected: disconnected
                         )))
+                    }
+                } catch let error as PipelineError {
+                    // From `drainStreamingAndCheckReady`, which already
+                    // cleared the phase where needed.
+                    await MainActor.run {
+                        self.cancelTranscribeWatchdog(watchdog)
+                        resumeOnce(.failure(error))
                     }
                 } catch TranscriberError.audioTooShort {
                     await MainActor.run {
-                        self.transcribeWatchdog?.cancel()
-                        self.transcribeWatchdog = nil
+                        self.cancelTranscribeWatchdog(watchdog)
                         guard self.phaseMatches(token) else {
                             resumeOnce(.failure(PipelineError.tokenStale))
                             return
@@ -646,8 +745,7 @@ final class VoiceInputPipeline {
                     }
                 } catch TranscriberError.busy {
                     await MainActor.run {
-                        self.transcribeWatchdog?.cancel()
-                        self.transcribeWatchdog = nil
+                        self.cancelTranscribeWatchdog(watchdog)
                         guard self.phaseMatches(token) else {
                             resumeOnce(.failure(PipelineError.tokenStale))
                             return
@@ -657,8 +755,7 @@ final class VoiceInputPipeline {
                     }
                 } catch TranscriberError.modelMissing, TranscriberError.modelNotLoaded {
                     await MainActor.run {
-                        self.transcribeWatchdog?.cancel()
-                        self.transcribeWatchdog = nil
+                        self.cancelTranscribeWatchdog(watchdog)
                         guard self.phaseMatches(token) else {
                             resumeOnce(.failure(PipelineError.tokenStale))
                             return
@@ -668,8 +765,7 @@ final class VoiceInputPipeline {
                     }
                 } catch {
                     await MainActor.run {
-                        self.transcribeWatchdog?.cancel()
-                        self.transcribeWatchdog = nil
+                        self.cancelTranscribeWatchdog(watchdog)
                         guard self.phaseMatches(token) else {
                             resumeOnce(.failure(PipelineError.tokenStale))
                             return
@@ -679,6 +775,16 @@ final class VoiceInputPipeline {
                     }
                 }
             }
+        }
+    }
+
+    /// Cancels `watchdog`, and clears the slot only if it still holds it: a
+    /// drain that finishes after the watchdog fired must not cancel the
+    /// watchdog a newer session armed.
+    private func cancelTranscribeWatchdog(_ watchdog: Task<Void, Never>) {
+        watchdog.cancel()
+        if transcribeWatchdog == watchdog {
+            transcribeWatchdog = nil
         }
     }
 

@@ -12,7 +12,7 @@ import Foundation
 ///   stdout  one JSON object per line: {"type":"partial"|"final","text":"…"}
 ///   stderr  human-readable progress/logs, never JSON
 ///
-/// Engines (FluidAudio 0.15.4 — same pin as the app; the app's
+/// Engines (FluidAudio 0.17.4 — same pin as the app; the app's
 /// `NemotronStreamingTranscriber` / `NemotronMultilingualStreamingTranscriber`
 /// are the reference for this usage):
 ///   en  StreamingNemotronAsrManager, 1120 ms chunks (the trained chunk; ms560 fails CoreML load on this box).

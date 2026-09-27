@@ -9,9 +9,10 @@ import Foundation
 /// Flip to `true` to re-enable a gated feature without touching the
 /// surrounding implementation.
 enum Features {
-    /// Speaker diarization — offline VBx (`OfflineDiarizerManager`) driven
+    /// Speaker diarization — NVIDIA Nemotron 3 Diarization
+    /// (`Nemotron3Diarizer`, fast128, via `DiarizerHolder`) driving the
     /// "Detect speakers" action in the recording detail view, with
-    /// auto-identified device-owner labeling
+    /// anonymous "Speaker N" labels the user renames per recording
     /// (`docs/speaker-diarization/design.md`). Replaces the earlier
     /// Sortformer-based "Speaker Labels piece A" (ripped out — wrong engine,
     /// heavy enrollment UX). Gates: the Settings → Speaker labels sidebar

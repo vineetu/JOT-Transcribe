@@ -24,6 +24,7 @@ enum Setup {
         case streamEn = "stream-en"
         case streamZh = "stream-zh"
         case diarizer
+        case vad
         case ffmpeg
 
         /// What the user loses without it — the string `doctor` prints.
@@ -33,13 +34,14 @@ enum Setup {
             case .streamEn: return "Nemotron streaming (en) — `\(programName) --stream --language en`"
             case .streamZh: return "Nemotron multilingual (zh) — `\(programName) --stream --language zh`"
             case .diarizer: return "speaker diarization — `\(programName) transcribe --diarize`"
+            case .vad: return "Silero VAD — `\(programName) batch --vad`"
             case .ffmpeg: return "audio/video decoding for `\(programName) transcribe`"
             }
         }
 
-        /// The default set: what a working install needs. `stream-zh` and the
-        /// diarizer are large and most people never touch them, so they are
-        /// opt-in via `--all` or `--components`.
+        /// The default set: what a working install needs. `stream-zh`, the
+        /// diarizer and the VAD are large or niche and most people never touch
+        /// them, so they are opt-in via `--all` or `--components`.
         static var defaults: [Component] { [.asr, .streamEn, .ffmpeg] }
 
         var isDownloadable: Bool { self != .ffmpeg }
@@ -63,16 +65,17 @@ enum Setup {
                     .appendingPathComponent("multilingual", isDirectory: true)
                     .appendingPathComponent("2240ms", isDirectory: true)
             case .diarizer:
-                // Must match what `--diarize` actually loads: DiarizeEngine
-                // hands `ModelPaths.diarizerRoot` to OfflineDiarizerManager
-                // (the VBx diarizer), which keeps its files in a
-                // `speaker-diarization/` subfolder. NOT
-                // `DiarizerModels.defaultModelsDirectory()` — that is a
-                // different diarizer family (pyannote/wespeaker) in a
-                // different place, so setting it up would leave `--diarize`
-                // exactly as broken as before.
-                return ModelPaths.diarizerRoot.appendingPathComponent(
-                    "speaker-diarization", isDirectory: true)
+                // Must match what `--diarize` actually loads: the Nemotron 3
+                // repo folder under the app's diarizer root, shared with
+                // Jot.app so neither downloads it twice.
+                return DiarizeEngine.repoDirectory(root: ModelPaths.diarizerRoot)
+            case .vad:
+                // Where `VadManager()` looks: FluidAudio's own models root,
+                // not Jot's. The file name carries the Silero version, so a
+                // stale v6.0.0 copy doesn't count as installed.
+                return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("FluidAudio/Models", isDirectory: true)
+                    .appendingPathComponent(Repo.vad.folderName, isDirectory: true)
             case .ffmpeg:
                 return nil
             }
@@ -100,13 +103,14 @@ enum Setup {
                     atPath: dir.appendingPathComponent(
                         ModelNames.NemotronMultilingualStreaming.metadata).path)
             case .diarizer:
-                // Name the actual model files: the parent dir also holds
-                // `owner-voiceprint.json`, so "directory isn't empty" would
-                // call a model-less install ready.
+                // The same check `--diarize` makes before loading: bundle,
+                // silence embedding, and a weights marker for THIS
+                // FluidAudio's checkpoint.
+                return DiarizeEngine.modelsPresent(root: ModelPaths.diarizerRoot)
+            case .vad:
                 guard let dir = directory else { return false }
-                return ["Segmentation.mlmodelc", "Embedding.mlmodelc"].allSatisfy {
-                    FileManager.default.fileExists(atPath: dir.appendingPathComponent($0).path)
-                }
+                return FileManager.default.fileExists(
+                    atPath: dir.appendingPathComponent(ModelNames.VAD.sileroVadFile).path)
             case .streamEn:
                 // These managers own their own on-disk layout, so "the
                 // directory exists and isn't empty" is the honest check —
@@ -147,11 +151,17 @@ enum Setup {
                 _ = try await StreamingNemotronMultilingualAsrManager.downloadVariant(
                     languageCode: "zh-CN")
             case .diarizer:
-                progress("downloading the speaker diarizer…")
-                // prepareModels downloads into `<root>/speaker-diarization`,
-                // which is the layout DiarizeEngine reads back.
-                try await OfflineDiarizerManager(config: .default)
-                    .prepareModels(directory: ModelPaths.diarizerRoot)
+                progress("downloading the speaker diarizer (Nemotron 3, ~190 MB)…")
+                // The same call the app's DiarizerHolder makes, so the layout
+                // (and weights marker) is exactly what DiarizeEngine reads
+                // back. Setup is the one place the CLI may download.
+                _ = try await Nemotron3Models.loadFromHuggingFace(
+                    config: DiarizeEngine.config,
+                    cacheDirectory: ModelPaths.diarizerRoot,
+                    computeUnits: .all)
+            case .vad:
+                progress("downloading Silero VAD…")
+                _ = try await VadManager()
             }
         }
     }

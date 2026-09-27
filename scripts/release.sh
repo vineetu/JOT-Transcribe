@@ -429,6 +429,12 @@ RELEASE_STAGE_PATHS=(
     # Helpers phase names Contents/Helpers/jot-cli). Left out, a build could
     # ship one thing while the committed tree rebuilds another.
     Jot.xcodeproj/project.pbxproj
+    # Pinned package versions: a pbxproj pin bump without its resolved file
+    # would rebuild against whatever SwiftPM resolves on the next machine.
+    Jot.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+    # Third-party notices and the model licence texts they point at.
+    NOTICE
+    Vendor/licenses
 )
 for path in "${RELEASE_STAGE_PATHS[@]}"; do
     [[ -e "${REPO_ROOT}/${path}" ]] || continue
