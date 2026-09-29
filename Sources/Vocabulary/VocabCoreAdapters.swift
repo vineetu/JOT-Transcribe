@@ -113,7 +113,7 @@ enum MacVocabCore {
 /// The single main-app correction store (was the in-tree `CorrectionStore.shared`,
 /// now the package actor with the app's root + sink injected), with the learning
 /// guard wired (design A3/R9): a rule whose original is common — by the gate's
-/// own any-word test — is never learned or granted.
+/// own any-word test — never gets a positive ask prior.
 extension CorrectionStore {
     static let shared = CorrectionStore(
         containerRoot: MacVocabCore.containerRoot, diagnostics: MacVocabCore.diagnostics,
@@ -156,6 +156,34 @@ extension MacVocabCore {
                 component: "VocabularyGate",
                 message: "dropped learned rules with a common original",
                 context: ["count": "\(dropped)"])
+        }
+    }
+}
+
+/// The one correction path (design `vocabulary-learn-from-edits`, Revision 2):
+/// every surface — Edit → Done, Add to Vocabulary, the review list, the live
+/// ask, Settings sounds-likes — calls `VocabularyLearning.shared.apply`.
+extension VocabularyLearning {
+    @MainActor static let shared = VocabularyLearning(
+        list: VocabularyStore.shared, store: CorrectionStore.shared)
+}
+
+extension MacVocabCore {
+    private static let editPairMigrationKey = "jot.vocabulary.editPairsInListMigrationDone"
+
+    /// One-time (Revision 2 review #1): the list is now the only source of
+    /// decoder pairs, so pairs learned from edits before that are written into
+    /// it as sounds-likes. Marked done only when corrections.json was read.
+    @MainActor
+    static func migrateEditLearnedPairsIfNeeded() async {
+        guard !UserDefaults.standard.bool(forKey: editPairMigrationKey),
+              let added = await VocabularyLearning.shared.migrateEditLearnedPairs() else { return }
+        UserDefaults.standard.set(true, forKey: editPairMigrationKey)
+        if added > 0 {
+            await ErrorLog.shared.info(
+                component: "VocabularyGate",
+                message: "moved edit-learned pairs into the vocabulary list",
+                context: ["count": "\(added)"])
         }
     }
 }
@@ -219,24 +247,9 @@ extension LanguageChoice {
 /// Mac-side shared predicates over a `CorrectionStore` override snapshot, so the
 /// live-pill ask filter (and any future consumer) share ONE implementation.
 enum MacVocabGate {
-    /// Whether `(originalWord → term)` carries an "Always replace" grant in
-    /// `overrides`. **Mirrors `JotVocabCore.AskPolicy.granted`** exactly (same
-    /// `CorrectionKey.normalize(originalWord)` + `term.lowercased()` match on
-    /// `alwaysReplace`); duplicated Mac-side pending a public package helper —
-    /// the ask path is Mac-only (UXCorrection-shaped) and doesn't run `AskPolicy`.
-    static func isGranted(
-        originalWord: String, term: String, in overrides: [CorrectionStore.OverrideEntry]
-    ) -> Bool {
-        overrides.first {
-            $0.originalWord == CorrectionKey.normalize(originalWord)
-                && $0.term.lowercased() == term.lowercased()
-        }?.alwaysReplace == true
-    }
-
     /// Whether a live-pill ask should be OFFERED, given the current cross-recording
     /// state. Pure decision (no store access) so it's unit-testable:
     ///   - drop pairs the owner suppressed ("Stop asking" / ≥ threshold keeps),
-    ///   - drop always-replace grants (they auto-apply, never ask),
     ///   - drop a merge-shaped ask already taught once (design §1 one-shot — the
     ///     `noteMergeAsked` SPEND happens later, after the ask is surfaced).
     /// All keys are `CorrectionKey.pairKey`-shaped so they compare byte-identically
@@ -244,12 +257,10 @@ enum MacVocabGate {
     static func shouldOfferAsk(
         suppressionKey: String,
         isMerge: Bool,
-        isGranted: Bool,
         suppressed: Set<String>,
         mergeAsked: Set<String>
     ) -> Bool {
         if suppressed.contains(suppressionKey) { return false }
-        if isGranted { return false }
         if isMerge, mergeAsked.contains(suppressionKey) { return false }
         return true
     }

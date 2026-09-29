@@ -163,6 +163,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // One-time: drop learned rules whose original is an everyday word (the
         // learning guard refuses new ones). After the relocation above.
         Task { await MacVocabCore.migrateCommonOriginalRulesIfNeeded() }
+        // One-time: pairs learned from edits move into the list as sounds-likes.
+        Task { await MacVocabCore.migrateEditLearnedPairsIfNeeded() }
 
         preConstructionSetup()
 
@@ -454,9 +456,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // keyboard-only — the transcript review reads neither signal.
         Task { @MainActor in
             let suppressed = await CorrectionStore.shared.keyboardSuppressedPairs()
-            // V2-4: a pair granted "Always replace" auto-applies and never
-            // consumes ask budget — via the shared `MacVocabGate.isGranted`
-            // helper (mirrors `AskPolicy.granted`).
+            // The ask ranking prior (net per pair) — nothing learned auto-applies.
             let overrides = await CorrectionStore.shared.snapshot()
             // V2-3 merge-teach one-shot (DECIDE here, SPEND after surfacing): a
             // merge-shaped ask ("sri ram" → "Sriram") is offered exactly ONCE per
@@ -468,13 +468,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 MacVocabGate.shouldOfferAsk(
                     suppressionKey: item.suppressionKey,
                     isMerge: item.isMerge,
-                    isGranted: MacVocabGate.isGranted(
-                        originalWord: item.from, term: item.term, in: overrides),
                     suppressed: suppressed,
                     mergeAsked: mergeAsked)
             }
             // M3(a) ranking (mirror AskPolicy): weakest evidence first — the ask
-            // exists to catch a wrong apply — then closest-to-automatic, from the
+            // exists to catch a wrong apply — then most-confirmed, from the
             // SAME overrides snapshot.
             func prior(_ item: AskItem) -> Int {
                 overrides.first {
@@ -647,10 +645,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 let confirmed = c.applied
                     ? staged
                     : Self.replaceWholeWord(c.from, with: c.term, in: staged)
-                // Learn it so future dictations auto-apply (rare/OOV) and stop
-                // asking (Q3). For a common original the gate still won't
-                // auto-apply, but the single confirm pastes the term this time.
-                Task { await CorrectionStore.shared.confirm(originalWord: c.from, term: c.term) }
+                // The confirm pastes the term this time and ranks future asks
+                // (Q3); the correction below adds the sounds-like. Nothing
+                // learned auto-applies.
+                Task {
+                    await CorrectionStore.shared.confirm(originalWord: c.from, term: c.term)
+                    // The correction itself — the one learning path (sounds-like,
+                    // decoder pair). The confirm above only ranks future asks.
+                    let receipt = await VocabularyLearning.shared.apply(
+                        .correct(heard: c.from, term: c.term))
+                    // Mark the review record answered so a later pick there
+                    // can't count the same correction twice; its Undo reverses
+                    // exactly this apply.
+                    await CorrectionProvenance.shared.noteLiveVerdict(
+                        originalWord: c.from, term: c.term, verdict: "term", receipt: receipt)
+                }
                 next(confirmed)
             },
             onDismiss: {
@@ -677,15 +686,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                     } else {
                         await CorrectionStore.shared.noteBlockedKeep(originalWord: c.from, term: c.term)
                     }
-                    // Learn from edits: an explicit Keep lowers the term's learned
-                    // strength. The timeout / outside-click path (`onAccept`)
+                    // An explicit Keep pauses the decoder pair (the one learning
+                    // path). The timeout / outside-click path (`onAccept`)
                     // deliberately does not (design review #8).
-                    await CorrectionStore.shared.recordEdit(
-                        originalWord: c.from, term: c.term, direction: .away)
+                    let receipt = await VocabularyLearning.shared.apply(
+                        .keepOriginal(heard: c.from, term: c.term))
                     // Mark the review record answered, so the pane can't count
-                    // a second away for the same Keep.
+                    // a second keep for the same Keep.
                     await CorrectionProvenance.shared.noteLiveVerdict(
-                        originalWord: c.from, term: c.term, verdict: "original")
+                        originalWord: c.from, term: c.term, verdict: "original", receipt: receipt)
                 }
                 next(kept)
             },
@@ -722,7 +731,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 // This matches the ledger-accounting shape (and iOS's re-offer
                 // behavior), so the write stays; a gate change to consult multi-word
                 // override keys is filed as a cross-platform backlog item.
-                Task { await CorrectionStore.shared.confirm(originalWord: altFind, term: altTerm) }
+                Task {
+                    await CorrectionStore.shared.confirm(originalWord: altFind, term: altTerm)
+                    await VocabularyLearning.shared.apply(.correct(heard: altFind, term: altTerm))
+                }
                 next(widened)
             } : nil
         )

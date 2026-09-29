@@ -14,8 +14,9 @@ import SwiftUI
 /// term field. Advanced on adds an inline, compact "sounds-like" editor —
 /// the same "When Jot hears … → spell it as <term>" framing as the
 /// right-click `VocabMappingEditor` — so users can view/add/remove the
-/// ways Jot mis-hears a word. All writes flow through the `term` binding,
-/// which the pane wires to `VocabularyStore.update(id:text:aliases:)`.
+/// ways Jot mis-hears a word. Term text flows through the `term` binding,
+/// which the pane wires to `VocabularyStore.update(id:text:aliases:)`; a
+/// sounds-like add/remove is a correction and calls `VocabularyLearning.apply`.
 struct VocabRow: View {
     @Binding var term: VocabTerm
     var focused: FocusState<VocabTerm.ID?>.Binding
@@ -153,15 +154,30 @@ struct VocabRow: View {
         return !term.aliases.contains { $0.lowercased() == candidate.lowercased() }
     }
 
+    /// A sounds-like typed here is a correction ("when I say this, write
+    /// that") and deleting one forgets it — both go through the one learning
+    /// path by this row's id, not the row's plain per-keystroke `update`. No
+    /// text-rule confirm from a chip: it would be an auto-replace nobody sees.
     private func commitNewAlias() {
         guard canAddAlias else { return }
-        term.aliases.append(cleanedNewAlias)
-        newAlias = ""
+        let correction = Correction.correct(
+            heard: cleanedNewAlias, term: term.text, userCasing: true, termID: term.id)
+        let typed = newAlias
+        Task {
+            switch await VocabularyLearning.shared.apply(correction).outcome {
+            case .added, .duplicate:
+                // Clear only what was added (the user may have typed on).
+                if newAlias == typed { newAlias = "" }
+            case .rejected, .recorded:
+                break
+            }
+        }
     }
 
     private func removeAlias(at index: Int) {
         guard term.aliases.indices.contains(index) else { return }
-        term.aliases.remove(at: index)
+        let correction = Correction.forget(heard: term.aliases[index], term: term.text, termID: term.id)
+        Task { await VocabularyLearning.shared.apply(correction) }
     }
 
     /// Live inline warning for obvious footguns. Never blocks save —

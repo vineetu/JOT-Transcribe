@@ -227,7 +227,6 @@ struct VocabularyPane: View {
                             Toggle("Enable vocabulary boosting", isOn: $store.isEnabled)
                                 .toggleStyle(.switch)
                                 .font(.system(size: 13))
-                            ExperimentalBadge()
                         }
                         Text(headerSubtext)
                             .font(.system(size: 11))
@@ -237,7 +236,7 @@ struct VocabularyPane: View {
                     Spacer()
                     InfoPopoverButton(
                         title: "Custom vocabulary",
-                        body: "A short list of words Jot should prefer — product names, company names, technical jargon. When on, Jot scans each recording for these terms and replaces common misfires (\"you jet\" → \"UJET\") with your canonical spelling. Entirely on-device. Keep the list small (under 100 terms) for best results.\n\nExperimental — two paths depending on your primary model:\n\n• Parakeet v3, v2, and Nemotron (English): acoustic CTC matching. Catches phonetic neighbors automatically.\n\n• Japanese: alias-based text substitution. Write your canonical spelling as a term, then add the writing systems the model might output as aliases (hiragana / katakana / romaji). Aliases drive the substitution. The inline alias UI was removed for MVP; for now, add aliases by editing the vocabulary file directly (one line per term: `Term: alias1, alias2`).",
+                        body: "A short list of words Jot should prefer — names, product names, jargon. Entirely on-device.\n\nAdd a \"sounds like\" spelling when Jot writes the wrong word (\"cloud\" for Claude): on Nemotron Multilingual the speech model then leans toward your word while it listens. Every correction you make — editing a transcript, Add to Vocabulary, picking a suggestion — lands here, so this list is the one place to see and undo what Jot learned. Keeping the original, or deleting the sounds-like, turns it off.\n\nAfter transcription, Jot also checks the audio for your terms and changes a word only when it hears the term; for everyday words it asks first. Keep the list focused for best results.",
                         helpAnchor: "custom-vocabulary"
                     )
                 }

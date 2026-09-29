@@ -4,21 +4,14 @@ import FluidAudio
 import Foundation
 import JotVocabCore
 
-/// One canonical vocabulary term and its decode-time bias weight (the base
-/// `vocabularyBiasWeight`, or the learned strength once the user has corrected
-/// toward it — learn from edits, D5).
-struct NemotronBiasTerm: Equatable, Sendable {
-    let text: String
-    let weight: Float
-}
-
-/// **Pair-targeted learned bias.** Hands the store's learned `(original → term)`
-/// pairs to the fork's `setLearnedPairs(_:)`, which pushes the term only where
-/// the decoder is spelling the original (see
+/// **Pair-targeted learned bias.** Hands the list's decoder pairs
+/// (`DecoderVocabulary`: single-word sounds-likes the user hasn't paused) to
+/// the fork's `setLearnedPairs(_:)`, which pushes the term only where the
+/// decoder is spelling the original (see
 /// docs/vocabulary-learn-from-edits/design.md).
 enum NemotronLearnedPairsBridge {
     static func apply(
-        _ pairs: [CorrectionStore.LearnedPair],
+        _ pairs: [DecoderVocabulary.Pair],
         to manager: StreamingNemotronMultilingualAsrManager
     ) async {
         await manager.setLearnedPairs(
@@ -59,34 +52,30 @@ final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
     /// manager is strictly ordered: a cancelled session's in-flight chunk can
     /// never land inside the next session.
     private var managerTail: Task<Void, Never>?
-    /// The user's vocabulary (canonical spellings only, each with its bias
-    /// weight; empty when boosting is off), read at each session boundary for
-    /// decode-time bias.
-    private let vocabularyProvider: (@Sendable () async -> [NemotronBiasTerm])?
-    /// Learned `(original → term)` pairs from transcript edits, for
-    /// pair-targeted bias (see `NemotronLearnedPairsBridge`).
-    private let learnedPairsProvider: (@Sendable () async -> [CorrectionStore.LearnedPair])?
+    /// The user's vocabulary as the decoder takes it (canonical spellings
+    /// with their bias weights, plus the decoder pairs; empty when vocabulary
+    /// is off), read at each session boundary for decode-time bias.
+    private let vocabularyProvider: (@Sendable () async -> DecoderVocabulary)?
     /// The terms + weights last handed to the manager, so an unchanged
     /// vocabulary is not re-tokenized every session. Compared as (term,
-    /// weight) — a weight-only change (a learned term) must still re-apply.
-    private var appliedVocabulary: [NemotronBiasTerm] = []
-    private var appliedPairs: [CorrectionStore.LearnedPair] = []
+    /// weight) — a weight-only change (a term gaining a pair) must still
+    /// re-apply.
+    private var appliedVocabulary: [DecoderVocabulary.Term] = []
+    private var appliedPairs: [DecoderVocabulary.Pair] = []
 
     /// Bias bonus for a vocabulary term's first token (continuations get
     /// 1.5× inside FluidAudio). Chosen on the public LibriSpeech rare-word
     /// biasing benchmark (docs/plans/vocabulary-evidence-and-decode-bias.md).
-    static let vocabularyBiasWeight: Float = 3.5
+    static let vocabularyBiasWeight: Float = DecoderVocabulary.baseWeight
 
     init(
         bundleDirectory: URL,
         languageCode: String?,
-        vocabularyProvider: (@Sendable () async -> [NemotronBiasTerm])? = nil,
-        learnedPairsProvider: (@Sendable () async -> [CorrectionStore.LearnedPair])? = nil
+        vocabularyProvider: (@Sendable () async -> DecoderVocabulary)? = nil
     ) {
         self.bundleDirectory = bundleDirectory
         self.languageCode = languageCode
         self.vocabularyProvider = vocabularyProvider
-        self.learnedPairsProvider = learnedPairsProvider
     }
 
     /// Apply the current vocabulary to the manager. Called only between
@@ -94,7 +83,8 @@ final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
     /// an open speculation's bookkeeping on a vocabulary change.
     private func applyVocabulary(to manager: StreamingNemotronMultilingualAsrManager) async {
         guard let vocabularyProvider else { return }
-        let terms = await vocabularyProvider()
+        let vocabulary = await vocabularyProvider()
+        let terms = vocabulary.terms
         let vocabularyChanged = terms != appliedVocabulary
         if vocabularyChanged {
             appliedVocabulary = terms
@@ -104,11 +94,19 @@ final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
         }
         // Pairs after the terms they point at; re-sent on any vocabulary
         // change so a re-tokenized term list never leaves them stale.
-        guard let learnedPairsProvider else { return }
-        let pairs = await learnedPairsProvider()
+        let pairs = vocabulary.pairs
         guard vocabularyChanged || pairs != appliedPairs else { return }
         appliedPairs = pairs
         await NemotronLearnedPairsBridge.apply(pairs, to: manager)
+        let learned = terms.filter { $0.weight > Self.vocabularyBiasWeight }.map(\.text)
+        await ErrorLog.shared.info(
+            component: "VocabularyBias",
+            message: "decoder vocabulary applied",
+            context: [
+                "terms": "\(terms.count)",
+                "learnedTerms": learned.joined(separator: ","),
+                "learnedPairs": pairs.map { "\($0.original)→\($0.term)" }.joined(separator: ","),
+            ])
     }
 
     var isReady: Bool { manager != nil }

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import JotVocabCore
 
 /// Selectable serif transcript reader with a right-click **"Add to
 /// Vocabulary…"** that opens an editable mapping popover ("when Jot hears
@@ -361,15 +362,21 @@ struct VocabMappingEditor: View {
     }
 
     private func add() {
-        switch VocabularyStore.shared.addMapping(heard: heardText, term: termText) {
-        case .added, .duplicate:
-            // Replace the originally-selected text with the canonical spelling.
-            // Use the sanitized term (what the store actually stored) so the
-            // transcript matches the saved mapping.
-            onAdded(VocabularyStore.sanitizeTerm(termText))
-            onClose()
-        case .rejected:
-            errorText = "Use a single word or short phrase (max \(VocabularyStore.maxTermWords) words)."
+        // "When Jot hears X, write Y" is a correction: the one learning path
+        // every surface takes (term, sounds-like, decoder pair). The user typed
+        // the spelling, so its casing wins. No text-rule confirm: the review
+        // records this recording may hold carry their own count.
+        let correction = Correction.correct(heard: heardText, term: termText, userCasing: true)
+        Task { @MainActor in
+            switch await VocabularyLearning.shared.apply(correction).outcome {
+            case .added(let term), .duplicate(let term):
+                // Replace the originally-selected text with the canonical
+                // spelling — the sanitized term the list actually stored.
+                onAdded(term)
+                onClose()
+            case .rejected, .recorded:
+                errorText = "Use a single word or short phrase (max \(VocabularyStore.maxTermWords) words)."
+            }
         }
     }
 

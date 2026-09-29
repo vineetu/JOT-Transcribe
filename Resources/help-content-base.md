@@ -15,7 +15,7 @@ multilingual: 25 European languages.
 languages: Jot supports these ASR models — pick one as primary at Settings → Transcription. Only the primary is hot in memory; switching unloads + reloads.
 <!-- FRAGMENT: jot-asr-languages -->
 japanese: yes — install the Parakeet 0.6B Japanese model from Settings → Transcription, then make it primary. v3 does NOT transcribe Japanese; the JA model is required.
-custom-vocabulary: experimental. Short list of names/acronyms/jargon Jot prefers; biases the recognizer (best-effort, not guaranteed). Too many similar entries → unpredictable. Edit at Settings → Vocabulary. Applies to Parakeet v3/v3 int4/v2 and Nemotron English (CTC spotter); NOT Japanese (no per-token timings).
+custom-vocabulary: Short list of names/jargon Jot prefers. Correct a wrong word once (edit transcript, Add to Vocabulary, or pick the suggestion) and the next dictation writes it; saved as a "sounds like" on the term in Settings → Vocabulary, delete it there to undo. No hidden replace rules. Not Japanese.
 
 ## Cleanup (optional, off default)
 LLM polishes transcript. Four passes: filler removal, grammar, number normalization, structure. Voice, word choice, register preserved — not style rewrite.

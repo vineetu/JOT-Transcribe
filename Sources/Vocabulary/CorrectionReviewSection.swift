@@ -109,12 +109,9 @@ struct CorrectionReviewSection: View {
                 }
                 CorrectionRowHeader(record: r)
                 CorrectionChips(record: r) { choice in Task { await model.pick(r, choice: choice) } }
-                // NO "Always replace" affordance — owner decision (2026-07-22):
-                // a mis-click arming a silent permanent auto-apply is a trust
-                // hazard, and cross-recording ask suppression already solves the
-                // nagging problem. The package's `alwaysReplace` machinery stays
-                // (iOS uses it; the live pill defensively excludes granted pairs)
-                // but macOS offers no grant surface.
+                // NO "Always replace" affordance — owner decisions (2026-07-22,
+                // 2026-09-29): nothing learned ever auto-applies; picking the
+                // term adds a sounds-like, keeping the original pauses the pair.
             }
         }
     }

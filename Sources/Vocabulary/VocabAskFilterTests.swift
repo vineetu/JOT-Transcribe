@@ -3,8 +3,8 @@ import Foundation
 import JotVocabCore
 
 /// DEBUG-only runtime tests for the Phase-B live-pill ask logic — the pure
-/// filter decision (suppression / always-replace grant / merge-teach one-shot),
-/// the shared granted predicate, and the wider-span alt0 splice. Same
+/// filter decision (suppression / merge-teach one-shot) and the wider-span
+/// alt0 splice. Same
 /// `assert()`-in-`#if DEBUG` idiom as the other in-app harnesses; runs once at
 /// startup via `runAll()` and is stripped from release builds.
 enum VocabAskFilterTests {
@@ -12,9 +12,7 @@ enum VocabAskFilterTests {
     static func runAll() {
         test_shouldOffer_cleanPasses()
         test_shouldOffer_suppressedDropped()
-        test_shouldOffer_grantedDropped()
         test_shouldOffer_mergeOneShot()
-        test_isGranted_normalizedCaseInsensitivePair()
         test_widerSpanSplice_multiWord()
         test_widerSpanSplice_wordBoundarySafe()
         // Review round: merge lane (H1), ranking + mixed-payload (M3), alt re-gate.
@@ -39,57 +37,33 @@ enum VocabAskFilterTests {
 
     static func test_shouldOffer_cleanPasses() {
         let k = key("jamie", "Jamy")
-        assert(MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: false, isGranted: false,
+        assert(MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: false,
                                            suppressed: [], mergeAsked: []),
-               "a clean, unsuppressed, ungranted, non-merge ask should be offered")
+               "a clean, unsuppressed, non-merge ask should be offered")
     }
 
     static func test_shouldOffer_suppressedDropped() {
         let k = key("jamie", "Jamy")
-        assert(!MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: false, isGranted: false,
+        assert(!MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: false,
                                             suppressed: [k], mergeAsked: []),
                "a suppressed pair must not be offered")
-    }
-
-    static func test_shouldOffer_grantedDropped() {
-        let k = key("jamie", "Jamy")
-        assert(!MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: false, isGranted: true,
-                                            suppressed: [], mergeAsked: []),
-               "an always-replace grant auto-applies — never offered")
     }
 
     static func test_shouldOffer_mergeOneShot() {
         let k = key("sri ram", "Sriram")
         // Merge already taught once → dropped forever.
-        assert(!MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: true, isGranted: false,
+        assert(!MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: true,
                                             suppressed: [], mergeAsked: [k]),
                "a merge-shaped ask already in mergeAsked must be dropped")
         // Merge not yet taught → offered (its shot is spent AFTER surfacing).
-        assert(MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: true, isGranted: false,
+        assert(MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: true,
                                            suppressed: [], mergeAsked: []),
                "a first-time merge ask should be offered")
         // The merge-one-shot rule applies ONLY to merge-shaped asks — a non-merge
         // ask whose key coincidentally sits in mergeAsked is NOT dropped by it.
-        assert(MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: false, isGranted: false,
+        assert(MacVocabGate.shouldOfferAsk(suppressionKey: k, isMerge: false,
                                            suppressed: [], mergeAsked: [k]),
                "a non-merge ask ignores the mergeAsked set")
-    }
-
-    // MARK: - isGranted (shared granted predicate, mirrors AskPolicy.granted)
-
-    static func test_isGranted_normalizedCaseInsensitivePair() {
-        let overrides = [
-            CorrectionStore.OverrideEntry(
-                originalWord: CorrectionKey.normalize("Jamie"), term: "Jamy", net: 2, alwaysReplace: true),
-            CorrectionStore.OverrideEntry(
-                originalWord: CorrectionKey.normalize("bob"), term: "Bob", net: 1, alwaysReplace: false),
-        ]
-        assert(MacVocabGate.isGranted(originalWord: "Jamie", term: "jamy", in: overrides),
-               "granted pair matches case-insensitively under the normalized key")
-        assert(!MacVocabGate.isGranted(originalWord: "bob", term: "Bob", in: overrides),
-               "a present-but-not-granted pair is not granted")
-        assert(!MacVocabGate.isGranted(originalWord: "absent", term: "Absent", in: overrides),
-               "an absent pair is not granted")
     }
 
     // MARK: - wider-span alt0 splice (altFind → altTerm)

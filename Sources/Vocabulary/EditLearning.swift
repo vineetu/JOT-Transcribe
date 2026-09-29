@@ -4,7 +4,8 @@ import JotVocabCore
 /// **Learn from transcript edits** (design `docs/vocabulary-learn-from-edits/
 /// design.md`). The Mac side of `JotVocabCore.EditLearner`: turns one finished
 /// edit session (the transcript when Edit was pressed vs. what was saved) into
-/// vocabulary adds and correction-store counts.
+/// `Correction`s for `VocabularyLearning.apply`, the one path every correction
+/// surface takes (Revision 2).
 ///
 /// `RecordingDetailView.finishEdit` is the only caller. It captures every
 /// string up front, so a sidebar navigation that rebinds the view to another
@@ -18,8 +19,7 @@ enum EditLearning {
         // nothing is learned — the same rule the model-free corrector follows.
         guard MacVocabCore.hasActiveCommonWords else { return }
         let store = CorrectionStore.shared
-        let vocabulary = VocabularyStore.shared
-        let terms = vocabulary.terms
+        let terms = VocabularyStore.shared.terms
         // The diff is pure and can be long (a meeting): off the main actor.
         let lessons = await Task.detached(priority: .utility) {
             EditLearner.learn(
@@ -31,45 +31,28 @@ enum EditLearning {
         for lesson in lessons {
             switch lesson {
             case .substitute(let original, let term, let heardByModel):
-                await store.recordEdit(
-                    originalWord: original, term: term, direction: .toward, heardByModel: heardByModel)
                 let common = store.refusesLearning(originalWord: original)
-                // Same add as the "Add to Vocabulary" button (D3). A common
-                // original is NOT stored as an alias: an alias "cloud" would make
-                // the CTC gate hold pastes and ask on every genuine "cloud", and
-                // aliases never reach the decoder's bias anyway.
-                if common {
-                    vocabulary.addTerm(term)
-                } else {
-                    vocabulary.addMapping(heard: original, term: term)
-                }
-                // The user's casing wins over an existing term's ("claude").
-                vocabulary.recase(term)
-                await store.recase(term: term)
-                // Rare original: today's text rule (arms at net ≥ 1) through a
-                // normal confirm — unless an open review record for this pair
-                // just carried that count.
-                let closed = await closeReviewRecords(
-                    recordingID: recordingID, currentText: after,
-                    original: original, term: term, verdict: "term", applyLearning: !common)
-                if !common, !closed {
-                    await store.confirm(originalWord: original, term: term)
-                }
+                let open = await openReviewRecords(
+                    recordingID: recordingID, currentText: after, original: original, term: term)
+                // The user typed the spelling, so its casing wins.
+                let receipt = await VocabularyLearning.shared.apply(.correct(
+                    heard: original, term: term, heardByModel: heardByModel, userCasing: true))
+                await close(open, recordingID: recordingID, verdict: "term",
+                            applyLearning: !common, receipt: receipt)
             case .reverse(let original, let term):
-                await store.recordEdit(originalWord: original, term: term, direction: .away)
                 let common = store.refusesLearning(originalWord: original)
-                // A rare pair disarms through a normal revert. A common pair
-                // never goes through revert (net −1 would lock it — the edit
-                // counters carry its signal).
-                let closed = await closeReviewRecords(
-                    recordingID: recordingID, currentText: after,
-                    original: original, term: term, verdict: "original", applyLearning: !common)
-                if !common, !closed {
+                let open = await openReviewRecords(
+                    recordingID: recordingID, currentText: after, original: original, term: term)
+                let receipt = await VocabularyLearning.shared.apply(.keepOriginal(heard: original, term: term))
+                await close(open, recordingID: recordingID, verdict: "original",
+                            applyLearning: !common, receipt: receipt)
+                // Ask ranking prior (not learning): a rare pair's net drops
+                // through a normal revert; a common pair's never goes positive.
+                if !common, open.isEmpty {
                     await store.revert(originalWord: original, term: term)
                 }
             case .recase(let term):
-                vocabulary.recase(term)
-                await store.recase(term: term)
+                await VocabularyLearning.shared.apply(.recase(term))
             }
         }
         await ErrorLog.shared.info(
@@ -78,57 +61,54 @@ enum EditLearning {
             context: ["lessons": "\(lessons.count)"])
     }
 
-    /// Close this recording's still-open review records for `(original →
-    /// term)` with `verdict`, so the pane can't count the pair a second time.
-    /// The provenance deltas reach the store's net only when `applyLearning`
-    /// (rare originals). Returns whether any record was closed.
-    private static func closeReviewRecords(
-        recordingID: UUID, currentText: String,
-        original: String, term: String, verdict: String, applyLearning: Bool
-    ) async -> Bool {
-        let provenance = CorrectionProvenance.shared
-        let payload = await provenance.reconciledPayload(transcriptID: recordingID, currentText: currentText)
-        let open = payload.records.filter {
+    /// This recording's still-open review records for `(original → term)`.
+    private static func openReviewRecords(
+        recordingID: UUID, currentText: String, original: String, term: String
+    ) async -> [CorrectionProvenance.Record] {
+        let payload = await CorrectionProvenance.shared.reconciledPayload(
+            transcriptID: recordingID, currentText: currentText)
+        return payload.records.filter {
             payload.verdicts[$0.key] == nil
                 && CorrectionKey.normalize($0.originalWord) == original
                 && $0.term.lowercased() == term.lowercased()
         }
-        for record in open {
-            let deltas = await provenance.setVerdict(
-                transcriptID: recordingID, record: record, verdict: verdict, fromEdit: true)
+    }
+
+    /// Close `records` with `verdict`, so the pane can't count the pair a
+    /// second time. The provenance deltas reach the store's net (the ask
+    /// ranking prior) only when `applyLearning` (rare originals). The first record keeps the lesson's
+    /// receipt for the pane's Undo — one lesson, one undo.
+    private static func close(
+        _ records: [CorrectionProvenance.Record], recordingID: UUID, verdict: String,
+        applyLearning: Bool, receipt: VocabularyLearning.Receipt
+    ) async {
+        for (i, record) in records.enumerated() {
+            let deltas = await CorrectionProvenance.shared.setVerdict(
+                transcriptID: recordingID, record: record, verdict: verdict, fromEdit: true,
+                receipt: i == 0 ? receipt : nil)
             guard applyLearning else { continue }
             for d in deltas {
                 await CorrectionStore.shared.adjust(originalWord: d.originalWord, term: d.term, by: d.delta)
             }
         }
-        return !open.isEmpty
     }
 }
 
-/// What the Nemotron Multilingual decoder is biased with: canonical terms at
-/// their learned weight, and the learned `(original → term)` pairs.
+/// What the Nemotron Multilingual decoder is biased with, derived from the
+/// vocabulary list alone (`DecoderVocabulary`, Revision 2 review #1, #9):
+/// canonical terms, each at the paired weight when it has an active decoder
+/// pair, and the pairs (single-word sounds-likes the user hasn't paused).
 enum NemotronBiasVocabulary {
 
-    /// Canonical terms only (never aliases — the decoder boosts an alias as
-    /// itself), each at the base weight or, once the user has corrected toward
-    /// it, the learned strength (≤ `CorrectionStore.learnedBiasStrength`).
-    /// Empty when vocabulary boosting is off or not yet prepared.
-    static func terms() async -> [NemotronBiasTerm] {
-        let canonical = await VocabularyRescorerHolder.shared.canonicalTerms
-        guard !canonical.isEmpty else { return [] }
-        let learned = await CorrectionStore.shared.learnedStrengths()
-        return canonical.map {
-            NemotronBiasTerm(
-                text: $0,
-                weight: learned[$0.lowercased()] ?? NemotronMultilingualStreamingTranscriber.vocabularyBiasWeight)
+    /// Empty when vocabulary is off. Read from the list itself, not the CTC
+    /// holder (which rebuilds asynchronously and is empty until its model is
+    /// prepared).
+    static func current() async -> DecoderVocabulary {
+        let list: [VocabTerm]? = await MainActor.run {
+            VocabularyStore.shared.isEnabled ? VocabularyStore.shared.terms : nil
         }
-    }
-
-    /// Active learned pairs whose term is in the live vocabulary — so turning
-    /// boosting off, or deleting the term, drops its pairs too.
-    static func learnedPairs() async -> [CorrectionStore.LearnedPair] {
-        let canonical = Set(await VocabularyRescorerHolder.shared.canonicalTerms.map { $0.lowercased() })
-        guard !canonical.isEmpty else { return [] }
-        return await CorrectionStore.shared.learnedPairs().filter { canonical.contains($0.term.lowercased()) }
+        guard let list, !list.isEmpty else { return DecoderVocabulary() }
+        let paused = await CorrectionStore.shared.pausedPairKeys()
+        return DecoderVocabulary.derive(from: list, pausedPairKeys: paused)
     }
 }

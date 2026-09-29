@@ -57,6 +57,13 @@ final class VocabularyStore: ObservableObject {
     /// silently no-ops and the pane still renders from the in-memory
     /// list.
     public private(set) lazy var fileURL: URL? = {
+        #if DEBUG
+        // Replay harness: the sandbox copy, so a replay that teaches
+        // (`--jot-replay-teach`) never writes the owner's vocabulary.txt.
+        if let root = DictationReplayEnvironment.sandboxRoot {
+            return root.appendingPathComponent("Vocabulary/vocabulary.txt")
+        }
+        #endif
         // Structural L3 guard (design §3): the legacy-file relocation is
         // idempotent, so running it here — at the moment the path is first
         // resolved — makes "migration before first store touch" true by
@@ -84,18 +91,24 @@ final class VocabularyStore: ObservableObject {
 
     // MARK: - Load / save
 
+    /// The file exists but could not be read. Saving would replace the user's
+    /// list with whatever is in memory, so nothing saves until a load works.
+    private(set) var loadFailed = false
+
     func load() {
         guard let url = fileURL,
               let data = try? String(contentsOf: url, encoding: .utf8)
         else {
+            loadFailed = fileURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
             terms = []
             return
         }
+        loadFailed = false
         terms = Self.parse(data)
     }
 
     func save() {
-        guard let url = fileURL else { return }
+        guard let url = fileURL, !loadFailed else { return }
         let body = Self.serialize(terms)
         // Synchronous write on the main actor. Vocabulary files are <4KB
         // even at 100 terms and `String.write(to:atomically:)` measures
@@ -133,21 +146,6 @@ final class VocabularyStore: ObservableObject {
         return new
     }
 
-    /// Outcome of `addTerm(_:)`, so a caller (e.g. the recording-detail
-    /// "Add to Vocabulary" affordance) can phrase the right confirmation.
-    enum AddTermResult: Equatable {
-        /// The term was sanitized, persisted, and (when boosting is on)
-        /// queued for a rescorer rebuild. Carries the cleaned term so the
-        /// caller can echo exactly what landed in the list.
-        case added(String)
-        /// The cleaned term already exists in the list (case-insensitive
-        /// match on `text`) — nothing was written.
-        case duplicate(String)
-        /// The selection sanitized to something we won't store (empty
-        /// after stripping, or longer than `maxTermWords` tokens).
-        case rejected
-    }
-
     /// Longest selection (in whitespace-separated tokens) we'll accept as a
     /// vocabulary term from a free-text selection. Vocabulary terms are
     /// single names or short proper-noun phrases; a paragraph-length
@@ -166,97 +164,6 @@ final class VocabularyStore: ObservableObject {
     /// ceiling applies. Guards against a mis-drag selecting a whole paragraph.
     static func isAcceptableAlias(_ cleaned: String) -> Bool {
         !cleaned.isEmpty && wordCount(cleaned) <= maxTermWords
-    }
-
-    /// Add a single term harvested from a free-text selection (the
-    /// recording-detail "Add to Vocabulary" recourse for names the gate
-    /// never proposed). Sanitizes to the file-safe simple format
-    /// (strips `:`, `,`, `#` and collapses whitespace), rejects empty /
-    /// overlong selections, dedupes against the existing list, and on a
-    /// real add persists + (when enabled) triggers the rescorer rebuild so
-    /// FUTURE dictations boost it. Does not touch any transcript.
-    @discardableResult
-    func addTerm(_ raw: String) -> AddTermResult {
-        let cleaned = Self.sanitizeTerm(raw)
-        guard !cleaned.isEmpty else { return .rejected }
-        guard cleaned.split(whereSeparator: { $0 == " " }).count <= Self.maxTermWords else {
-            return .rejected
-        }
-        let lower = cleaned.lowercased()
-        if terms.contains(where: {
-            $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lower
-        }) {
-            return .duplicate(cleaned)
-        }
-        terms.append(VocabTerm(text: cleaned))
-        save()
-        return .added(cleaned)
-    }
-
-    /// Add (or extend) a vocabulary MAPPING from a transcript selection:
-    /// "when Jot hears `heard`, spell it as `term`". The selected `heard` text
-    /// becomes an ALIAS of the canonical `term`, so the gate treats the pair as
-    /// a user-confirmed plausible match and FUTURE dictations boost it
-    /// (e.g. select "We need" → spell as "Vineet"). Behavior:
-    ///   - sanitizes both sides; both the `term` and a meaningful alias are
-    ///     capped at `maxTermWords` (an alias is a re-spelling of the term, so
-    ///     it can't be longer) — an overlong alias is rejected, not stored.
-    ///   - if a term with the same text already exists, the alias is appended
-    ///     (deduped) rather than creating a duplicate term.
-    ///   - when `heard` is empty or equals `term`, this degrades to a plain
-    ///     term add (no alias) — same as `addTerm`.
-    /// Never edits any transcript.
-    @discardableResult
-    func addMapping(heard rawHeard: String, term rawTerm: String) -> AddTermResult {
-        let term = Self.sanitizeTerm(rawTerm)
-        let heard = Self.sanitizeTerm(rawHeard)
-        guard !term.isEmpty else { return .rejected }
-        guard term.split(whereSeparator: { $0 == " " }).count <= Self.maxTermWords else {
-            return .rejected
-        }
-
-        let aliasIsMeaningful = !heard.isEmpty && heard.lowercased() != term.lowercased()
-        // A meaningful alias is capped at the same word ceiling as the term —
-        // reject a paragraph-length mis-drag rather than store it as an alias.
-        guard !aliasIsMeaningful || Self.isAcceptableAlias(heard) else { return .rejected }
-        let lowerTerm = term.lowercased()
-
-        if let idx = terms.firstIndex(where: {
-            $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == lowerTerm
-        }) {
-            // Term already present — append the alias if it's new + meaningful.
-            if aliasIsMeaningful {
-                let existing = Set(terms[idx].aliases.map { $0.lowercased() })
-                if !existing.contains(heard.lowercased()) {
-                    terms[idx].aliases.append(heard)
-                    save()
-                    return .added(term)
-                }
-            }
-            return .duplicate(term)
-        }
-
-        terms.append(VocabTerm(text: term, aliases: aliasIsMeaningful ? [heard] : []))
-        save()
-        return .added(term)
-    }
-
-    /// Re-case an existing term to `rawTerm`'s casing ("claude" → "Claude") —
-    /// a case-only transcript edit fixes the spelling Jot writes (learn from
-    /// edits, D10). `addMapping` / `addTerm` dedupe case-insensitively and so
-    /// can't change case. Aliases are kept. Returns true when a term changed.
-    @discardableResult
-    func recase(_ rawTerm: String) -> Bool {
-        let term = Self.sanitizeTerm(rawTerm)
-        guard !term.isEmpty,
-              let idx = terms.firstIndex(where: {
-                  $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == term.lowercased()
-              }),
-              terms[idx].text != term
-        else { return false }
-        terms[idx].text = term
-        save()
-        return true
     }
 
     /// File-safe sanitization for a term harvested from arbitrary selected
@@ -279,6 +186,8 @@ final class VocabularyStore: ObservableObject {
         save()
     }
 
+    /// Plain write from the Settings row (fires per keystroke). Sounds-like
+    /// chips don't come through here: they call `VocabularyLearning.apply`.
     func update(id: VocabTerm.ID, text: String? = nil, aliases: [String]? = nil) {
         guard let idx = terms.firstIndex(where: { $0.id == id }) else { return }
         if let text { terms[idx].text = text }
@@ -310,5 +219,40 @@ final class VocabularyStore: ObservableObject {
 
     static func serialize(_ terms: [VocabTerm]) -> String {
         VocabularyFile.serialize(terms)
+    }
+}
+
+/// The list seam of `JotVocabCore.VocabularyLearning`: plain row writes by
+/// id. Matching, dedupe and casing rules live in the shared code; every
+/// correction surface goes through `VocabularyLearning.shared.apply`, never
+/// these.
+extension VocabularyStore: VocabularyListWriting {
+    var isWritable: Bool { !loadFailed }
+
+    /// The file-safe scrub, capped at `maxTermWords` — for a term and for a
+    /// sounds-like alike (a sounds-like re-spells the term, so it can't be
+    /// longer; a longer one is a mis-drag).
+    func cleanEntry(_ raw: String) -> String? {
+        let cleaned = Self.sanitizeTerm(raw)
+        return Self.isAcceptableAlias(cleaned) ? cleaned : nil
+    }
+
+    func addTerm(_ text: String) -> VocabTerm.ID {
+        let term = VocabTerm(text: text)
+        terms.append(term)
+        save()
+        return term.id
+    }
+
+    func removeTerm(id: VocabTerm.ID) {
+        delete(id: id)
+    }
+
+    func setText(_ text: String, id: VocabTerm.ID) {
+        update(id: id, text: text)
+    }
+
+    func setSoundsLikes(_ soundsLikes: [String], id: VocabTerm.ID) {
+        update(id: id, aliases: soundsLikes)
     }
 }

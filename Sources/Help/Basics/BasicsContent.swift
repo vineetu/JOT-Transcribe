@@ -273,11 +273,11 @@ struct BasicsContent {
                 ),
                 SubRow(
                     id: "custom-vocabulary",
-                    name: "Custom vocabulary (experimental)",
+                    name: "Custom vocabulary",
                     shortcutChip: nil,
                     isExpandable: true,
                     detail: SubRowDetailContent(
-                        prose: "A short list of names, acronyms, or jargon Jot should prefer during transcription. Useful when 'Leena' keeps getting transcribed as 'Lena', or 'kubectl' becomes 'cube cuddle'. Works across English (Parakeet v2, Nemotron) and the 25 European languages. Marked experimental because it doesn't yet reach every model (Japanese); saved terms persist and re-engage when you switch to a supported one.",
+                        prose: "A short list of names, acronyms, or jargon Jot should prefer. When Jot writes the wrong word, correct it once — edit the transcript, use Add to Vocabulary, or pick the suggestion — and the next dictation writes your word. Each correction is saved as a \"sounds like\" spelling on the term in Settings → Vocabulary, where you can see or delete it. Works across English and the European languages; not yet Japanese.",
                         warning: "Vocabulary entries override similar-sounding words. Adding many entries that sound alike causes unpredictable preference among them. Keep the list focused.",
                         settingsLink: SettingsLink(
                             label: "Open in Settings",

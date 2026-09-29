@@ -22,8 +22,6 @@ final class CorrectionReviewModel {
     let recording: Recording
     private let modelContext: ModelContext
     var payload = CorrectionProvenance.Payload()
-    /// Store override snapshot (net + always-replace state per pair), refreshed on
-    /// every `reload()`. Drives the "Always replace" affordance's net ≥ 2 gate.
     var accordionExpanded = false
 
     init(recording: Recording, modelContext: ModelContext) {
@@ -78,8 +76,7 @@ final class CorrectionReviewModel {
         await reload()
         let r = record(forKey: r.key) ?? r
         let priorVerdict = payload.verdicts[r.key]   // for the blocked-keep transition guard below
-        // No "alwaysReplace" choice on macOS — owner decision (2026-07-22), see
-        // CorrectionReviewSection. Verdicts here are only term / original.
+        // Verdicts here are only term / original — see CorrectionReviewSection.
         let effectiveChoice = choice
         // kept + term → apply the term here; applied + original → revert here.
         if effectiveChoice == "term", r.outcome == "kept" {
@@ -87,7 +84,28 @@ final class CorrectionReviewModel {
         } else if effectiveChoice == "original", r.outcome == "applied" {
             await reportSelfEdit(editText(r, find: r.term, replaceWith: r.originalWord), key: r.key)
         }
-        let delta = await CorrectionProvenance.shared.setVerdict(transcriptID: recording.id, record: r, verdict: effectiveChoice)
+        // Learning (Revision 2): picking the term is a correction, keeping the
+        // original pauses the pair — one `VocabularyLearning.apply`, the path
+        // every surface takes. Once per pair per recording, on a genuine
+        // transition (a re-pick, or a sibling occurrence already answered here
+        // or by the live pill, has counted it).
+        // The receipt is stored under this verdict so Undo reverses exactly it
+        // (a switch term → original keeps the term pick's receipt too).
+        var receipt: VocabularyLearning.Receipt?
+        if priorVerdict != effectiveChoice,
+           !payload.records.contains(where: {
+               $0.key != r.key && $0.mappingKey == r.mappingKey && payload.verdicts[$0.key] == effectiveChoice
+           }) {
+            if effectiveChoice == "term" {
+                receipt = await VocabularyLearning.shared.apply(
+                    .correct(heard: r.originalWord, term: r.term))
+            } else if effectiveChoice == "original" {
+                receipt = await VocabularyLearning.shared.apply(
+                    .keepOriginal(heard: r.originalWord, term: r.term))
+            }
+        }
+        let delta = await CorrectionProvenance.shared.setVerdict(
+            transcriptID: recording.id, record: r, verdict: effectiveChoice, receipt: receipt)
         await applyLearning(delta)
         // "Keep original" on a BLOCKED pair contributes 0 to `net` (demote needs an
         // APPLIED revert), so a common-word proposal like "okay"→"Okta" would be
@@ -100,17 +118,6 @@ final class CorrectionReviewModel {
         if effectiveChoice == "original", r.outcome == "kept", priorVerdict != "original" {
             await CorrectionStore.shared.noteBlockedKeep(originalWord: r.originalWord, term: r.term)
         }
-        // Learn from edits: an explicit "keep original" lowers the term's learned
-        // strength like an edit back does (design review #8 — only explicit
-        // choices, never a timeout). Same transition guard against re-picks.
-        // One away per pair per recording: a sibling occurrence already kept
-        // (here or by the live pill) has counted it.
-        if effectiveChoice == "original", priorVerdict != "original",
-           !payload.records.contains(where: {
-               $0.key != r.key && $0.mappingKey == r.mappingKey && payload.verdicts[$0.key] == "original"
-           }) {
-            await CorrectionStore.shared.recordEdit(originalWord: r.originalWord, term: r.term, direction: .away)
-        }
         await reload()
     }
 
@@ -118,9 +125,11 @@ final class CorrectionReviewModel {
         await reload()   // actor truth + anchor reconcile before the reverse edit (see pick)
         let r = record(forKey: r.key) ?? r
         let v = payload.verdicts[r.key]
-        // A verdict a transcript edit set (learn from edits) carried the edit's
-        // count; undoing it retracts that count too. Its net delta reached the
-        // store only for rare originals (a common pair's −1 would lock it).
+        // What this occurrence's verdicts taught (a pick, a live-pill answer,
+        // or a transcript edit that closed it), per verdict.
+        let receipts = payload.receipts(for: r)
+        // An edit-closed verdict's net delta reached the store only for rare
+        // originals (a common pair's −1 would lock it).
         let editClosed = payload.isEditClosed(r)
         let common = CorrectionStore.shared.refusesLearning(originalWord: r.originalWord)
         if v == "term", r.outcome == "kept" {
@@ -136,11 +145,19 @@ final class CorrectionReviewModel {
         if v == "original", r.outcome == "kept" {
             await CorrectionStore.shared.clearBlockedKeep(originalWord: r.originalWord, term: r.term)
         }
-        // Symmetric with `pick` / the edit: undoing gives back the edit count.
-        if v == "original" {
-            await CorrectionStore.shared.retractEdit(originalWord: r.originalWord, term: r.term, direction: .away)
-        } else if v == "term", editClosed {
-            await CorrectionStore.shared.retractEdit(originalWord: r.originalWord, term: r.term, direction: .toward)
+        // Reverse each lesson — the current verdict's first (it is the latest) —
+        // unless a sibling occurrence of the same pair still holds that verdict:
+        // then the lesson still stands, and moves to the sibling for its Undo.
+        let ordered = receipts.filter { $0.key == v } + receipts.filter { $0.key != v }
+        for (verdict, receipt) in ordered {
+            if let sibling = payload.records.first(where: {
+                $0.key != r.key && $0.mappingKey == r.mappingKey && payload.verdicts[$0.key] == verdict
+            }) {
+                await CorrectionProvenance.shared.attachReceipt(
+                    receipt, verdict: verdict, transcriptID: recording.id, record: sibling)
+            } else {
+                await VocabularyLearning.shared.apply(.undo(receipt))
+            }
         }
         await reload()
     }

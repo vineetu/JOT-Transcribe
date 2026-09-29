@@ -1,6 +1,7 @@
 #if DEBUG
 import Combine
 import FluidAudio
+import JotVocabCore
 import Foundation
 
 // DEBUG-only headless dictation replay harness.
@@ -183,6 +184,22 @@ private final class DictationReplayRunner {
         }
 
         let vocabURL = sandbox.appendingPathComponent("Vocabulary/vocabulary.txt")
+        // `--jot-replay-teach heard=term`: make the one learning call every
+        // correction surface makes (`VocabularyLearning.apply(.correct)`)
+        // against the sandbox stores before the dictation, so the replay shows
+        // what the next dictation writes after that correction.
+        if let teach = DictationReplayEnvironment.argument("--jot-replay-teach"),
+           let eq = teach.firstIndex(of: "=") {
+            let heard = String(teach[..<eq]), term = String(teach[teach.index(after: eq)...])
+            let receipt = await VocabularyLearning.shared.apply(
+                .correct(heard: heard, term: term, userCasing: true))
+            report["taught"] = "\(heard)→\(term)"
+            report["teachOutcome"] = "\(receipt.outcome)"
+            let paused = await CorrectionStore.shared.pausedPairKeys()
+            report["decoderPairsAfterTeach"] = DecoderVocabulary.derive(
+                from: VocabularyStore.shared.terms, pausedPairKeys: paused
+            ).pairs.map { "\($0.original)→\($0.term)" }
+        }
         func prepareVocabulary() async {
             guard vocabEnabled else { return }
             do {

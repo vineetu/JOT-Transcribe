@@ -512,9 +512,9 @@ public actor VocabularyRescorerHolder {
 
         // v1a — the GATE: re-check every proposed replacement so a custom term
         // can never silently overwrite a confident, correct word.
-        // v1b — pass the owner's confirmed-mapping snapshot so a verdict ("when I
-        // say Jamie I mean Jamy") overrides the guard for that pair. Snapshot
-        // fetched once here (off the gate's synchronous hot loop).
+        // v1b — pass the store snapshot: the gate blocks a pair the owner paused
+        // (kept the original); nothing learned applies. Snapshot fetched once
+        // here (off the gate's synchronous hot loop).
         let overrides = await CorrectionStore.shared.snapshot()
         // Alias map for the gate's plausibility guard — a user alias ("Vinny" for
         // "Vineet") is the user vouching that the pair is acoustically plausible,
@@ -662,16 +662,14 @@ public actor VocabularyRescorerHolder {
 
     /// Derived "notable" flag for an APPLIED correction (design §6). Defined in
     /// ONE place. A correction is notable when it's a multi-word term, won by a
-    /// decisive margin, was applied to a genuinely-unsure word, or is a learned
-    /// override — i.e. anything beyond a trivial swap. In v1 the gate already
-    /// BLOCKs trivial high-confidence single-word swaps, so essentially every
-    /// applied correction is already notable; the flag becomes load-bearing once
-    /// learned overrides allow confident applies.
+    /// decisive margin, or was applied to a genuinely-unsure word — i.e.
+    /// anything beyond a trivial swap. The gate already BLOCKs trivial
+    /// high-confidence single-word swaps, so essentially every applied
+    /// correction is notable.
     private static func notable(_ p: VocabularyGate.Proposal) -> Bool {
         p.term.contains(" ")
             || p.margin >= VocabularyGate.earnedMargin
             || p.confidence <= VocabularyGate.lowConfidence
-            || p.decision == "OVERRIDE"
     }
 }
 

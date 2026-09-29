@@ -188,3 +188,139 @@ Pair-pushed speculations only: at a word boundary, if the written word is the te
 - Spoken original converted 41.6% (by design; edit back to lower).
 - Owner "Claude" clips (held out): **7/7 clean "Claude"** (was 1/7).
 Selected: `both`, P = 10, near-completion variant A.
+
+---
+
+## Revision 2 (2026-09-29): one correction, one path
+
+### What went wrong
+
+Owner tested after the 09-28 push: still "cloud". `corrections.json` showed zero edit counts for Claude. Only Edit → Done had been wired to learning; the owner corrected through **Add to Vocabulary** and **picking the guessed word**, which weren't. The 7/7 result was the decoder tested in isolation with the pair injected by hand, never the real loop (correct in the app → saved → next dictation). Deeper cause: one correction lived in three places that disagree:
+
+1. the **sounds-like list** (`vocabulary.txt` aliases): visible, but never sent to the Nemotron decoder;
+2. hidden **counters** (`corrections.json`): fed the decoder, invisible;
+3. each **surface** wrote to one, the other, or neither.
+
+### Decision (Vineet, 2026-09-29)
+
+- **A correction is one thing**: "when I say X, write Y".
+- **Stored once, visibly**, as a sounds-like on the term in the vocabulary. Viewable and deletable in Settings.
+- **Every surface calls one shared function** in JotVocabCore. No per-surface logic, nothing copy-pasted. iPhone and Windows call the same function.
+- **The decoder gets every sounds-like** as a learned pair, including existing ones (e.g. the owner's `claude: Cloud`).
+- **Counters only move it up and down**: an explicit keep/edit-back pauses a pair without deleting what the user taught; deleting the sounds-like removes it.
+
+### Inventory of every correction surface (Mac)
+
+| Surface | Code | Today writes | Becomes |
+|---|---|---|---|
+| Edit → Done | `RecordingDetailView.finishEdit` → `EditLearning.learn` | counters + vocab (inline rules) | `EditLearner` lessons → `Corrections.apply` |
+| Add to Vocabulary (select text) | `TranscriptReader` popover `add()` | `addMapping` only | `.correct(heard, term)` |
+| Review list: pick term | `CorrectionReviewModel.pick` | provenance + `adjust` | provenance (unchanged) + `.correct` |
+| Review list: keep original | `CorrectionReviewModel.pick` | provenance + `noteBlockedKeep` + away | provenance + `.keepOriginal` |
+| Review list: undo | `CorrectionReviewModel.undo` | provenance + retract | provenance + `.undo(previous)` |
+| Popup: confirm (incl. merge asks) | `AppDelegate` ask `onConfirm` | `confirm` | `confirm` (gate net) + `.correct` |
+| Popup: wider-phrase alternate | `AppDelegate` `onAlternate` | `confirm` | `confirm` + `.correct` |
+| Popup: keep | `AppDelegate` `onDismiss` | revert / blockedKeep + away | same gate writes + `.keepOriginal` |
+| Popup: timeout / outside click | `AppDelegate` `onAccept` | revert / blockedKeep | unchanged; never teaches (review #8) |
+| Settings: add term | `VocabularyPane.addTerm` → store | term | `.addTerm(term)` |
+| Settings: add sounds-like | `VocabRow` → `VocabularyStore.update` | alias | `.correct(alias, term)` |
+| Settings: remove sounds-like | `VocabRow` → `VocabularyStore.update` | alias removed | `.forget(alias, term)` |
+| Settings: delete / rename term | `VocabularyStore.delete` / `update` | term | pairs vanish with the term (derived) |
+
+Provenance bookkeeping (review records, verdicts, undo anchors) stays per surface: it's about *which occurrence* in *which recording*, not about learning. Gate `confirm`/`revert`/`blockedKeep` writes stay where they are: they drive the CTC gate's ask/auto-apply, a separate mechanism.
+
+### The one function (JotVocabCore)
+
+```
+enum Correction {
+  correct(heard, term, heardByModel = true)   // every "write Y when I say X"
+  keepOriginal(heard, term)                   // explicit keep / edit back
+  undo(Correction)                            // exact inverse of a prior apply
+  forget(heard, term)                         // sounds-like deleted
+  addTerm(term)                               // plain add, user casing wins
+  recase(term)
+}
+
+actor VocabularyLearning(list: VocabularyListWriting, store: CorrectionStore)
+  apply(correction):
+    correct:
+      list.addTerm(term); list.recase(term)
+      if heardByModel: list.addSoundsLike(heard, to: term)   // the visible record
+      store.recordEdit(heard, term, .toward, heardByModel)    // up
+      store.recase(term)
+    keepOriginal: store.recordEdit(heard, term, .away)       // down, sounds-like kept
+    undo:         store.retractEdit(...)                      // inverse
+    forget:       store.forgetEdits(heard, term)             // list already removed it
+    addTerm / recase: list + store casing
+
+protocol VocabularyListWriting   // seam: each app's vocabulary store
+  terms, addTerm, addSoundsLike, recase
+```
+
+`EditLearner.learn` is unchanged (pure diff → lessons); the app maps `.substitute` → `.correct`, `.reverse` → `.keepOriginal`, `.recase` → `.recase`. A hand edit where the model never wrote the word (AI cleanup, D11) → `.correct(heardByModel: false)`: term added, no sounds-like, no strength.
+
+Reversal of review #6 (common words not stored as sounds-like): the sounds-like is now the source of truth, so "cloud" is stored. Cost: the CTC gate may ask on a genuine "cloud"; an explicit Keep lowers it. Accepted — the alternative was the invisible-state bug above.
+
+### Decoder inputs (derived, nothing stored twice)
+
+```
+pairs(term)  = every single-word sounds-like of term (≥ 3 letters, Latin script)
+               minus those whose counters say paused (editsAway > editsToward)
+               plus  edit-learned pairs not (yet) in the list
+weight(term) = 5.0 if term has any active pair, else 3.5
+```
+
+Multi-word sounds-likes ("Vishnu has been") stay CTC-gate-only: the decoder pair push is single-word.
+
+Behaviour change on upgrade: users who already typed sounds-likes get them on the decoder. Intended: they asked for exactly that. Users with no sounds-likes and no corrections see no change.
+
+### Known gap
+
+A paused pair is invisible in Settings (the sounds-like is still listed). Follow-up: show "paused" on the chip.
+
+### Verification (the check skipped on 09-28)
+
+1. Replay harness (`--jot-replay … --jot-replay-teach cloud=Claude`, DEBUG only, sandboxed copy of the owner's vocabulary): the teach calls `VocabularyLearning.apply(.correct)`, the same function every surface calls. Before: "cloud". After: "Claude". Log line `decoder vocabulary applied` shows `cloud→Claude`.
+2. Same replay with the owner's current files and NO teach: must already give "Claude" (existing `claude: Cloud` sounds-like).
+3. Unit tests in JotVocabCore for every `Correction` case and the pair derivation.
+4. Every surface in the inventory table is a one-line call; a grep for `recordEdit|addMapping|retractEdit|forgetEdits` outside JotVocabCore + the list adapter must return nothing.
+
+### Revision 2 review (2026-09-29) — accepted changes
+
+A second agent reviewed Revision 2 against the code and the owner's real vocabulary. Accepted, and these override the text above where they differ:
+
+1. **The list is the only source of decoder pairs.** Dropped "plus edit-learned pairs not in the list". A one-time migration writes existing edit-learned pairs into the list as sounds-likes. A sounds-like deleted anywhere (Settings or a text editor) is gone from the decoder, because nothing else feeds it.
+2. **Pair eligibility = sound-alike.** A single-word sounds-like becomes a decoder pair only if it passes the gate's spelling-distance test against the **term alone** (`VocabularyGate.plausible`, 0.45; aliases don't count). A pair whose first letters differ ("chart"→Jot, "beneath"→Vineet, "Benid"→Vineet) would open a push at every word starting with those letters; that was never measured, so they stay gate-only. On the owner's list: cloud→Claude (0.33) is a decoder pair; chart, beneath, Benid, Venith, Vini, Shrida stay gate-only. Measuring different-first-letter pairs on LibriSpeech is a follow-up.
+3. **Only hand edits arm the silent replace rule** (D6, §v2-B). `recordEdit` gets `armsTextRule`, true only for Edit → Done lessons. Popup, review pick, Add to Vocabulary and Settings never arm silent replacement of everyday words.
+4. **Pair state = last explicit signal wins.** `.correct` → active; `.keepOriginal` / edit back → paused. No count ties. Stored per pair (`pairPaused`). Strength counters stay for Parakeet's text rule only.
+5. **`.undo` reverses exactly what `.correct` did.** `apply` returns a receipt (term added?, sounds-like added?, previous casing, previous pair state); the review verdict stores it; undo replays it backwards.
+6. **`.correct` keeps the rare-original text rule:** calls `confirm` for a rare original (D6, Parakeet path), unless an open review record carried the count.
+7. **Seam shape:** `@MainActor protocol VocabularyListWriting` with synchronous methods; `@MainActor VocabularyLearning.apply(_:) async -> Receipt` does the list write synchronously first, then one awaited store write, so two applies can't interleave their list writes, and Add to Vocabulary gets `.added / .duplicate / .rejected` back. `Correction` is Codable so a keyboard extension can queue one for the app.
+8. **Settings:** the sounds-like chip add/remove calls `apply` directly; `VocabularyStore.update` goes back to a plain write (it fires per keystroke).
+9. **Decoder inputs come from the vocabulary list itself,** not the CTC holder (which rebuilds asynchronously and is empty when the boost model isn't prepared). Still off when vocabulary is disabled.
+10. **Confirm-learned rare mappings** (e.g. vinit→Vineet, net 3) stay gate-only text rules, separate by design; not migrated.
+11. **Platforms:** iOS calls the same Swift function; its keyboard queues `Correction`s for the app (the keyboard can't write the app's vocabulary file). Windows is C#: it ports `apply` against shared JSON fixtures, not the same code.
+12. **Weight 5.0** applies only to terms with an active decoder pair; with rule 2 that's few terms. Multi-term 5.0 not measured: noted risk.
+
+### Different-first-letter pairs — measured (2026-09-29)
+
+Owner pushback: sounds-likes like chart → Jot and beneath → Vineet are real misrecognitions and should reach the decoder. Measured on LibriSpeech test-clean (push 10 + near-completion), everyday original → rare term with a different first letter:
+- **Harm:** each utterance given such a pair whose original is absent but a word starting with the same two letters is present: 21 / 2620 utterances changed (dropped or garbled neighbours, e.g. "the two methods" → "procededs"), U-WER 1.982 → 2.019, 2 false term insertions.
+- **Benefit:** original genuinely spoken: converted in 10 / 2497 (0.4%). Same-first-letter natural pairs: ~42%.
+
+Decision: `LearnedPairPolicy.isDecoderPair` requires the same first letter. Different-first-letter sounds-likes stay honoured by the CTC gate (text level, after transcription). Owner list: cloud→Claude, Shrida→Sriram, Venith→Vineet, Vini→Vineet go to the decoder; chart→Jot, beneath→Vineet, Benid→Vineet stay with the gate.
+
+### End-to-end replay (2026-09-29) — the check that was missing
+
+Real app pipeline (`--jot-replay`, DEBUG, sandboxed copy of the owner's vocabulary), all 7 owner "Claude" clips:
+- Owner's current files, no new correction: 7/7 "claude" (lowercase — the owner's term is spelled `claude`); name also now "Vineet Sriram" on every clip (was "Vini Sriram" / "Venite Sri Lank").
+- After one correction via `apply(.correct(cloud, Claude))`: 7/7 "Claude".
+- Log line confirms the decoder received `cloud→Claude`.
+
+### No learned auto-replace rules (Vineet, 2026-09-29)
+
+"There should be no hidden auto-replace rule." Removed entirely: the `alwaysReplace` grant, the hand-edit streak that armed it (D6), and gate step 0's "confirmed rare pair (net ≥ 1) auto-applies". Existing rules were written by earlier agents, not a product decision to keep. What remains:
+- **Decoder pairs** from visible sounds-likes (Nemotron Multilingual).
+- **The gate's evidence path**: a word changes only when the CTC spotter hears the term in the audio and the steps (plausibility — where a visible sounds-like counts — confidence, everyday-word ask) allow it.
+- The only learned signal the gate honours is a **paused** pair (the user kept the original) → never replace.
+Confirmation counts stay only as the ask-ranking prior. D6 is void.
