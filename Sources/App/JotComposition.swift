@@ -292,7 +292,8 @@ enum JotComposition {
                 nemotronMultilingual: NemotronMultilingualStreamingTranscriber(
                     bundleDirectory: variantURL,
                     languageCode: language.nemotronLanguageCode,
-                    vocabularyProvider: { await VocabularyRescorerHolder.shared.canonicalTerms }
+                    vocabularyProvider: { await NemotronBiasVocabulary.terms() },
+                    learnedPairsProvider: { await NemotronBiasVocabulary.learnedPairs() }
                 ),
                 language: language
             )

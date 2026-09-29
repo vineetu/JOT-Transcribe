@@ -130,6 +130,10 @@ extension MacVocabCore {
         VocabularyGate.isCommonOriginal(original, commonWords: activeCommonWords())
     }
 
+    /// Whether the active transcription language ships an everyday-word list
+    /// (and it loaded). Learn-from-edits runs only when it does.
+    static var hasActiveCommonWords: Bool { !activeCommonWords().isEmpty }
+
     private static func activeCommonWords() -> Set<String> {
         let raw = UserDefaults.standard.string(forKey: TranscriberHolder.languageKey)
         let language = raw.flatMap(LanguageChoice.init(rawValue:)) ?? .english

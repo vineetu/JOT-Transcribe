@@ -2,7 +2,7 @@
 
 Native macOS dictation utility. Press a hotkey, speak, and the transcript is pasted at the cursor. Core transcription stays on-device; optional AI features can use Apple Intelligence, local Ollama, or user-configured cloud providers. No telemetry.
 
-**Stack:** Swift / SwiftUI with AppKit interop (`NSStatusItem`, `NSPanel`). Transcription via [FluidAudio](https://github.com/FluidInference/FluidAudio) running Parakeet TDT 0.6B v3 on the Apple Neural Engine. Audio capture through `AVAudioEngine` + `AVAudioConverter` (16 kHz mono Float32). Global hotkeys via `sindresorhus/KeyboardShortcuts`. Persistence via SwiftData; prefs via `@AppStorage` / `UserDefaults`.
+**Stack:** Swift / SwiftUI with AppKit interop (`NSStatusItem`, `NSPanel`). Transcription via [FluidAudio](https://github.com/FluidInference/FluidAudio) running Parakeet (TDT v2 / v3 / JA) and Nemotron (streaming English + 3.5 Multilingual) on the Apple Neural Engine. The app pins a Jot fork of FluidAudio (`vineetu/FluidAudio`, branch `jot/learned-pairs`, by exact revision) that adds decode-time vocabulary bias and learned-pair bias to the Nemotron Multilingual decoder; `tools/jot-cli` still pins upstream 0.17.4. Speaker labels via NVIDIA Nemotron 3 Diarization (FluidAudio, OpenMDW-1.1). Audio capture through `AVAudioEngine` + `AVAudioConverter` (16 kHz mono Float32). Global hotkeys via `sindresorhus/KeyboardShortcuts`. Persistence via SwiftData; prefs via `@AppStorage` / `UserDefaults`.
 
 **Platform:** Apple Silicon only, macOS Sequoia 15.0+. Intel Macs are out of scope — Parakeet on the ANE is an Apple Silicon feature. (Deployment floor raised 14→15 to adopt CoreMLLLM for on-device AI search.)
 
@@ -24,9 +24,10 @@ Single Xcode project, one executable target. Each layer is a Swift function boun
 | **AskJot/Cloud** | Provider-specific streaming adapters (`OpenAI`, `Anthropic`, `Gemini`, `Ollama`) plus inline tool-calling for feature-slug navigation when cloud Ask Jot is enabled |
 | **Overlay** | `NSPanel`-hosted SwiftUI status indicator (Dynamic Island-style pill under the notch) |
 | **Recording** | `AVAudioEngine` tap → converter → buffer + WAV on disk; hotkey routing with dynamic Escape; CoreAudio device pinning; optional audio takeover (mute other apps while listening) |
-| **Transcription** | FluidAudio wrapper (single in-flight), post-processing, model download/load |
+| **Transcription** | FluidAudio wrapper (single in-flight), post-processing, model download/load. On Nemotron the **streamed text is the final transcript** (`finish()` after the last chunk); the whole-buffer one-shot runs only on an explicit streaming failure, and for file import / re-transcribe. Streaming transcribers load single-flight (one manager per model) and order every use of the manager, so a cancelled session can never bleed into the next |
+| **Diarization** | On-demand / post-import speaker labels: Nemotron 3 Diarization in 45 s streaming blocks (releases the Neural Engine between blocks), exclusive per-frame projection into speaker runs, anonymous "Speaker N" labels the user renames. `DiarizationProjection.swift` is shared with `tools/jot-cli` (symlink) |
 | **Delivery** | Clipboard sandwich: save → write → synthetic `⌘V` → restore; optional auto-Enter |
-| **Library** | SwiftData models — `Recording` (dictation) + `RewriteSession` (rewrite runs) — and the merged `LibraryItem`-driven Home list, detail views, playback (recordings only), and per-row actions |
+| **Library** | SwiftData models — `Recording` (dictation) + `RewriteSession` (rewrite runs) — and the merged `LibraryItem`-driven Home list, detail views, playback (recordings only; a speaker-coloured seek bar on multi-speaker recordings), and per-row actions |
 | **Settings** | Sidebar section (not a separate scene): General / Transcription / Vocabulary / Sound / AI / Shortcuts. Per-field `info.circle` popovers with "Learn more →" deep-links into Help. Editable LLM prompts under `CustomizePromptDisclosure` |
 | **Help** | In-app prose walkthrough: Basics / Advanced / Troubleshooting. Accepts deep-links from Settings popovers, Ask Jot feature links, and Help hero sparkle affordances |
 | **LLM** | Provider-neutral client for transcript cleanup (Transform) + Rewrite; Apple Intelligence (on-device, default for new installs on macOS 26+), OpenAI, Anthropic, Gemini, Ollama. Apple Intelligence bypasses the HTTP client entirely and calls the on-device `FoundationModels` framework via `AppleIntelligenceClient`. Rewrite uses a regex instruction classifier (`RewriteInstructionClassifier`) to route to one of four branch prompts — voice-preserving / structural / translation / code — composed on top of a small shared-invariants block |
@@ -57,7 +58,11 @@ Sources/
                     behaviour there, not in the individual controllers.
                     `AudioTakeover` (opt-in "silence other audio") is wired
                     exactly that way: begin on start, restore on all three
-                    exits — stop, cancel, and mid-recording device disconnect
+                    exits — stop, cancel, and mid-recording device disconnect.
+                    `Replay/` is a DEBUG-only harness (`--jot-replay <file>`) that
+                    feeds a recording through the real pipeline in a sandbox
+  Diarization/    ← Nemotron 3 speaker diarization: runner, holder, timeline
+                    builder, shared projection (also used by jot-cli)
   Transcription/  ← FluidAudio wrapper, post-processing, model I/O
                     (the deterministic cleanup chain — NumberNormalizer /
                     ParagraphSegmenter / FillerWordCleaner — lives in the
@@ -76,7 +81,20 @@ Sources/
   Help/           ← In-app Help tab (Basics / Advanced / Troubleshooting cards + visuals)
   Donation/       ← Support / donate surface
   Privacy/        ← Privacy-scan flows for logs and exports
-  Vocabulary/     ← Custom vocabulary storage + rescoring helpers
+  Vocabulary/     ← Custom vocabulary storage, CTC spotter/rescorer holder, and
+                    the Mac adapters onto JotVocabCore (jot-shared). Evidence-
+                    typed gate: a correction applies only on real evidence —
+                    decode-time bias (Nemotron Multilingual, set on the manager
+                    between sessions, canonical terms only), a real CTC score
+                    placed by decoder word timings, or a measured spelling
+                    distance. Everyday words are never learned as rules. Asks:
+                    held paste, ≤ 3 per recording, weakest evidence first.
+                    Hand edits teach: Edit → Done diffs the transcript, each
+                    sound-alike substitution adds the word and raises its bias
+                    (learned pair on Nemotron Multilingual); editing back lowers it.
+                    Rules live in JotVocabCore; change them there, not here.
+                    Design: docs/plans/vocabulary-evidence-and-decode-bias.md,
+                    docs/vocabulary-learn-from-edits/design.md
 Resources/
   Assets.xcassets/
   help-content-base.md   ← checked-in grounding doc base

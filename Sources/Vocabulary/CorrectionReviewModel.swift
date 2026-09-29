@@ -100,6 +100,17 @@ final class CorrectionReviewModel {
         if effectiveChoice == "original", r.outcome == "kept", priorVerdict != "original" {
             await CorrectionStore.shared.noteBlockedKeep(originalWord: r.originalWord, term: r.term)
         }
+        // Learn from edits: an explicit "keep original" lowers the term's learned
+        // strength like an edit back does (design review #8 — only explicit
+        // choices, never a timeout). Same transition guard against re-picks.
+        // One away per pair per recording: a sibling occurrence already kept
+        // (here or by the live pill) has counted it.
+        if effectiveChoice == "original", priorVerdict != "original",
+           !payload.records.contains(where: {
+               $0.key != r.key && $0.mappingKey == r.mappingKey && payload.verdicts[$0.key] == "original"
+           }) {
+            await CorrectionStore.shared.recordEdit(originalWord: r.originalWord, term: r.term, direction: .away)
+        }
         await reload()
     }
 
@@ -107,18 +118,29 @@ final class CorrectionReviewModel {
         await reload()   // actor truth + anchor reconcile before the reverse edit (see pick)
         let r = record(forKey: r.key) ?? r
         let v = payload.verdicts[r.key]
+        // A verdict a transcript edit set (learn from edits) carried the edit's
+        // count; undoing it retracts that count too. Its net delta reached the
+        // store only for rare originals (a common pair's −1 would lock it).
+        let editClosed = payload.isEditClosed(r)
+        let common = CorrectionStore.shared.refusesLearning(originalWord: r.originalWord)
         if v == "term", r.outcome == "kept" {
             await reportSelfEdit(editText(r, find: r.term, replaceWith: r.originalWord), key: r.key)
         } else if v == "original", r.outcome == "applied" {
             await reportSelfEdit(editText(r, find: r.originalWord, replaceWith: r.term), key: r.key)
         }
         let delta = await CorrectionProvenance.shared.clearVerdict(transcriptID: recording.id, record: r)
-        await applyLearning(delta)
+        if !(editClosed && common) { await applyLearning(delta) }
         // Symmetric with the blocked-keep increment in `pick`: undoing a "keep
         // original" on a blocked pair gives back its `blockedKeeps`, so the keyboard
         // suppression count never drifts above the real number of standing keeps.
         if v == "original", r.outcome == "kept" {
             await CorrectionStore.shared.clearBlockedKeep(originalWord: r.originalWord, term: r.term)
+        }
+        // Symmetric with `pick` / the edit: undoing gives back the edit count.
+        if v == "original" {
+            await CorrectionStore.shared.retractEdit(originalWord: r.originalWord, term: r.term, direction: .away)
+        } else if v == "term", editClosed {
+            await CorrectionStore.shared.retractEdit(originalWord: r.originalWord, term: r.term, direction: .toward)
         }
         await reload()
     }

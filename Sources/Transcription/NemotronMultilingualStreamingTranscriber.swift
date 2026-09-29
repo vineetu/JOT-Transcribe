@@ -2,6 +2,29 @@ import AVFoundation
 @preconcurrency import CoreML
 import FluidAudio
 import Foundation
+import JotVocabCore
+
+/// One canonical vocabulary term and its decode-time bias weight (the base
+/// `vocabularyBiasWeight`, or the learned strength once the user has corrected
+/// toward it — learn from edits, D5).
+struct NemotronBiasTerm: Equatable, Sendable {
+    let text: String
+    let weight: Float
+}
+
+/// **Pair-targeted learned bias.** Hands the store's learned `(original → term)`
+/// pairs to the fork's `setLearnedPairs(_:)`, which pushes the term only where
+/// the decoder is spelling the original (see
+/// docs/vocabulary-learn-from-edits/design.md).
+enum NemotronLearnedPairsBridge {
+    static func apply(
+        _ pairs: [CorrectionStore.LearnedPair],
+        to manager: StreamingNemotronMultilingualAsrManager
+    ) async {
+        await manager.setLearnedPairs(
+            pairs.map { NemotronLearnedPair(original: $0.original, term: $0.term) })
+    }
+}
 
 /// Actor wrapping FluidAudio's `StreamingNemotronMultilingualAsrManager`
 /// (Nemotron 3.5 Multilingual 0.6B). The multilingual sibling of
@@ -36,12 +59,18 @@ final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
     /// manager is strictly ordered: a cancelled session's in-flight chunk can
     /// never land inside the next session.
     private var managerTail: Task<Void, Never>?
-    /// The user's vocabulary (canonical spellings only; empty when boosting
-    /// is off), read at each session boundary for decode-time bias.
-    private let vocabularyProvider: (@Sendable () async -> [String])?
-    /// The list last handed to the manager, so an unchanged vocabulary is
-    /// not re-tokenized every session.
-    private var appliedVocabulary: [String] = []
+    /// The user's vocabulary (canonical spellings only, each with its bias
+    /// weight; empty when boosting is off), read at each session boundary for
+    /// decode-time bias.
+    private let vocabularyProvider: (@Sendable () async -> [NemotronBiasTerm])?
+    /// Learned `(original → term)` pairs from transcript edits, for
+    /// pair-targeted bias (see `NemotronLearnedPairsBridge`).
+    private let learnedPairsProvider: (@Sendable () async -> [CorrectionStore.LearnedPair])?
+    /// The terms + weights last handed to the manager, so an unchanged
+    /// vocabulary is not re-tokenized every session. Compared as (term,
+    /// weight) — a weight-only change (a learned term) must still re-apply.
+    private var appliedVocabulary: [NemotronBiasTerm] = []
+    private var appliedPairs: [CorrectionStore.LearnedPair] = []
 
     /// Bias bonus for a vocabulary term's first token (continuations get
     /// 1.5× inside FluidAudio). Chosen on the public LibriSpeech rare-word
@@ -51,11 +80,13 @@ final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
     init(
         bundleDirectory: URL,
         languageCode: String?,
-        vocabularyProvider: (@Sendable () async -> [String])? = nil
+        vocabularyProvider: (@Sendable () async -> [NemotronBiasTerm])? = nil,
+        learnedPairsProvider: (@Sendable () async -> [CorrectionStore.LearnedPair])? = nil
     ) {
         self.bundleDirectory = bundleDirectory
         self.languageCode = languageCode
         self.vocabularyProvider = vocabularyProvider
+        self.learnedPairsProvider = learnedPairsProvider
     }
 
     /// Apply the current vocabulary to the manager. Called only between
@@ -64,11 +95,20 @@ final actor NemotronMultilingualStreamingTranscriber: NemotronStreamingEngine {
     private func applyVocabulary(to manager: StreamingNemotronMultilingualAsrManager) async {
         guard let vocabularyProvider else { return }
         let terms = await vocabularyProvider()
-        guard terms != appliedVocabulary else { return }
-        appliedVocabulary = terms
-        await manager.setCustomVocabulary(
-            terms.map { CustomVocabularyTerm(text: $0, weight: Self.vocabularyBiasWeight) }
-        )
+        let vocabularyChanged = terms != appliedVocabulary
+        if vocabularyChanged {
+            appliedVocabulary = terms
+            await manager.setCustomVocabulary(
+                terms.map { CustomVocabularyTerm(text: $0.text, weight: $0.weight) }
+            )
+        }
+        // Pairs after the terms they point at; re-sent on any vocabulary
+        // change so a re-tokenized term list never leaves them stale.
+        guard let learnedPairsProvider else { return }
+        let pairs = await learnedPairsProvider()
+        guard vocabularyChanged || pairs != appliedPairs else { return }
+        appliedPairs = pairs
+        await NemotronLearnedPairsBridge.apply(pairs, to: manager)
     }
 
     var isReady: Bool { manager != nil }

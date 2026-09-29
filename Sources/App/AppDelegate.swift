@@ -677,6 +677,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                     } else {
                         await CorrectionStore.shared.noteBlockedKeep(originalWord: c.from, term: c.term)
                     }
+                    // Learn from edits: an explicit Keep lowers the term's learned
+                    // strength. The timeout / outside-click path (`onAccept`)
+                    // deliberately does not (design review #8).
+                    await CorrectionStore.shared.recordEdit(
+                        originalWord: c.from, term: c.term, direction: .away)
+                    // Mark the review record answered, so the pane can't count
+                    // a second away for the same Keep.
+                    await CorrectionProvenance.shared.noteLiveVerdict(
+                        originalWord: c.from, term: c.term, verdict: "original")
                 }
                 next(kept)
             },

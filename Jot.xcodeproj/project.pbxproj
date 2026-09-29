@@ -757,7 +757,7 @@
 			repositoryURL = "https://github.com/vineetu/FluidAudio";
 			requirement = {
 				kind = revision;
-				revision = f941d646fe67aed52203b04d87eb33cf673c4e3b;
+				revision = 0de0032e51dfc8c9a1d91e850ae4414789c5d042;
 			};
 		};
 		A000000000000000000000C2 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {

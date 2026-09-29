@@ -48,6 +48,12 @@ struct RecordingDetailView: View {
     /// `$recording.transcript` (no draft buffer) — the model stays the source
     /// of truth, so navigating away or quitting can't drop an in-flight draft.
     @State private var isEditing = false
+    /// Learn from edits (design `vocabulary-learn-from-edits`): the recording
+    /// being edited and its transcript when Edit was pressed. Holds the
+    /// RECORDING itself, not the view's `recording` — sidebar navigation rebinds
+    /// the view before `.task(id:)` runs, so `finishEdit` must diff the captured
+    /// one.
+    @State private var editSession: EditSession?
     /// Briefly flips to `true` right after a successful Copy click so
     /// the toolbar Copy button can swap its glyph to a checkmark — gives
     /// the user the same "did anything happen?" feedback the inline
@@ -132,7 +138,9 @@ struct RecordingDetailView: View {
                             .id("summarySection")
                     }
                     transcriptBlock(segments: segments)
-                    if let reviewModel, !reviewModel.records.isEmpty {
+                    // Hidden while editing: a pick there mid-edit would count the
+                    // same pair twice (once as a verdict, once as the edit).
+                    if !isEditing, let reviewModel, !reviewModel.records.isEmpty {
                         CorrectionReviewSection(model: reviewModel)
                     }
                 }
@@ -156,7 +164,9 @@ struct RecordingDetailView: View {
             // mode so a different recording never opens already-in-edit (and
             // never inherits the prior row's edit session). Edits to the prior
             // recording were already written live via the @Bindable binding +
-            // autosave, so nothing is lost here.
+            // autosave, so nothing is lost here. The prior recording's edit
+            // session is learned from FIRST, against the captured recording.
+            finishEdit()
             isEditing = false
             detectSpeakersStatus = nil
             detectSpeakersError = nil
@@ -188,6 +198,7 @@ struct RecordingDetailView: View {
                 try? context.save()
                 isEditing = false
             }
+            finishEdit()
         }
         .onChange(of: recording.transcript) { _, _ in
             // Mark as edited on the FIRST hand-edit (gated on `editedAt == nil`
@@ -212,6 +223,10 @@ struct RecordingDetailView: View {
             isPresented: $pendingDelete
         ) {
             Button("Delete", role: .destructive) {
+                // A deleted recording's edit teaches nothing — discard the
+                // session before its model object goes away.
+                editSession = nil
+                isEditing = false
                 RecordingStore.delete(recording, from: context)
                 dismiss()
             }
@@ -471,6 +486,10 @@ struct RecordingDetailView: View {
                 if canEdit || isEditing {
                     Button(isEditing ? "Done" : "Edit") { toggleEdit() }
                         .controlSize(.small)
+                        // A re-transcribe replaces the text under the editor;
+                        // an edit session spanning it would diff machine
+                        // output as if the user typed it.
+                        .disabled(isRetranscribing)
                 }
             }
             if isSearching && !isEditing && !showRawTranscript {
@@ -1062,6 +1081,7 @@ struct RecordingDetailView: View {
             // Editing operates on the canonical transcript; force the raw view
             // off so we always edit `recording.transcript`.
             showRawTranscript = false
+            editSession = EditSession(recording: recording, snapshot: recording.transcript)
             isEditing = true
         }
     }
@@ -1070,10 +1090,31 @@ struct RecordingDetailView: View {
         isEditing = false
         // Explicit save (not just autosave) so the edit is durable immediately.
         try? context.save()
-        // Re-anchor the live correction-review section against the edited text.
-        // `CorrectionProvenance.reconciledPayload` is state-based and already
-        // accounts for a hand-edit; reload() recomputes the anchors (design B1).
-        Task { await reviewModel?.reload() }
+        finishEdit()
+    }
+
+    /// The ONE end of an edit session — Done, the view going away, and the
+    /// top of `.task(id:)` on sidebar navigation all funnel here. Idempotent:
+    /// the session is consumed on first call. Captures every string now
+    /// (synchronously), then learns and re-anchors the review section.
+    private func finishEdit() {
+        guard let session = editSession else { return }
+        editSession = nil
+        let edited = session.recording
+        let recordingID = edited.id
+        let before = session.snapshot
+        let after = edited.transcript
+        let raw = edited.rawTranscript
+        Task {
+            await EditLearning.learn(recordingID: recordingID, before: before, after: after, raw: raw)
+            // Re-anchor the live correction-review section against the edited
+            // text. `CorrectionProvenance.reconciledPayload` is state-based and
+            // already accounts for a hand-edit; reload() recomputes the anchors
+            // (design B1). Only when the pane still shows the edited recording.
+            if let reviewModel, reviewModel.recording.id == recordingID {
+                await reviewModel.reload()
+            }
+        }
     }
 
     // MARK: - Toolbar
@@ -1183,6 +1224,9 @@ struct RecordingDetailView: View {
                     // by the failure/orphan paths.
                     recording.pendingSince = nil
                     try? context.save()
+                    // New machine text: an edit session's snapshot no longer
+                    // describes it, so it must never be diffed.
+                    if editSession?.recording.id == recording.id { editSession = nil }
                     // F3 (review C2): re-transcribe is the ONLY path that fills
                     // a recovered pending row's transcript, so it must (re)index
                     // for AI/semantic search — the insert-time paths index
@@ -1383,6 +1427,12 @@ struct RecordingDetailView: View {
 /// the reader's one-way NSTextView. Serif font + line spacing approximate the
 /// reader for visual continuity; minor styling drift in edit mode is accepted
 /// (design open-Q4). The boxed background also signals "you're editing now."
+/// One open transcript edit session (see `RecordingDetailView.editSession`).
+private struct EditSession {
+    let recording: Recording
+    let snapshot: String
+}
+
 private struct TranscriptEditor: View {
     @Binding var text: String
 

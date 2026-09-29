@@ -241,6 +241,24 @@ final class VocabularyStore: ObservableObject {
         return .added(term)
     }
 
+    /// Re-case an existing term to `rawTerm`'s casing ("claude" → "Claude") —
+    /// a case-only transcript edit fixes the spelling Jot writes (learn from
+    /// edits, D10). `addMapping` / `addTerm` dedupe case-insensitively and so
+    /// can't change case. Aliases are kept. Returns true when a term changed.
+    @discardableResult
+    func recase(_ rawTerm: String) -> Bool {
+        let term = Self.sanitizeTerm(rawTerm)
+        guard !term.isEmpty,
+              let idx = terms.firstIndex(where: {
+                  $0.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == term.lowercased()
+              }),
+              terms[idx].text != term
+        else { return false }
+        terms[idx].text = term
+        save()
+        return true
+    }
+
     /// File-safe sanitization for a term harvested from arbitrary selected
     /// text. Strips the simple-format separators (`:`/`,`/`#`) so the term
     /// can't break the parser or smuggle aliases, drops newlines, and
