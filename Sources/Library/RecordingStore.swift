@@ -92,20 +92,41 @@ enum RecordingStore {
         }
     }
 
-    /// Delete a recording from the context *and* its backing WAV. We remove
-    /// the file first so a failed deletion can't leave a dangling row; if the
-    /// file is already gone (user deleted it in Finder, retention cleaned up
-    /// later, etc.) we swallow the error and proceed with the DB delete.
+    /// The row with `id`, or nil when it was deleted.
+    static func recording(id: UUID, in context: ModelContext) -> Recording? {
+        var descriptor = FetchDescriptor<Recording>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    /// Delete a recording from the context *and* everything derived from it.
     static func delete(_ recording: Recording, from context: ModelContext) {
-        let url = audioURL(for: recording)
-        try? FileManager.default.removeItem(at: url)
-        // Slice C linkage: drop this recording's correction-provenance side-JSON
-        // so deleting a row doesn't orphan its proposals on disk. `discard` is
-        // actor-isolated (async); the id is a value-typed UUID captured before
-        // the row leaves the context, so the detached `Task` is race-free.
-        let recordingID = recording.id
-        Task { await CorrectionProvenance.shared.discard(transcriptID: recordingID) }
-        context.delete(recording)
+        delete([recording], from: context)
+    }
+
+    /// Delete recordings from the context *and* everything derived from them:
+    /// their backing WAVs, correction provenance, semantic-search chunks (so a
+    /// deleted recording can never answer Ask Jot), and any open edit draft.
+    /// We remove the files first so a failed deletion can't leave a dangling
+    /// row; a file already gone (user deleted it in Finder, retention cleaned
+    /// up later, etc.) is ignored and the DB delete proceeds. One chunk delete
+    /// and one save for the whole batch (the retention purge), saved at once
+    /// so an index write still in flight for a row sees it gone.
+    static func delete(_ recordings: [Recording], from context: ModelContext) {
+        guard !recordings.isEmpty else { return }
+        // Value-typed ids captured before the rows leave the context, so the
+        // detached provenance `Task` is race-free.
+        let ids = recordings.map(\.id)
+        for recording in recordings {
+            try? FileManager.default.removeItem(at: audioURL(for: recording))
+        }
+        Task {
+            for id in ids { await CorrectionProvenance.shared.discard(transcriptID: id) }
+        }
+        for id in ids { TranscriptEditSessions.shared.end(id) }
+        ChunkStore.deleteChunks(recordingIDs: ids, container: context.container)
+        for recording in recordings { context.delete(recording) }
+        try? context.save()
     }
 
     /// Delete a `RewriteSession` row. No filesystem cleanup needed —

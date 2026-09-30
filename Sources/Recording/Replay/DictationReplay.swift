@@ -12,7 +12,8 @@ import Foundation
 // then writes what the owner would have got as JSON and exits.
 //
 //   Jot.app/Contents/MacOS/Jot --jot-replay <file> --jot-replay-out <result.json>
-//       [--speed 1] [--scenario plain|cancel-then-new|cold]
+//       [--speed 1] [--scenario plain|cancel-then-new|cold|stop-without-paste
+//                    |ask-confirm|ask-keep|ask-alternate|ask-timeout|self-tests]
 //       [--jot-replay-second <file>] [--cancel-after <seconds>]
 //       [--jot-replay-sandbox <dir>] [--no-reference]
 //
@@ -24,8 +25,9 @@ import Foundation
 //   holder gets a registration-only suite so it can never write them.
 // - `Vocabulary/` (corrections, provenance, vocabulary.txt) is copied into the
 //   sandbox and `MacVocabCore.containerRoot` points there.
-// - Recording files, the capture marker, and jot.log go to the sandbox. No
-//   SwiftData container is built, so no Recording rows.
+// - Recording files, the capture marker, and jot.log go to the sandbox. The
+//   delivery scenarios (see `DeliveryReplayScenarios`) save Recording rows to
+//   an in-memory SwiftData store and paste to a private pasteboard.
 
 /// Launch-argument parsing + the sandbox root every overridden path resolves
 /// under. `sandboxRoot` is `nil` unless `--jot-replay` was passed, so normal
@@ -247,6 +249,34 @@ private final class DictationReplayRunner {
                 ]
                 report["dictation"] = await dictate(pipeline: pipeline, capture: capture, holder: holder,
                                                     reference: wantReference)
+
+            case "ask-confirm", "ask-keep", "ask-alternate", "ask-timeout":
+                let answer: ReplayPrompter.Answer = switch scenario {
+                case "ask-confirm": .confirm
+                case "ask-keep": .keepOriginal
+                case "ask-alternate": .alternate
+                default: .timeout
+                }
+                let stack = try DeliveryReplayScenarios.makeStack(
+                    pipeline: pipeline, holder: holder, defaults: holderDefaults,
+                    permissions: ReplayPermissions(), answer: answer)
+                var failures: [String] = []
+                report["delivery"] = await DeliveryReplayScenarios.ask(
+                    answer, stack: stack, sandbox: sandbox, errors: &failures)
+                errors += failures
+
+            case "stop-without-paste":
+                try await warm(holder: holder, report: &report, prepareVocabulary: prepareVocabulary)
+                let stack = try DeliveryReplayScenarios.makeStack(
+                    pipeline: pipeline, holder: holder, defaults: holderDefaults,
+                    permissions: ReplayPermissions(), answer: .timeout)
+                var failures: [String] = []
+                report["delivery"] = try await DeliveryReplayScenarios.stopWithoutPasteThenDictate(
+                    stack: stack, capture: capture, input: inputURL, speed: speed, errors: &failures)
+                errors += failures
+
+            case "self-tests":
+                report["selfTests"] = DeliveryReplayScenarios.selfTests()
 
             default:
                 try await warm(holder: holder, report: &report, prepareVocabulary: prepareVocabulary)

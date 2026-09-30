@@ -91,8 +91,8 @@ final class DeliveryService: ObservableObject {
         self.rewriteController = rewriteController
     }
 
-    /// Main entry point. Called by the wire-up in AppDelegate whenever
-    /// `RecorderController.lastResult` publishes a new transcript.
+    /// Main entry point. Called by `DictationDeliveryBridge` once per
+    /// dictation, with the text that was saved to Recents.
     ///
     /// `originApp` is "Return to the app I started in" support
     /// (`jot.returnToOriginApp`, docs/return-to-origin-app/design.md):

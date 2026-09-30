@@ -3,7 +3,7 @@ import SwiftData
 import os.log
 
 /// Shared chunk-embedding pipeline for `Recording`s. ONE call site for the
-/// on-save hook (`RecordingPersister.persist`), the first-launch backfill, and
+/// on-save hooks (`RecordingPersister`, `RecordingTextMutation`), the first-launch backfill, and
 /// the manual "Rebuild index" button — so they can never drift on guard /
 /// chunking / persistence semantics.
 ///
@@ -214,13 +214,22 @@ final class RecordingIndexer {
                     predicate: #Predicate<Recording> { $0.id == recordingID }
                 )
                 descriptor.fetchLimit = 1
-                let parent = try? context.fetch(descriptor).first
+                // Staleness guard: embedding takes a while, and the text may
+                // have changed again (a newer index call is on its way) or the
+                // recording may have been deleted meanwhile. Only the text
+                // that is still the row's gets written, so an older index
+                // write can never land over a newer one or resurrect a
+                // deleted recording in search.
+                guard let parent = try? context.fetch(descriptor).first, parent.transcript == text else {
+                    log.debug("index write skipped — text no longer current id=\(recordingID, privacy: .public)")
+                    return
+                }
                 try ChunkStore.replaceChunks(
                     recordingID: recordingID,
                     chunks: chunks,
                     modelVersion: EmbeddingGemmaService.modelVersion,
-                    createdAt: parent?.createdAt ?? Date(),
-                    durationSeconds: parent?.durationSeconds,
+                    createdAt: parent.createdAt,
+                    durationSeconds: parent.durationSeconds,
                     container: container
                 )
             }

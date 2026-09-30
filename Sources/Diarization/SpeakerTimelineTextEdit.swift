@@ -1,17 +1,15 @@
 import Foundation
 
-/// Pure, UI-free propagation of a single vocab replacement into the STORED
-/// speaker-timeline segments, so a "Add to Vocabulary…" replace made in one
-/// view (the canonical plain transcript, or a speaker block) stays consistent
-/// with the other. No SwiftData, no AppKit — fed the decoded payload segments
-/// and the edit, returns updated segments (or `nil` when the edit can't be
-/// cleanly localized to exactly ONE stored segment).
+/// Pure, UI-free bookkeeping that keeps the STORED speaker-timeline segments
+/// in step with the canonical transcript they were built from. No SwiftData,
+/// no AppKit — fed the decoded payload segments and the texts, returns
+/// updated segments (or `nil` when the segments no longer align with the
+/// transcript, i.e. the two had already diverged).
 ///
-/// The canonical plain-transcript splice (`RecordingDetailView.applyVocabReplacement`)
-/// is RANGE-based and single-occurrence: it replaces the exact selected UTF-16
-/// `NSRange` with the term. This helper mirrors that where it can (the range-hint
-/// path) and otherwise degrades to a word-boundary-safe first-occurrence search
-/// — never a "replace all", never a cross-segment edit.
+/// `RecordingTextMutation` is the only writer of a recording's text, and it
+/// carries the segments across every edit through `projected(_:from:to:map:)`
+/// — a vocabulary replacement, a review pick, a live-ask answer, or a whole
+/// hand edit alike.
 enum SpeakerTimelineTextEdit {
 
     /// Where a reference-range maps to: which segment (index into the array it was
@@ -23,63 +21,38 @@ enum SpeakerTimelineTextEdit {
         let localRange: NSRange
     }
 
-    /// Apply a single-occurrence replacement to the ONE stored segment that
-    /// contains the user's selection. `segments` is the array to edit — either
-    /// the full stored payload (plain-view → timeline) or a single display
-    /// block's constituent stored segments (speaker-view → timeline). Returns a
-    /// same-shaped array with exactly one segment's `text` changed, or `nil`
-    /// when the edit can't be localized (selection straddles a segment boundary,
-    /// or — in the fallback — the phrase isn't found).
-    ///
-    /// Strategy, in order:
-    ///  1. **Range-hint (precise), via sequential alignment.** When `range` is
-    ///     non-nil, locate each segment's `text` inside `referenceText` IN ORDER
-    ///     (segment `i` searched from the end of segment `i-1`'s match; the
-    ///     separators between matches can be anything — single spaces, the `\n\n`
-    ///     ParagraphSegmenter inserts, etc.). Matches are word-anchored so a short
-    ///     segment ("yes") can't align inside a longer word ("yesterday"). Any
-    ///     unedited diarized transcript aligns, because it was BUILT by joining
-    ///     these very texts. Alignment is ALL-OR-NOTHING: if any segment fails to
-    ///     match in order it aborts to the fallback (never a partial/wrong map).
-    ///     On success the `range` is AUTHORITATIVE — it lands inside exactly one
-    ///     segment (edit it) or straddles a boundary / falls in a separator
-    ///     (⇒ `nil`, no fuzzy fallback). This disambiguates the same word in two
-    ///     segments.
-    ///  2. **Fallback (word-boundary search).** When there is no `range`, or
-    ///     sequential alignment fails (the user hand-edited the transcript so it
-    ///     no longer contains the segment texts), replace the FIRST whole-word
-    ///     occurrence of `selectedText` in the FIRST segment that contains it. No
-    ///     containing segment ⇒ `nil` (views may stay diverged in that
-    ///     already-diverged case — acceptable per design).
-    static func applyingReplacement(
-        to segments: [SpeakerTimelineSegment],
-        selectedText: String,
-        replacement: String,
-        range: NSRange? = nil,
-        referenceText: String? = nil
+    /// Carry `segments` (aligned to `old`) across the edit `old` → `new` that
+    /// `map` describes: each segment's aligned range is mapped into `new` and
+    /// the segment takes the text now there. So a word replaced inside a turn
+    /// changes that turn, a sentence typed at the end of a turn joins it, and
+    /// text deleted from a turn leaves it. Labels and times never change.
+    /// `nil` when the segments don't align with `old` (already diverged) —
+    /// the caller then leaves them as they are rather than guess.
+    static func projected(
+        _ segments: [SpeakerTimelineSegment],
+        from old: String,
+        to new: String,
+        map: TextOffsetMap
     ) -> [SpeakerTimelineSegment]? {
-        guard !segments.isEmpty else { return nil }
-
-        // Path 1 — precise range hint via sequential alignment. When alignment
-        // SUCCEEDS the range is authoritative: a straddle/miss returns nil with NO
-        // fuzzy fallback (that would mis-replace elsewhere). Only a FAILED
-        // alignment (diverged reference) falls through to the search.
-        if let range, let referenceText,
-           let segmentRanges = alignedSegmentRanges(segments, in: referenceText) {
-            guard let hit = locateHit(range, segmentRanges: segmentRanges) else { return nil }
-            return spliced(segments, at: hit, replacement: replacement)
-        }
-
-        // Path 2 — word-boundary first-occurrence search.
-        guard !selectedText.isEmpty else { return nil }
-        for (i, seg) in segments.enumerated() {
-            if let newText = replacingFirstWholeWord(selectedText, with: replacement, in: seg.text) {
-                var updated = segments
-                updated[i] = seg.withText(newText)
-                return updated
+        guard !segments.isEmpty,
+              let ranges = alignedSegmentRanges(segments, in: old) else { return nil }
+        let newNS = new as NSString
+        var cursor = 0
+        var out: [SpeakerTimelineSegment] = []
+        out.reserveCapacity(segments.count)
+        for (seg, r) in zip(segments, ranges) {
+            guard r.length > 0 else {
+                out.append(seg)
+                continue
             }
+            let start = max(map.map(r.location, .start), cursor)
+            let end = max(map.map(r.location + r.length, .end), start)
+            cursor = end
+            let text = newNS.substring(with: NSRange(location: start, length: end - start))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            out.append(seg.withText(text))
         }
-        return nil
+        return out
     }
 
     /// Locate the single segment + local range a `range` in `referenceText` maps
@@ -120,8 +93,7 @@ enum SpeakerTimelineTextEdit {
     /// coincidentally align inside a longer word — the search keeps scanning past
     /// an inside-a-word hit. Returns the per-segment `NSRange`s in `referenceText`
     /// coordinates, or `nil` if ANY segment fails to match in order (all-or-
-    /// nothing — a partial map is never returned, so a within-segment re-flow
-    /// safely aborts to the fuzzy fallback). Empty-text segments occupy a zero-
+    /// nothing — a partial map is never returned). Empty-text segments occupy a zero-
     /// length range at the cursor and never own a (length > 0) hit.
     static func alignedSegmentRanges(
         _ segments: [SpeakerTimelineSegment],
@@ -156,32 +128,6 @@ enum SpeakerTimelineTextEdit {
             cursor = m.location + m.length
         }
         return ranges
-    }
-
-    /// Replace the FIRST whole-word occurrence of `find` with `replacement` in
-    /// `text` (single occurrence, case-sensitive, word-boundary-safe on both
-    /// outer edges so "Ann" never matches inside "Announcement"). Returns the new
-    /// string, or `nil` if `find` never occurs on a word boundary. Shared by the
-    /// segment fallback above and the canonical-transcript splice on the
-    /// speaker-view path when transcript alignment fails.
-    static func replacingFirstWholeWord(_ find: String, with replacement: String, in text: String) -> String? {
-        guard !find.isEmpty else { return nil }
-        let ns = text as NSString
-        let findLen = (find as NSString).length
-        guard findLen > 0, ns.length >= findLen else { return nil }
-
-        var searchStart = 0
-        while searchStart <= ns.length - findLen {
-            let found = ns.range(
-                of: find, options: [],
-                range: NSRange(location: searchStart, length: ns.length - searchStart))
-            guard found.location != NSNotFound else { return nil }
-            if isWordAnchored(found, in: ns) {
-                return ns.replacingCharacters(in: found, with: replacement)
-            }
-            searchStart = found.location + 1
-        }
-        return nil
     }
 
     /// The stored-segment indices that make up each coalesced DISPLAY block, in
@@ -228,18 +174,6 @@ enum SpeakerTimelineTextEdit {
             }
         }
         return nil
-    }
-
-    /// Apply a located hit: splice `replacement` over `localRange` in the hit
-    /// segment's text.
-    private static func spliced(
-        _ segments: [SpeakerTimelineSegment], at hit: SegmentHit, replacement: String
-    ) -> [SpeakerTimelineSegment] {
-        var updated = segments
-        let segNS = segments[hit.segmentIndex].text as NSString
-        updated[hit.segmentIndex] = segments[hit.segmentIndex]
-            .withText(segNS.replacingCharacters(in: hit.localRange, with: replacement))
-        return updated
     }
 
     /// Whether `range`'s outer edges sit on word boundaries in `ns` (adjacent

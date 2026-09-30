@@ -23,12 +23,14 @@ struct TranscriptReader: View {
     /// Explicit reading-column width, measured by the parent.
     let width: CGFloat
     /// Called after a vocabulary mapping is successfully added, with the
-    /// selection's character range (in the displayed transcript) and the
-    /// canonical term to substitute in. The owner (which holds the SwiftData
-    /// `Recording`) performs the edit + persistence; the reader stays
-    /// decoupled from the model. Defaults to a no-op for contexts that don't
-    /// want inline edits.
-    var onReplaceSelection: (NSRange, String) -> Void = { _, _ in }
+    /// selection's character range (in the displayed transcript), the text
+    /// that was selected when the popover opened, and the canonical term to
+    /// substitute in. The owner (which holds the SwiftData `Recording`)
+    /// performs the edit + persistence — and refuses it when the range no
+    /// longer holds the selected text (the transcript changed while the
+    /// popover was open); the reader stays decoupled from the model. Defaults
+    /// to a no-op for contexts that don't want inline edits.
+    var onReplaceSelection: (NSRange, String, String) -> Void = { _, _, _ in }
     /// Find-in-transcript highlights (design: in-transcript search). All match
     /// ranges in THIS block get a dim system-yellow background; `currentHighlight`
     /// (if in this block) gets the vivid system find highlight and is scrolled
@@ -67,7 +69,7 @@ private struct SelectableTranscriptText: NSViewRepresentable {
     @Binding var height: CGFloat
     let highlightRanges: [NSRange]
     let currentHighlight: NSRange?
-    let onReplaceSelection: (NSRange, String) -> Void
+    let onReplaceSelection: (NSRange, String, String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(height: $height) }
 
@@ -185,11 +187,11 @@ private struct SelectableTranscriptText: NSViewRepresentable {
 /// menu (only when there's a selection) and presents the mapping editor in a
 /// transient popover anchored at the selection.
 final class VocabSelectableTextView: NSTextView {
-    /// Set by the representable. Called with the selected character range and
-    /// the canonical term after a vocab mapping is successfully added, so the
-    /// owner can edit + persist the transcript. The NSTextView never touches
-    /// SwiftData itself.
-    var onReplaceSelection: (NSRange, String) -> Void = { _, _ in }
+    /// Set by the representable. Called with the selected character range, the
+    /// text selected there, and the canonical term after a vocab mapping is
+    /// successfully added, so the owner can edit + persist the transcript. The
+    /// NSTextView never touches SwiftData itself.
+    var onReplaceSelection: (NSRange, String, String) -> Void = { _, _, _ in }
 
     /// Paint find-in-transcript highlights as layoutManager TEMPORARY attributes
     /// (never touching the text storage or the model, so selection + the vocab
@@ -291,10 +293,12 @@ final class VocabSelectableTextView: NSTextView {
         let heard = selectedSubstring()
         guard !heard.isEmpty else { return }
         let anchor = selectionRectInView()
-        // Capture the selection's range NOW, before the popover steals focus and
-        // before the user can edit the popover's "heard" field. This frozen
-        // range is the specific instance we replace on a successful add.
+        // Capture the selection's range and text NOW, before the popover steals
+        // focus and before the user can edit the popover's "heard" field. This
+        // frozen instance is what we replace on a successful add — and only if
+        // it is still there then.
         let replaceRange = trimmedSelectedRange()
+        let replaceText = replaceRange.map { (string as NSString).substring(with: $0) }
         let onReplace = onReplaceSelection
 
         let popover = NSPopover()
@@ -302,7 +306,7 @@ final class VocabSelectableTextView: NSTextView {
         let editor = VocabMappingEditor(
             heard: heard,
             onAdded: { term in
-                if let replaceRange { onReplace(replaceRange, term) }
+                if let replaceRange, let replaceText { onReplace(replaceRange, replaceText, term) }
             },
             onClose: { popover.performClose(nil) }
         )

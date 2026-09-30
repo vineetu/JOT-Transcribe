@@ -88,26 +88,7 @@ struct CopyTranscriptButton: View {
     }
 
     private func copy() {
-        guard !isDisabled else { return }
-        // Prefer the Pasteboarding seam (so harness flows can verify
-        // via `StubPasteboard`); fall back to `NSPasteboard.general`
-        // when `AppServices.live` is nil so the clipboard still gets
-        // the text on the cold-launch race window.
-        let wrote: Bool
-        if let pb = AppServices.live?.pasteboard {
-            wrote = pb.write(text)
-        } else {
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            wrote = pb.setString(text, forType: .string)
-        }
-        guard wrote else {
-            Task { await ErrorLog.shared.warn(
-                component: "CopyTranscriptButton",
-                message: "copy failed — pasteboard write returned false"
-            ) }
-            return
-        }
+        guard !isDisabled, UserCopy.write(text, component: "CopyTranscriptButton") else { return }
         copied = true
         resetTask?.cancel()
         resetTask = Task { @MainActor in

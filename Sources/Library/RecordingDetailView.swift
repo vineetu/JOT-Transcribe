@@ -44,16 +44,21 @@ struct RecordingDetailView: View {
     @State private var renameDraft: String = ""
     /// Edit mode for the canonical transcript. The view is REUSED across
     /// sidebar navigation, so this is reset in `.task(id:)` when the bound
-    /// recording changes. Editing binds the `TextEditor` directly to
-    /// `$recording.transcript` (no draft buffer) — the model stays the source
-    /// of truth, so navigating away or quitting can't drop an in-flight draft.
+    /// recording changes. The editor writes a draft (`editDraft`), mirrored
+    /// into `TranscriptEditSessions` as the user types (so it survives a hard
+    /// quit); every exit — Done, navigating away, the view going away,
+    /// quitting — saves it through `RecordingTextMutation` in `finishEdit`, so
+    /// the recording's text only ever changes through the one helper.
     @State private var isEditing = false
-    /// Learn from edits (design `vocabulary-learn-from-edits`): the recording
-    /// being edited and its transcript when Edit was pressed. Holds the
-    /// RECORDING itself, not the view's `recording` — sidebar navigation rebinds
-    /// the view before `.task(id:)` runs, so `finishEdit` must diff the captured
-    /// one.
+    /// The text in the editor while `isEditing`.
+    @State private var editDraft = ""
+    /// The recording being edited. Holds the RECORDING itself, not the view's
+    /// `recording` — sidebar navigation rebinds the view before `.task(id:)`
+    /// runs, so `finishEdit` must save the captured one. Its baseline and
+    /// draft live in `TranscriptEditSessions`.
     @State private var editSession: EditSession?
+    /// A failed Edit → Done save; the draft is kept.
+    @State private var editSaveError: String?
     /// Briefly flips to `true` right after a successful Copy click so
     /// the toolbar Copy button can swap its glyph to a checkmark — gives
     /// the user the same "did anything happen?" feedback the inline
@@ -160,14 +165,13 @@ struct RecordingDetailView: View {
         .toolbar { toolbarContent }
         .sheet(isPresented: $showCustomPrompt) { customPromptSheet }
         .task(id: recording.id) {
-            // The detail view is REUSED across sidebar navigation; reset edit
-            // mode so a different recording never opens already-in-edit (and
-            // never inherits the prior row's edit session). Edits to the prior
-            // recording were already written live via the @Bindable binding +
-            // autosave, so nothing is lost here. The prior recording's edit
-            // session is learned from FIRST, against the captured recording.
-            finishEdit()
-            isEditing = false
+            // The detail view is REUSED across sidebar navigation: the prior
+            // recording's draft is saved (and learned from) FIRST, against the
+            // captured recording, so a different recording never inherits it.
+            // A draft still open for THIS recording (a failed save, or typed
+            // before a quit) is resumed.
+            leaveEdit()
+            if TranscriptEditSessions.shared.isOpen(recording.id) { beginEdit() }
             detectSpeakersStatus = nil
             detectSpeakersError = nil
             // Reset transient summary UI for the new recording (the summary itself
@@ -192,21 +196,24 @@ struct RecordingDetailView: View {
         .onAppear { player.load(url: RecordingStore.audioURL(for: recording)) }
         .onDisappear {
             player.stop()
-            // Durability flush: if the view goes away mid-edit (window close,
-            // app quit), persist explicitly — autosave alone isn't a guarantee.
-            if isEditing {
-                try? context.save()
-                isEditing = false
-            }
+            // Durability: the view going away mid-edit (window close) saves
+            // the draft.
+            leaveEdit()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            // Quitting mid-edit saves the draft too (or keeps it on disk).
             finishEdit()
         }
+        .onChange(of: editDraft) { _, draft in
+            if let editSession {
+                TranscriptEditSessions.shared.updateDraft(draft, for: editSession.recordingID)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: RecordingTextMutation.didChangeNotification)) { note in
+            guard let change = RecordingTextMutation.change(in: note) else { return }
+            recordingTextChanged(change)
+        }
         .onChange(of: recording.transcript) { _, _ in
-            // Mark as edited on the FIRST hand-edit (gated on `editedAt == nil`
-            // so it's a one-time stamp, not a per-keystroke model write). Survives
-            // every exit path (Done, nav-away, quit). Re-transcribe runs in read
-            // mode (isEditing == false) and clears `editedAt`, so it never trips
-            // this — and a later hand-edit re-stamps cleanly.
-            if isEditing, recording.editedAt == nil { recording.editedAt = .now }
             recomputeMatches(resetIndex: true)
         }
         .onChange(of: searchQuery) { _, _ in
@@ -223,8 +230,9 @@ struct RecordingDetailView: View {
             isPresented: $pendingDelete
         ) {
             Button("Delete", role: .destructive) {
-                // A deleted recording's edit teaches nothing — discard the
-                // session before its model object goes away.
+                // A deleted recording's edit teaches nothing (and has nowhere
+                // to be saved) — discard the session before its model object
+                // goes away.
                 editSession = nil
                 isEditing = false
                 RecordingStore.delete(recording, from: context)
@@ -233,6 +241,17 @@ struct RecordingDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The audio file and transcript will be removed. This cannot be undone.")
+        }
+        .alert(
+            "Couldn't save your edit",
+            isPresented: Binding(
+                get: { editSaveError != nil },
+                set: { if !$0 { editSaveError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { editSaveError = nil }
+        } message: {
+            Text(editSaveError ?? "")
         }
         .alert(
             "Re-transcribe failed",
@@ -522,8 +541,8 @@ struct RecordingDetailView: View {
             // Distinct editable surface (design B2): the read-only
             // `TranscriptReader`/`VocabSelectableTextView` is hard-wired
             // non-editable with one-way data flow, so we never retrofit editing
-            // onto it. Bind straight to the model so there's no draft to lose.
-            TranscriptEditor(text: $recording.transcript)
+            // onto it. Every exit saves the draft (`finishEdit`).
+            TranscriptEditor(text: $editDraft)
         } else if useLabeledView, let segments {
             // Render-time run coalescing (belt-and-suspenders over the
             // builder-level pass): old already-persisted payloads still carry
@@ -559,9 +578,9 @@ struct RecordingDetailView: View {
                         TranscriptReader(
                             text: seg.text,
                             width: transcriptReadingWidth,
-                            onReplaceSelection: { range, term in
+                            onReplaceSelection: { range, selected, term in
                                 applyVocabReplacementInSpeakerBlock(
-                                    blockIndex: blockIndex, range: range, term: term)
+                                    blockIndex: blockIndex, range: range, selected: selected, term: term)
                             },
                             highlightRanges: highlightRanges(inBlock: blockIndex),
                             currentHighlight: currentHighlight(inBlock: blockIndex)
@@ -586,8 +605,8 @@ struct RecordingDetailView: View {
             TranscriptReader(
                 text: displayedTranscript,
                 width: transcriptReadingWidth,
-                onReplaceSelection: { range, term in
-                    applyVocabReplacement(range: range, term: term)
+                onReplaceSelection: { range, selected, term in
+                    applyVocabReplacement(range: range, selected: selected, term: term)
                 },
                 highlightRanges: highlightRanges(inBlock: 0),
                 currentHighlight: currentHighlight(inBlock: 0)
@@ -596,54 +615,24 @@ struct RecordingDetailView: View {
     }
 
     /// Replace the single selected instance in the canonical transcript with
-    /// the canonical vocabulary term and persist it. The affordance is only
-    /// shown on the canonical transcript path (never the raw view), so this
-    /// edits `recording.transcript`. Mutating the bound model + saving the
-    /// context flows back through `displayedTranscript` → `TranscriptReader`'s
-    /// `text` input, so the reader re-renders to show the change.
-    private func applyVocabReplacement(range: NSRange, term: String) {
-        let ns = recording.transcript as NSString
-        // Guard against a stale range (e.g. the transcript changed underneath
-        // us between selection and add): only edit when the range is in bounds.
-        guard range.location >= 0,
-              range.length > 0,
-              range.location + range.length <= ns.length
-        else { return }
-        let selectedText = ns.substring(with: range)
-        // Keep the speaker-labeled view in sync: propagate the SAME single
-        // replacement into the stored timeline segment that owns this occurrence,
-        // BEFORE mutating the transcript (so the pre-edit transcript is the
-        // reference layout the range hint indexes into). If it can't be localized
-        // to one stored segment (diverged text / boundary-spanning), the timeline
-        // is left untouched and only the plain view updates — acceptable.
-        propagateReplacementToTimeline(selectedText: selectedText, term: term, range: range)
-        recording.transcript = ns.replacingCharacters(in: range, with: term)
-        try? context.save()
+    /// the canonical vocabulary term. The affordance is only shown on the
+    /// canonical transcript path (never the raw view), so `range` indexes
+    /// `recording.transcript`. Refused when the range no longer holds what was
+    /// selected — the text changed while the popover was open (A13). The
+    /// speaker segments follow through the helper.
+    private func applyVocabReplacement(range: NSRange, selected: String, term: String) {
+        _ = try? RecordingTextMutation.apply(.replace(range, with: term, expecting: selected),
+                                             to: recording, in: context)
     }
 
-    /// Apply a plain-transcript vocab replacement to the stored speaker timeline
-    /// too, so both rendering paths show the corrected word. Mutates
-    /// `recording.speakerTimeline` in place (the shared `context.save()` in the
-    /// caller persists it in the same transaction). No-op when there is no
-    /// timeline or the edit can't be localized to a single stored segment.
-    private func propagateReplacementToTimeline(selectedText: String, term: String, range: NSRange) {
-        guard let data = recording.speakerTimeline,
-              let payload = try? JSONDecoder().decode(SpeakerTimelinePayload.self, from: data),
-              let updated = SpeakerTimelineTextEdit.applyingReplacement(
-                to: payload.segments, selectedText: selectedText, replacement: term,
-                range: range, referenceText: recording.transcript),
-              let encoded = try? JSONEncoder().encode(SpeakerTimelinePayload(segments: updated))
-        else { return }
-        recording.speakerTimeline = encoded
-    }
-
-    /// "Add to Vocabulary…" invoked from a speaker-labeled block. Applies the
-    /// single replacement to the STORED segment(s) that back this display block
-    /// (the block is a coalesced run of one-or-more consecutive same-label stored
-    /// segments) AND to the canonical plain `recording.transcript`, so both views
-    /// stay in sync — then persists both in one save. No-op when it can't be
-    /// localized to a single stored segment.
-    private func applyVocabReplacementInSpeakerBlock(blockIndex: Int, range: NSRange, term: String) {
+    /// "Add to Vocabulary…" invoked from a speaker-labeled block. Locates the
+    /// stored segment + local range the selection owns (the block is a
+    /// coalesced run of one-or-more consecutive same-label stored segments) and
+    /// replaces that SAME instance in the canonical transcript — so two
+    /// speakers sharing a word don't diverge on different occurrences; the
+    /// helper carries the edit into that stored segment. Refused when the
+    /// block no longer holds what was selected (A13).
+    private func applyVocabReplacementInSpeakerBlock(blockIndex: Int, range: NSRange, selected: String, term: String) {
         guard let data = recording.speakerTimeline,
               let payload = try? JSONDecoder().decode(SpeakerTimelinePayload.self, from: data)
         else { return }
@@ -653,53 +642,48 @@ struct RecordingDetailView: View {
         guard blockIndex >= 0, blockIndex < displayBlocks.count, blockIndex < groups.count else { return }
 
         // The exact string TranscriptReader rendered for this block — the range
-        // indexes into it — and the selected substring at that range.
+        // indexes into it.
         let blockNS = displayBlocks[blockIndex].text as NSString
         guard range.location >= 0,
               range.length > 0,
-              range.location + range.length <= blockNS.length
+              NSMaxRange(range) <= blockNS.length,
+              blockNS.substring(with: range) == selected
         else { return }
-        let selectedText = blockNS.substring(with: range)
 
         // Locate the ONE constituent stored segment + local range the selection
         // owns (block text == the constituents' join, so the range is precise).
         let indices = groups[blockIndex]
-        let blockStored = indices.map { segments[$0] }
         guard let blockHit = SpeakerTimelineTextEdit.locate(
-                range: range, in: blockStored, referenceText: displayBlocks[blockIndex].text)
+                range: range, in: indices.map { segments[$0] },
+                referenceText: displayBlocks[blockIndex].text)
         else { return }
         let storedIndex = indices[blockHit.segmentIndex]
         let localRange = blockHit.localRange
 
-        // Edit that stored segment's text at the local range and persist the payload.
+        let transcript = recording.transcript
+        if let tRange = SpeakerTimelineTextEdit.transcriptRange(
+                forSegmentIndex: storedIndex, localRange: localRange,
+                segments: segments, transcript: transcript) {
+            _ = try? RecordingTextMutation.apply(.replace(tRange, with: term, expecting: selected),
+                                                 to: recording, in: context)
+            return
+        }
+        // The transcript had already diverged from the stored segments (edited
+        // before edits kept them in step), so the helper can't carry the edit:
+        // edit this stored segment directly, and the transcript's first
+        // whole-word occurrence of the same words.
         let storedNS = segments[storedIndex].text as NSString
-        guard localRange.location + localRange.length <= storedNS.length else { return }
+        guard NSMaxRange(localRange) <= storedNS.length,
+              let first = WholeWord.ranges(of: selected, in: transcript).first(where: { transcript[$0] == selected })
+        else { return }
         var updated = segments
         updated[storedIndex] = SpeakerTimelineSegment(
             speakerLabel: segments[storedIndex].speakerLabel,
             startSec: segments[storedIndex].startSec,
             endSec: segments[storedIndex].endSec,
             text: storedNS.replacingCharacters(in: localRange, with: term))
-        if let encoded = try? JSONEncoder().encode(SpeakerTimelinePayload(segments: updated)) {
-            recording.speakerTimeline = encoded
-        }
-
-        // Keep the canonical plain transcript in sync on the SAME instance: map
-        // (storedIndex, localRange) into transcript coordinates via alignment and
-        // splice exactly there — so two speakers sharing a word don't diverge on
-        // different occurrences. Only when the transcript has diverged from the
-        // stored layout (alignment fails) fall back to the first whole-word match.
-        let transcriptNS = recording.transcript as NSString
-        if let tRange = SpeakerTimelineTextEdit.transcriptRange(
-                forSegmentIndex: storedIndex, localRange: localRange,
-                segments: segments, transcript: recording.transcript),
-           tRange.location + tRange.length <= transcriptNS.length {
-            recording.transcript = transcriptNS.replacingCharacters(in: tRange, with: term)
-        } else if let newTranscript = SpeakerTimelineTextEdit.replacingFirstWholeWord(
-            selectedText, with: term, in: recording.transcript) {
-            recording.transcript = newTranscript
-        }
-        try? context.save()
+        _ = try? RecordingTextMutation.apply(.replace(NSRange(first, in: transcript), with: term, expecting: selected),
+                                             to: recording, in: context, timeline: .replace(updated))
     }
 
     // MARK: - Find in transcript
@@ -925,6 +909,17 @@ struct RecordingDetailView: View {
                 }
             }
 
+            if !summarizer.isRunning, recording.summaryIsStale == true, recording.summaryText != nil,
+               summaryError == nil, summaryDisabledNotice == nil {
+                HStack(spacing: 4) {
+                    Text("Transcript changed since this summary —")
+                        .foregroundStyle(.secondary)
+                    Button("Regenerate") { regenerateSummary() }
+                        .buttonStyle(.link)
+                }
+                .font(.system(size: 11))
+            }
+
             if summarizer.isRunning {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
@@ -1024,6 +1019,7 @@ struct RecordingDetailView: View {
                 recording.summaryText = output.text
                 recording.summaryKind = output.kind.rawValue
                 recording.summaryGeneratedAt = .now
+                recording.summaryIsStale = nil
                 try? context.save()
             case .failure(.providerNotCapable(let reason)):
                 summaryDisabledNotice = reason
@@ -1047,24 +1043,8 @@ struct RecordingDetailView: View {
     }
 
     private func copySummary() {
-        guard let text = recording.summaryText else { return }
-        // Mirror `copyTranscript` exactly (the file's copy precedent): prefer the
-        // Pasteboarding seam, fall back to `NSPasteboard.general` on the cold-launch
-        // race window, and log a failed write.
-        let wrote: Bool
-        if let pb = AppServices.live?.pasteboard {
-            wrote = pb.write(text)
-        } else {
-            let nspb = NSPasteboard.general
-            nspb.clearContents()
-            wrote = nspb.setString(text, forType: .string)
-        }
-        guard wrote else {
-            Task { await ErrorLog.shared.warn(
-                component: "RecordingDetailView",
-                message: "copySummary failed — pasteboard write returned false") }
-            return
-        }
+        guard let text = recording.summaryText,
+              UserCopy.write(text, component: "RecordingDetailView") else { return }
         didCopySummary = true
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_200_000_000)
@@ -1076,44 +1056,93 @@ struct RecordingDetailView: View {
 
     private func toggleEdit() {
         if isEditing {
-            commitEdit()
+            // A failed save stays in edit mode with the draft.
+            if finishEdit() { isEditing = false }
         } else {
-            // Editing operates on the canonical transcript; force the raw view
-            // off so we always edit `recording.transcript`.
-            showRawTranscript = false
-            editSession = EditSession(recording: recording, snapshot: recording.transcript)
-            isEditing = true
+            beginEdit()
         }
     }
 
-    private func commitEdit() {
-        isEditing = false
-        // Explicit save (not just autosave) so the edit is durable immediately.
-        try? context.save()
-        finishEdit()
+    /// Open (or resume) the edit session of the shown recording.
+    private func beginEdit() {
+        // Editing operates on the canonical transcript; force the raw view
+        // off so we always edit `recording.transcript`.
+        showRawTranscript = false
+        editDraft = TranscriptEditSessions.shared.begin(recording).draft
+        editSession = EditSession(recording: recording, recordingID: recording.id)
+        isEditing = true
     }
 
-    /// The ONE end of an edit session — Done, the view going away, and the
-    /// top of `.task(id:)` on sidebar navigation all funnel here. Idempotent:
-    /// the session is consumed on first call. Captures every string now
-    /// (synchronously), then learns and re-anchors the review section.
-    private func finishEdit() {
-        guard let session = editSession else { return }
+    /// Leave edit mode for good (navigation, the view going away): save the
+    /// draft; a draft that couldn't be saved stays in `TranscriptEditSessions`
+    /// and is resumed when its recording is shown again.
+    private func leaveEdit() {
+        finishEdit()
         editSession = nil
+        isEditing = false
+    }
+
+    /// The ONE save of an edit session — Done, the view going away, quitting,
+    /// and the top of `.task(id:)` on sidebar navigation all funnel here.
+    /// Saves the draft through `RecordingTextMutation` (segments, title,
+    /// search, summary follow), ends the session, then learns from the edit
+    /// and re-anchors the review section. A draft identical to its baseline
+    /// writes nothing, so an untouched session never overwrites text that
+    /// changed under it. Returns `false` — session and draft kept, error
+    /// shown — when the save fails.
+    @discardableResult
+    private func finishEdit() -> Bool {
+        guard let session = editSession else { return true }
+        let sessions = TranscriptEditSessions.shared
+        let recordingID = session.recordingID
+        // Deleted while editing (retention purge): nothing to save; the
+        // delete ended the session.
+        guard session.recording.modelContext != nil, !session.recording.isDeleted,
+              let open = sessions.session(for: recordingID)
+        else {
+            editSession = nil
+            return true
+        }
         let edited = session.recording
-        let recordingID = edited.id
-        let before = session.snapshot
-        let after = edited.transcript
+        let before = open.baseline
+        let after = editDraft
+        if after != before {
+            do {
+                try RecordingTextMutation.apply(.handEdit(after), to: edited, in: context)
+            } catch {
+                editSaveError = "Your draft is kept — open this recording and press Done to try again."
+                return false
+            }
+        }
+        editSession = nil
+        sessions.end(recordingID)
+        guard after != before else { return true }
         let raw = edited.rawTranscript
         Task {
             await EditLearning.learn(recordingID: recordingID, before: before, after: after, raw: raw)
-            // Re-anchor the live correction-review section against the edited
-            // text. `CorrectionProvenance.reconciledPayload` is state-based and
-            // already accounts for a hand-edit; reload() recomputes the anchors
-            // (design B1). Only when the pane still shows the edited recording.
+            // The edit closed review records: reload so the section shows them
+            // answered. Only when the pane still shows the edited recording.
             if let reviewModel, reviewModel.recording.id == recordingID {
                 await reviewModel.reload()
             }
+        }
+        return true
+    }
+
+    /// Someone changed a recording's text (`RecordingTextMutation`) — a live
+    /// "Did you mean…?" answer, a late diarize pass, a pick here. An open edit
+    /// session of that recording already accounted for it
+    /// (`TranscriptEditSessions`: a span change is carried into the draft;
+    /// whole machine text leaves the draft to win on Done), so the editor
+    /// shows the session's draft; the review section reloads against the new
+    /// text.
+    private func recordingTextChanged(_ change: RecordingTextMutation.Change) {
+        if let editSession, editSession.recordingID == change.recordingID,
+           let open = TranscriptEditSessions.shared.session(for: change.recordingID) {
+            editDraft = open.draft
+        }
+        if change.recordingID == recording.id, let reviewModel {
+            Task { await reviewModel.reload() }
         }
     }
 
@@ -1185,73 +1214,17 @@ struct RecordingDetailView: View {
 
     private func retranscribe() {
         guard !isRetranscribing else { return }
-        // Mic → re-transcribe guard (mirrors `FileTranscriptionIngest.enqueue`
-        // guard 2): on the multilingual Nemotron ship this shares the live
-        // streaming engine with dictation, so starting mid-dictation would
-        // collide (`TranscriberError.busy` at best, interleaved decoder state
-        // at worst). Surfaces the existing re-transcribe alert instead of
-        // silently dropping the tap. `shared == nil` (ingest not built yet)
-        // falls through — the engine-level busy guard still protects.
-        guard FileTranscriptionIngest.shared?.recorderIsCurrentlyIdle ?? true else {
-            retranscribeError = "Finish dictating first, then try again."
-            return
-        }
         let transcriber = transcriberHolder.transcriber
+        let target = recording
         isRetranscribing = true
-        let url = RecordingStore.audioURL(for: recording)
-        Task {
-            defer { Task { @MainActor in isRetranscribing = false } }
+        Task { @MainActor in
+            defer { isRetranscribing = false }
             do {
-                // Detail re-transcribe owns the provenance slot: it commits the
-                // fresh gate proposals under the SAME recording id below.
-                let result = try await transcriber.transcribeFile(url, recordsProvenance: true)
-                await MainActor.run {
-                    recording.rawTranscript = result.rawText
-                    recording.transcript = result.text
-                    // Fresh machine output — no longer a hand-edited transcript.
-                    recording.editedAt = nil
-                    // Re-transcribing invalidates any existing speaker
-                    // timeline (design D4/D5): diarization is manual +
-                    // on-demand, so we don't re-run it here — just drop the
-                    // stale timeline so it can't desync from the new text.
-                    // The user re-taps "Detect speakers" if they want labels
-                    // on the fresh transcript.
-                    recording.speakerTimeline = nil
-                    // "Never lose audio" safety net: a filled-in transcript
-                    // means this row is no longer pending, whether it got
-                    // here via the normal empty-transcript re-transcribe
-                    // action or a first-time fill of a pending row adopted
-                    // by the failure/orphan paths.
-                    recording.pendingSince = nil
-                    try? context.save()
-                    // New machine text: an edit session's snapshot no longer
-                    // describes it, so it must never be diffed.
-                    if editSession?.recording.id == recording.id { editSession = nil }
-                    // F3 (review C2): re-transcribe is the ONLY path that fills
-                    // a recovered pending row's transcript, so it must (re)index
-                    // for AI/semantic search — the insert-time paths index
-                    // (RecordingPersister/FileTranscriptionIngest) but the
-                    // empty pending row was skipped, so without this a recovered
-                    // recording is invisible to search forever.
-                    RecordingIndexer.shared?.index(recordingID: recording.id, text: result.text)
-                    // Slice C linkage: a re-transcribe re-runs the gate (which
-                    // refilled `pending` via `clearPending` + `record` inside
-                    // `transcribe`), so commit the fresh proposals under the SAME
-                    // recording id once the new text is saved. `commit` preserves
-                    // any existing verdicts/contributions (defensive re-commit),
-                    // and the anchor reconcile rebaselines to the new text at the
-                    // next review read. Accept stale-row fail-safe (the strict
-                    // span resolver drops marks it can't place).
-                    let recordingID = recording.id
-                    Task {
-                        await CorrectionProvenance.shared.commit(transcriptID: recordingID)
-                        await reviewModel?.reload()
-                    }
-                }
+                // The one re-transcribe path (shared with the list row); the
+                // review section reloads off its change notification.
+                try await RecordingRetranscription.retranscribe(target, using: transcriber, context: context)
             } catch {
-                await MainActor.run {
-                    retranscribeError = error.localizedDescription
-                }
+                retranscribeError = error.localizedDescription
             }
         }
     }
@@ -1260,7 +1233,7 @@ struct RecordingDetailView: View {
 
     private func detectSpeakers() {
         guard !isDetectingSpeakers else { return }
-        // Mic → detect-speakers guard (mirrors `retranscribe()` above): the
+        // Mic → detect-speakers guard (mirrors `RecordingRetranscription`): the
         // segment-sliced pass transcribes each run's audio on the live
         // engine, so starting mid-dictation would collide
         // (`TranscriberError.busy` at best, interleaved decoder state at
@@ -1350,25 +1323,7 @@ struct RecordingDetailView: View {
     }
 
     private func copyTranscript() {
-        // Prefer the Pasteboarding seam; fall back to
-        // `NSPasteboard.general` when `AppServices.live` is nil so
-        // the clipboard still gets the text on the cold-launch race
-        // window.
-        let wrote: Bool
-        if let pb = AppServices.live?.pasteboard {
-            wrote = pb.write(displayedTranscript)
-        } else {
-            let nspb = NSPasteboard.general
-            nspb.clearContents()
-            wrote = nspb.setString(displayedTranscript, forType: .string)
-        }
-        guard wrote else {
-            Task { await ErrorLog.shared.warn(
-                component: "RecordingDetailView",
-                message: "copyTranscript failed — pasteboard write returned false"
-            ) }
-            return
-        }
+        guard UserCopy.write(displayedTranscript, component: "RecordingDetailView") else { return }
         didCopy = true
         copyResetTask?.cancel()
         copyResetTask = Task { @MainActor in
@@ -1422,17 +1377,19 @@ struct RecordingDetailView: View {
     }
 }
 
+/// The recording an open edit session belongs to (see
+/// `RecordingDetailView.editSession`).
+private struct EditSession {
+    let recording: Recording
+    /// Captured up front: a deleted row's properties can't be read.
+    let recordingID: UUID
+}
+
 /// Editable transcript surface, shown only in edit mode. A DISTINCT view from
 /// the read-only `TranscriptReader` (design B2): we don't retrofit editing onto
 /// the reader's one-way NSTextView. Serif font + line spacing approximate the
 /// reader for visual continuity; minor styling drift in edit mode is accepted
 /// (design open-Q4). The boxed background also signals "you're editing now."
-/// One open transcript edit session (see `RecordingDetailView.editSession`).
-private struct EditSession {
-    let recording: Recording
-    let snapshot: String
-}
-
 private struct TranscriptEditor: View {
     @Binding var text: String
 

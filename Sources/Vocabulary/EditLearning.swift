@@ -7,9 +7,10 @@ import JotVocabCore
 /// `Correction`s for `VocabularyLearning.apply`, the one path every correction
 /// surface takes (Revision 2).
 ///
-/// `RecordingDetailView.finishEdit` is the only caller. It captures every
-/// string up front, so a sidebar navigation that rebinds the view to another
-/// recording can't feed this the wrong text.
+/// `RecordingDetailView.finishEdit` is the only caller, after the edit is
+/// saved through `RecordingTextMutation`. It captures every string up front,
+/// so a sidebar navigation that rebinds the view to another recording can't
+/// feed this the wrong text.
 @MainActor
 enum EditLearning {
 
@@ -65,13 +66,9 @@ enum EditLearning {
     private static func openReviewRecords(
         recordingID: UUID, currentText: String, original: String, term: String
     ) async -> [CorrectionProvenance.Record] {
-        let payload = await CorrectionProvenance.shared.reconciledPayload(
-            transcriptID: recordingID, currentText: currentText)
-        return payload.records.filter {
-            payload.verdicts[$0.key] == nil
-                && CorrectionKey.normalize($0.originalWord) == original
-                && $0.term.lowercased() == term.lowercased()
-        }
+        await CorrectionProvenance.shared.reconciledPayload(
+            transcriptID: recordingID, currentText: currentText
+        ).openRecords(originalWord: original, term: term)
     }
 
     /// Close `records` with `verdict`, so the pane can't count the pair a

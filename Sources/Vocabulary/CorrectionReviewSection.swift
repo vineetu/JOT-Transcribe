@@ -194,6 +194,10 @@ enum CorrectionCopy {
     /// Resolved-row copy split into a BOLD lead segment + secondary rest.
     static func resolvedParts(_ r: CorrectionProvenance.Record, verdict: String) -> (strong: String, rest: String) {
         let applied = (r.outcome == "applied")
+        if verdict == "alt0", let alt = r.alternates?.first {
+            // The live ask's wider alternate ("Claude Code" over "cloud code").
+            return (alt.term, " used.")
+        }
         if verdict == "term" {
             return applied
                 ? (r.term, " confirmed.")

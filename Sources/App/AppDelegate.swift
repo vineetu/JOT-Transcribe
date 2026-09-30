@@ -1,6 +1,5 @@
 import AppKit
 import AVFoundation
-import Combine
 import JotVocabCore
 import SwiftData
 import os.log
@@ -59,14 +58,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// `services` at the start of `applicationDidFinishLaunching`
     /// satisfies that.
     @Published private(set) var services: AppServices!
-
-    /// Bridge between RecorderController's `$lastResult` and
-    /// DeliveryService.deliver(...). Held strongly so the sink outlives
-    /// `wireUp(_:)`'s local scope.
-    /// **Must never be nilled after initial assignment** — releasing the
-    /// cancellable would silently break dictation delivery for the rest
-    /// of the session.
-    private var deliveryBridge: AnyCancellable?
 
     /// Strong reference to the proxy delegate installed on the unified
     /// main window so the red close button (and ⌘W) hide it instead of
@@ -132,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         WebVTTExporterTests.runAll()
         SpeakerTimelineTests.runAll()
         SpeakerTimelineTextEditTests.runAll()
+        RecordingTextMutationTests.runAll()
         TranscriptSearchTests.runAll()
         RecordingSummaryTests.runAll()
         VocabAskFilterTests.runAll()
@@ -249,30 +241,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         SingleKeyMigration.runIfNeeded()
         services.hotkeyRouter.activate()
 
-        // Deliver the final transcript (transformed if Transform is on,
-        // raw otherwise). We observe `$lastResult` as the trigger because
-        // it fires exactly once per successful pass, but read
-        // `lastTranscript` for the actual text — it holds the
-        // post-transform result.
-        // ORDERING INVARIANT: `lastTranscript` must be set BEFORE
-        // `lastResult` in RecorderController so this sink sees the right
-        // value.
-        deliveryBridge = services.recorder.$lastResult
-            .compactMap { $0 }
-            .sink { [weak self,
-                     weak recorder = services.recorder,
-                     weak delivery = services.delivery,
-                     weak overlay = services.overlay] result in
-                Task { @MainActor [weak self, weak recorder, weak delivery, weak overlay] in
-                    guard let self, let recorder, let delivery else { return }
-                    self.handleDeliveryBridge(
-                        result: result,
-                        recorder: recorder,
-                        delivery: delivery,
-                        overlay: overlay
-                    )
-                }
-            }
+        // The one `$lastResult` sink: save each finished dictation, then
+        // deliver it (asking "Did you mean…?" first when the gate flagged a
+        // word), with the saved row's id travelling alongside the text.
+        services.dictationBridge.start()
 
         services.menuBar.install()
         services.overlay.install()
@@ -317,6 +289,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
         }
 
+        // The failure edge only ("Never lose audio"): a dictation whose
+        // transcription failed after its audio was saved gets a pending row.
         services.recordingPersister.start()
 
         // Phase 4 (startup self-heal design): drive the pending
@@ -354,6 +328,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             Task.detached(priority: .utility) { try? await EmbeddingGemmaService.shared.prewarm() }
             Task(priority: .background) { await RecordingIndexer.shared?.backfillMissing() }
         }
+        // One-time: drop search chunks left behind by recordings deleted
+        // before deleting a recording removed its chunks (they could still
+        // surface a deleted recording in Ask Jot). Runs whatever the toggle.
+        ChunkStore.purgeOrphanedChunksOnce(container: services.modelContainer)
 
         // Sound chimes: prewarm the five bundled WAVs and subscribe to
         // recorder state so transitions fire audio cues. Prewarm runs on
@@ -379,423 +357,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // warmup (design D4). The model downloads/loads lazily the first
         // time the user opens Settings → Speaker labels or taps "Detect
         // speakers" — there is no background cost to eagerly pay at launch.
-    }
-
-    /// The single dictation auto-paste choke point (`ask-ux.md` §1). Decides
-    /// among three paths for a freshly-landed transcript:
-    ///   1. `skipNextPaste` — the user stopped via the in-app pill / Esc: persist
-    ///      to Recents, surface the saved-to-Recents affordance, no paste.
-    ///   2. Ask-before-paste (Slice D) — one or more `askCandidate` corrections
-    ///      whose term is STILL present in the FINAL (possibly transformed) text:
-    ///      hold the paste, ask "Did you mean X?" sequentially, then deliver once.
-    ///   3. The unchanged fast path — deliver immediately (zero added latency).
-    @MainActor
-    private func handleDeliveryBridge(
-        result: TranscriptionResult,
-        recorder: RecorderController,
-        delivery: DeliveryService,
-        overlay: OverlayWindowController?
-    ) {
-        guard let text = recorder.lastTranscript, !text.isEmpty else { return }
-
-        // "Return to the app I started in" (design §5.1): read the Origin
-        // that was stamped onto this SPECIFIC session's result, atomically
-        // alongside `lastTranscript`/`lastResult`. Captured once here —
-        // never re-read from `recorder` later in this function — so it
-        // travels with `text` through the (possibly async, possibly
-        // multi-step) ask sequence below to whichever `deliver(...)` call
-        // ultimately fires for this session.
-        let originApp = recorder.lastResultOriginApp
-
-        // v1.14: read-and-clear `skipNextPaste`. When the user stopped via the
-        // in-app Record pill or Esc (rather than the trigger hotkey), the
-        // recording still persists to Recents but the paste step is suppressed.
-        if recorder.skipNextPaste {
-            recorder.skipNextPaste = false
-            let audioFile = recorder.lastAudioRecording?.fileURL.lastPathComponent
-            overlay?.pillViewModel.showSavedToRecents(
-                preview: text,
-                audioFileName: audioFile
-            )
-            return
-        }
-
-        // Slice D §8 B1 — Transform-safe hold. Char offsets are meaningless after
-        // the gate's downstream segmenter / Transform rewrite, so we DON'T splice
-        // by offset. Instead, take the gate's structured `{from,to}` ask
-        // candidates and string-match against the FINAL text:
-        //   * APPLIED candidate (silent-OOV, §9 (i)): the term `to` is already in
-        //     the text. Keep = leave it; keep-original = replace `to`→`from`.
-        //   * BLOCKED candidate (common-word near-miss, §9 (ii)): the original
-        //     `from` is in the text. Confirm = replace `from`→`to`; keep = leave it.
-        // Either way we anchor on a word that is ACTUALLY present; if Transform
-        // reworded BOTH away, the correction is moot → drop the ask (graceful
-        // fallback). Cap at 3 (anti-nag, §4).
-        let resolved = result.corrections
-            .filter { $0.askCandidate }
-            .compactMap { AskItem(correction: $0, in: text) }
-
-        guard let pill = overlay?.pillViewModel, !resolved.isEmpty else {
-            // Unchanged fast path — deliver immediately (zero added latency; no
-            // ask candidates means no need to touch the CorrectionStore actor).
-            Task { @MainActor in await delivery.deliver(text, originApp: originApp) }
-            return
-        }
-
-        // Suppression GATE (activates the previously-dead CorrectionStore
-        // consumers `keyboardSuppressedPairs()` / `isBlockSuppressed(...)`, which
-        // had ZERO callers on macOS). Before asking, drop any pair the owner has
-        // already rejected — kept the original ≥ `keyboardKeepSuppressThreshold`
-        // times on a BLOCKED pair, or tapped "Stop asking". Otherwise the SAME
-        // heard→term correction re-asks on every recording. Mirrors jot-mobile's
-        // `CorrectionAsksPublisher` (the `keyboardSuppressed.contains(pairKey(r))`
-        // filter, ~lines 41 & 65). The actor read is async, so we hop off the
-        // synchronous choke point; the gate's non-ask default is just "deliver
-        // the staged text as-is" (the gate already applied/kept per its decision),
-        // so a fully-suppressed batch takes the same fast path. Suppression is
-        // keyboard-only — the transcript review reads neither signal.
-        Task { @MainActor in
-            let suppressed = await CorrectionStore.shared.keyboardSuppressedPairs()
-            // The ask ranking prior (net per pair) — nothing learned auto-applies.
-            let overrides = await CorrectionStore.shared.snapshot()
-            // V2-3 merge-teach one-shot (DECIDE here, SPEND after surfacing): a
-            // merge-shaped ask ("sri ram" → "Sriram") is offered exactly ONCE per
-            // phrase ever. Read the already-spent set now; the spend
-            // (`noteMergeAsked`) happens in `runAskSequence` when the ask is
-            // actually shown — never inside this decision.
-            let mergeAsked = await CorrectionStore.shared.mergeAskedPairs()
-            let offered = resolved.filter { item in
-                MacVocabGate.shouldOfferAsk(
-                    suppressionKey: item.suppressionKey,
-                    isMerge: item.isMerge,
-                    suppressed: suppressed,
-                    mergeAsked: mergeAsked)
-            }
-            // M3(a) ranking (mirror AskPolicy): weakest evidence first — the ask
-            // exists to catch a wrong apply — then most-confirmed, from the
-            // SAME overrides snapshot.
-            func prior(_ item: AskItem) -> Int {
-                overrides.first {
-                    $0.originalWord == CorrectionKey.normalize(item.from)
-                        && $0.term.lowercased() == item.term.lowercased()
-                }?.net ?? 0
-            }
-            let ranked = MacVocabGate.rankForAsk(offered, evidence: { $0.evidence }, prior: prior)
-            // M3(b) mixed-payload drop: cap at 3, then — if any normal ask rides
-            // this batch — drop the merge-teach asks (WITHOUT spending their
-            // one-shot; the spend only fires in runAskSequence for a surfaced merge).
-            let capped = Array(ranked.prefix(3))
-            let askable = MacVocabGate.applyMixedPayload(
-                capped, isMergeTeach: { $0.isMerge }, pairKey: { $0.suppressionKey })
-
-            guard !askable.isEmpty else {
-                // Every candidate is suppressed → no ask. Deliver the staged text
-                // unchanged (matches the no-ask default: keep the gate's outcome).
-                await delivery.deliver(text, originApp: originApp)
-                return
-            }
-
-            runAskSequence(
-                staged: text,
-                candidates: Array(askable),
-                index: 0,
-                delivery: delivery,
-                pill: pill,
-                originApp: originApp
-            )
-        }
-    }
-
-    /// One resolvable ask, anchored on a word currently PRESENT in the staged
-    /// text (Slice D). `from`/`term` carry the gate's pair; `applied` records
-    /// which the gate did so the bridge knows which edit each decision implies.
-    private struct AskItem {
-        let from: String
-        let term: String
-        let applied: Bool
-        /// 3-option ask (design §2a, alt0): the wider-span alternate — a longer
-        /// term (`altTerm`) over a wider in-text slice (`altFind`). Both nil when
-        /// the gate offered no alternate. Picking it splices `altFind`→`altTerm`.
-        let altTerm: String?
-        let altFind: String?
-        /// Merge-shaped ask ("sri ram" → "Sriram") — gated to one teach ask ever.
-        let isMerge: Bool
-        /// What the correction rests on — ranks the ask (weakest first).
-        let evidence: String?
-
-        /// Build only if the relevant word is present in `text`; returns nil
-        /// (drop the ask) when neither anchor survived the downstream rewrite.
-        init?(correction c: VocabularyRescorerHolder.UXCorrection, in text: String) {
-            self.from = c.from
-            self.term = c.to
-            self.isMerge = c.isMerge
-            self.evidence = c.evidence
-            if AppDelegate.containsWholeWord(c.to, in: text) {
-                // The term is in the text → the gate APPLIED it.
-                self.applied = true
-            } else if AppDelegate.containsWholeWord(c.from, in: text) {
-                // The original is in the text → the gate BLOCKED it.
-                self.applied = false
-            } else {
-                return nil
-            }
-            // Carry the alternate only when BOTH sides are present AND the wider
-            // in-text slice is actually present to splice over.
-            if let t = c.altTerm, let f = c.altFind,
-               AppDelegate.containsWholeWord(f, in: text) {
-                self.altTerm = t
-                self.altFind = f
-            } else {
-                self.altTerm = nil
-                self.altFind = nil
-            }
-        }
-
-        /// `"<normalized-original>|<lowercased-term>"` — the EXACT key shape
-        /// `CorrectionStore.keyboardSuppressedPairs()` emits, so the gate above
-        /// can test membership. Produced by the SAME package helper the store
-        /// uses to build the suppressed set (`CorrectionKey.pairKey`), so
-        /// produce-side and check-side keys are byte-identical. (This replaced a
-        /// Mac-local `normalizeForStore` that lacked the package's NFC precompose
-        /// + whitespace-collapse — a mismatch there would silently leak
-        /// suppressed pairs back into the ask stream, defeating the fix. Locked
-        /// by the package's `pair_key.json` / key-agreement fixture.)
-        var suppressionKey: String {
-            CorrectionKey.pairKey(originalWord: from, term: term)
-        }
-    }
-
-    /// Resolve the ask candidates SEQUENTIALLY in the one pill (§4), mutating the
-    /// staged text as each resolves, then `deliver()` exactly once when the queue
-    /// empties (§8 M4/M5 — every path terminates in one deliver). Recurses via the
-    /// pill's confirm / dismiss closures so the next ask only starts after the
-    /// current one resolves.
-    @MainActor
-    private func runAskSequence(
-        staged: String,
-        candidates: [AskItem],
-        index: Int,
-        delivery: DeliveryService,
-        pill: PillViewModel,
-        originApp: NSRunningApplication? = nil
-    ) {
-        guard index < candidates.count else {
-            // Queue drained — deliver the final staged text exactly once.
-            // Auto-Enter (if enabled) runs INSIDE deliver(), after the paste,
-            // which is correct relative to the resolved text (§8 M3).
-            Task { @MainActor in await delivery.deliver(staged, originApp: originApp) }
-            return
-        }
-
-        let c = candidates[index]
-        // The word this ask anchors on (term if applied, original if blocked).
-        // If a PRIOR ask's edit removed it from the staged text, the ask is moot
-        // — skip to the next without prompting.
-        let anchor = c.applied ? c.term : c.from
-        guard Self.containsWholeWord(anchor, in: staged) else {
-            runAskSequence(
-                staged: staged,
-                candidates: candidates,
-                index: index + 1,
-                delivery: delivery,
-                pill: pill,
-                originApp: originApp
-            )
-            return
-        }
-
-        let next: (String) -> Void = { [weak self] newStaged in
-            self?.runAskSequence(
-                staged: newStaged,
-                candidates: candidates,
-                index: index + 1,
-                delivery: delivery,
-                pill: pill,
-                originApp: originApp
-            )
-        }
-
-        // Trimmed/ellipsized snippet of staged text on each side of the
-        // in-text anchor word, so the expanded ask can show the word in its
-        // sentence. The anchor is `term` when the gate APPLIED it, `from` when
-        // it BLOCKED it (matches `anchor` above and the `applied` flag).
-        let (contextBefore, contextAfter) = Self.askContext(around: anchor, in: staged)
-
-        // 3-option ask (design §2a, alt0): offer the wider-span alternate only
-        // when the gate produced one AND its in-text slice is STILL present in the
-        // (possibly prior-ask-edited) staged text.
-        let alternate: String? = {
-            guard let altFind = c.altFind, c.altTerm != nil,
-                  Self.containsWholeWord(altFind, in: staged) else { return nil }
-            return c.altTerm
-        }()
-
-        // `original` shown on the Keep button is always the word the user spoke
-        // (`from`); `term` is always the offered vocabulary term.
-        pill.showAskCorrection(
-            original: c.from,
-            term: c.term,
-            contextBefore: contextBefore,
-            contextAfter: contextAfter,
-            applied: c.applied,
-            alternate: alternate,
-            onConfirm: {
-                // Confirm → the text should hold the TERM. For an applied
-                // candidate it already does; for a blocked one, splice from→term.
-                let confirmed = c.applied
-                    ? staged
-                    : Self.replaceWholeWord(c.from, with: c.term, in: staged)
-                // The confirm pastes the term this time and ranks future asks
-                // (Q3); the correction below adds the sounds-like. Nothing
-                // learned auto-applies.
-                Task {
-                    await CorrectionStore.shared.confirm(originalWord: c.from, term: c.term)
-                    // The correction itself — the one learning path (sounds-like,
-                    // decoder pair). The confirm above only ranks future asks.
-                    let receipt = await VocabularyLearning.shared.apply(
-                        .correct(heard: c.from, term: c.term))
-                    // Mark the review record answered so a later pick there
-                    // can't count the same correction twice; its Undo reverses
-                    // exactly this apply.
-                    await CorrectionProvenance.shared.noteLiveVerdict(
-                        originalWord: c.from, term: c.term, verdict: "term", receipt: receipt)
-                }
-                next(confirmed)
-            },
-            onDismiss: {
-                // Keep-original → the text should hold the ORIGINAL word. For an
-                // applied candidate, splice term→from; for a blocked one it's
-                // already the original.
-                let kept = c.applied
-                    ? Self.replaceWholeWord(c.term, with: c.from, in: staged)
-                    : staged
-                // PERSIST the reject so this pair stops re-asking every recording
-                // (activates the previously-dead suppression path; mirrors
-                // CorrectionReviewModel.swift's only writer). An explicit keep IS a
-                // rejection here (unlike the iOS publisher's passive-ignore, which
-                // had a separate transcript-review surface to learn from):
-                //   * BLOCKED pair (common-word near-miss): `net` ignores keeps, so
-                //     count it via `noteBlockedKeep` — at the threshold the gate
-                //     above suppresses it.
-                //   * APPLIED pair (silent-OOV): the gate changed the text and the
-                //     owner reverted it → record the negative signal via `revert`
-                //     (net ≤ −1 demotes any learned override too).
-                Task {
-                    if c.applied {
-                        await CorrectionStore.shared.revert(originalWord: c.from, term: c.term)
-                    } else {
-                        await CorrectionStore.shared.noteBlockedKeep(originalWord: c.from, term: c.term)
-                    }
-                    // An explicit Keep pauses the decoder pair (the one learning
-                    // path). The timeout / outside-click path (`onAccept`)
-                    // deliberately does not (design review #8).
-                    let receipt = await VocabularyLearning.shared.apply(
-                        .keepOriginal(heard: c.from, term: c.term))
-                    // Mark the review record answered, so the pane can't count
-                    // a second keep for the same Keep.
-                    await CorrectionProvenance.shared.noteLiveVerdict(
-                        originalWord: c.from, term: c.term, verdict: "original", receipt: receipt)
-                }
-                next(kept)
-            },
-            onAccept: { [weak delivery] in
-                // Timeout (10s) / outside-click → match jot-mobile's keyboard:
-                // PASTE the accumulated gate defaults (staged as-is — prior asks'
-                // edits are already in it) IMMEDIATELY and END the sequence. Do
-                // NOT advance through the remaining asks' countdowns; "automatically
-                // paste it" means one shot, not a wait-through.
-                // Timeout-as-keep is the same "keep original" verdict as onDismiss,
-                // so persist it identically — otherwise an ignored ask re-surfaces
-                // forever. Only the CURRENT ask is recorded (the remaining asks in
-                // the queue were never shown, so the owner made no verdict on them).
-                if c.applied {
-                    Task { await CorrectionStore.shared.revert(originalWord: c.from, term: c.term) }
-                } else {
-                    Task { await CorrectionStore.shared.noteBlockedKeep(originalWord: c.from, term: c.term) }
-                }
-                Task { @MainActor in await delivery?.deliver(staged, originApp: originApp) }
-            },
-            onAlternate: (alternate != nil) ? {
-                // Pick the wider-span alternate (design §2a/c): splice altFind →
-                // altTerm in the staged text, then TEACH the CHOSEN mapping ±1 —
-                // mirroring the base `confirm` write (no new ledger code; the live
-                // pill teaches CorrectionStore directly, same as onConfirm).
-                guard let altFind = c.altFind, let altTerm = c.altTerm else {
-                    next(staged); return
-                }
-                let widened = Self.replaceWholeWord(altFind, with: altTerm, in: staged)
-                // KNOWN LIMITATION (M2 / backlog tech.vocab-alt-mapping-auto-apply):
-                // `altFind` is a MULTI-WORD key ("sri ram") and the gate's override
-                // step consults only single-token originalWords, so this confirmed
-                // alternate does NOT auto-apply next time — the pill re-offers it.
-                // This matches the ledger-accounting shape (and iOS's re-offer
-                // behavior), so the write stays; a gate change to consult multi-word
-                // override keys is filed as a cross-platform backlog item.
-                Task {
-                    await CorrectionStore.shared.confirm(originalWord: altFind, term: altTerm)
-                    await VocabularyLearning.shared.apply(.correct(heard: altFind, term: altTerm))
-                }
-                next(widened)
-            } : nil
-        )
-
-        // Merge-teach one-shot SPEND (design §1 invariant — decide in the filter,
-        // spend AFTER the ask is surfaced): the pill is now showing this ask, so
-        // burn its single shot. Adjudicated or not (bounded fatigue); never inside
-        // the eligibility decision above.
-        if c.isMerge {
-            Task { await CorrectionStore.shared.noteMergeAsked(originalWord: c.from, term: c.term) }
-        }
-    }
-
-    /// Whole-word, case-insensitive containment test. Mirrors the gate's
-    /// word-boundary logic so "Lisa" doesn't match inside "Lisbon".
-    nonisolated static func containsWholeWord(_ word: String, in text: String) -> Bool {
-        wholeWordRange(of: word, in: text) != nil
-    }
-
-    /// Replace the FIRST whole-word occurrence of `word` with `replacement`,
-    /// case-insensitive. Used for keep-original (term → original). Only the first
-    /// occurrence is touched — the de-duped correction set carries one entry per
-    /// `(from,to)` pair, and replacing all could over-revert a legitimately
-    /// repeated term.
-    nonisolated static func replaceWholeWord(_ word: String, with replacement: String, in text: String) -> String {
-        guard let range = wholeWordRange(of: word, in: text) else { return text }
-        return text.replacingCharacters(in: range, with: replacement)
-    }
-
-    /// Trimmed, ellipsized snippet of `text` on each side of the first
-    /// whole-word occurrence of `word`, for the expanded ask's context line.
-    /// Caps each side at `maxContextChars` and prefixes / suffixes a "…" when
-    /// truncated. Falls back to empty strings when `word` isn't found.
-    nonisolated static func askContext(around word: String, in text: String) -> (before: String, after: String) {
-        guard let range = wholeWordRange(of: word, in: text) else { return ("", "") }
-        let maxContextChars = 24
-        var before = String(text[text.startIndex..<range.lowerBound])
-        var after = String(text[range.upperBound..<text.endIndex])
-        if before.count > maxContextChars {
-            before = "…" + before.suffix(maxContextChars)
-        }
-        if after.count > maxContextChars {
-            after = after.prefix(maxContextChars) + "…"
-        }
-        return (before, after)
-    }
-
-    /// First whole-word range of `word` in `text` (case-insensitive). A match is
-    /// whole-word only when the chars on either side are non-letters.
-    nonisolated private static func wholeWordRange(of word: String, in text: String) -> Range<String.Index>? {
-        guard !word.isEmpty else { return nil }
-        var search = text.startIndex
-        while let r = text.range(of: word, options: [.caseInsensitive], range: search..<text.endIndex) {
-            let before: Character? = r.lowerBound == text.startIndex ? nil : text[text.index(before: r.lowerBound)]
-            let after: Character? = r.upperBound == text.endIndex ? nil : text[r.upperBound]
-            let okBefore = !(before?.isLetter ?? false)
-            let okAfter = !(after?.isLetter ?? false)
-            if okBefore && okAfter { return r }
-            search = r.upperBound
-        }
-        return nil
     }
 
     private func presentSetupWizardIfNeeded(

@@ -168,6 +168,9 @@ struct AppServices {
     let menuBar: JotMenuBarController
     let overlay: OverlayWindowController
     let recordingPersister: RecordingPersister
+    /// The one `$lastResult` sink: save → row id → paste (with any "Did you
+    /// mean…?" asks written back to the saved row). Started by `AppDelegate`.
+    let dictationBridge: DictationDeliveryBridge
     let retention: RetentionService
     /// "Never lose audio" safety net (docs/resilient-transcription/design.md):
     /// one-time startup scan that adopts any audio file in
@@ -757,6 +760,13 @@ enum JotComposition {
             context: modelContainer.mainContext,
             transcriberHolder: transcriberHolder
         )
+        let dictationBridge = DictationDeliveryBridge(
+            recorder: recorder,
+            persister: recordingPersister,
+            delivery: delivery,
+            prompt: overlay.pillViewModel,
+            context: modelContainer.mainContext
+        )
 
         // Audio-file transcription: the file-job service reads the live
         // transcriber off the same `transcriberHolder` every call (a model
@@ -807,6 +817,7 @@ enum JotComposition {
             menuBar: menuBar,
             overlay: overlay,
             recordingPersister: recordingPersister,
+            dictationBridge: dictationBridge,
             retention: retention,
             orphanRecordingScanner: orphanRecordingScanner,
             soundTriggers: soundTriggers,

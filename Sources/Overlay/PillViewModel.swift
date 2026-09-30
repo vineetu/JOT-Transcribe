@@ -42,7 +42,7 @@ final class PillViewModel: ObservableObject {
         case savedToRecents(preview: String)
         /// Slice D (ask-before-paste, §9 Option B). The live "Did you mean
         /// \"<term>\"?" prompt shown BEFORE the paste lands, while the delivery
-        /// bridge holds the staged text. `original` is the word currently in the
+        /// bridge holds the paste. `original` is the word currently in the
         /// text (what TDT wrote, or — for the silent-OOV case — what the gate
         /// would revert to on keep); `term` is the vocabulary term offered. The
         /// resolution closures live on `PillViewModel` (`onAskConfirm` /
@@ -51,7 +51,7 @@ final class PillViewModel: ObservableObject {
         /// closures — never via `scheduleDismiss` (which would hide WITHOUT
         /// delivering and orphan the held paste; see §8 M4/M5).
         /// `contextBefore` / `contextAfter` are the (trimmed, ellipsized)
-        /// snippet of staged text on each side of the in-text word, so the
+        /// snippet of the saved text on each side of the in-text word, so the
         /// expanded ask can show the word in its sentence. `applied` is `true`
         /// when the term is currently in the text (silent-OOV APPLIED case —
         /// the in-text word is `term`) and `false` when the original is in the
@@ -160,7 +160,7 @@ final class PillViewModel: ObservableObject {
     @Published private(set) var isAwaitingAskCorrection: Bool = false
 
     /// Slice D resolution closures, supplied by the delivery bridge for the
-    /// CURRENT ask. The bridge owns the staged text + the single `deliver()`;
+    /// CURRENT ask. The bridge owns the saved text + the single `deliver()`;
     /// these closures route the pill's confirm / dismiss decision back to it.
     /// Stored on the view model (not in the case payload) so `PillState` stays
     /// `Equatable`. Exactly one fires per ask (idempotent — `resolveAsk`
@@ -169,7 +169,7 @@ final class PillViewModel: ObservableObject {
     private var onAskDismiss: (() -> Void)?
     /// Fired when the ask resolves by NON-interaction — the 10s timeout or an
     /// outside-click. Distinct from dismiss: it ACCEPTS the gate's current
-    /// decision (delivers the staged text as-is) rather than reverting to the
+    /// decision (delivers the saved text as-is, recording no answer) rather than reverting to the
     /// original. So an ignored auto-correction stays applied, and an ignored
     /// common-word near-miss stays un-replaced — i.e. the user never has to click
     /// for the gate's default to take effect.
@@ -448,7 +448,7 @@ final class PillViewModel: ObservableObject {
             // is already safe in Recents) BEFORE the recording pill claims the
             // surface — we deliberately do NOT fire the held paste, to avoid a
             // late async paste landing in the new focus / stomping this pill.
-            forceResolvePendingAskKeepOriginal()
+            abandonPendingAsk()
             isRewriteVoiceCapture = false
             recordingStartedAt = startedAt
             transition(to: .recording(elapsed: Date().timeIntervalSince(startedAt), streamingPartial: latestPartial))
@@ -722,8 +722,9 @@ final class PillViewModel: ObservableObject {
     /// Pick the third choice — the wider-span alternate term (design §2a, alt0).
     func alternateAsk() { resolveAsk(outcome: .alternate) }
 
-    /// Non-interactive resolution (10s timeout / outside-click) — accept the
-    /// gate's default (staged text as-is), so an ignored ask still delivers.
+    /// Non-interactive resolution (10s timeout / outside-click) — the gate's
+    /// default is already in the text, so an ignored ask records nothing and
+    /// just delivers.
     func acceptAsk() { resolveAsk(outcome: .accept) }
 
     /// THE single resolution path for an ask (§8 M4/M5). Idempotent: the first
@@ -756,15 +757,16 @@ final class PillViewModel: ObservableObject {
         }
     }
 
-    /// Force-abandon a pending ask when a NEW recording begins (the recorder is
-    /// about to claim the pill). §6 offers two options — deliver-kept-original, or
-    /// abandon since the recording is already saved to Recents. We ABANDON: the
-    /// alternative (firing the deliver chain here) would async-paste the prior
-    /// transcript into whatever now has focus AND stomp the fresh `.recording`
-    /// pill with a late `.success`. The user can paste-last or open Recents to
-    /// recover the abandoned transcript. Closures are dropped WITHOUT firing, and
-    /// the ask is torn down so the recording pill takes over cleanly.
-    func forceResolvePendingAskKeepOriginal() {
+    /// Abandon a pending ask when a NEW recording begins (the recorder is about
+    /// to claim the pill): no answer is recorded, nothing is pasted, and the
+    /// text is left exactly as saved (earlier answers in the same sequence
+    /// already wrote it). §6 offers two options — deliver, or abandon since the
+    /// recording is already saved to Recents. We ABANDON: delivering here would
+    /// async-paste the prior transcript into whatever now has focus AND stomp
+    /// the fresh `.recording` pill with a late `.success`. Paste Last and
+    /// Recents both hold the saved text. Closures are dropped WITHOUT firing,
+    /// and the ask is torn down so the recording pill takes over cleanly.
+    func abandonPendingAsk() {
         guard isAwaitingAskCorrection else { return }
         onAskConfirm = nil
         onAskDismiss = nil

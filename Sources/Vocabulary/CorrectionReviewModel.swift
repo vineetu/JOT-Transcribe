@@ -3,10 +3,11 @@ import SwiftData
 import SwiftUI
 
 /// Shared state + actions for the correction-review surface in
-/// `RecordingDetailView` (the summary-row + accordion). Owns the per-occurrence
-/// text-edit anchoring in ONE place so verdict picks and the displayed rows stay
-/// in sync (plan §v2-C/F). The model is created by `RecordingDetailView` and
-/// drives `CorrectionReviewSection`.
+/// `RecordingDetailView` (the summary-row + accordion). Verdict picks edit the
+/// text through `ReviewRecordEdit` — the same per-occurrence path the live ask
+/// uses — so picks, the live ask, and the displayed rows stay in sync (plan
+/// §v2-C/F). The model is created by `RecordingDetailView` and drives
+/// `CorrectionReviewSection`.
 ///
 /// **Ported from jot-mobile** (`Jot/App/Vocabulary/CorrectionReviewModel.swift`),
 /// MVP adaptations:
@@ -15,7 +16,8 @@ import SwiftUI
 ///     `CrossProcessNotification`) — no macOS analogue.
 ///   - Dropped `marks()` / `flash` / `flashSpan` — the inline `NSTextView`
 ///     underline marks + flash wash are deferred (review-ux.md §1 "Later").
-///     The reconcile / verdict / edit logic is otherwise byte-for-byte the same.
+///   - The text edit goes through `RecordingTextMutation` (via
+///     `ReviewRecordEdit`), like every other writer of a recording's text.
 @MainActor
 @Observable
 final class CorrectionReviewModel {
@@ -46,7 +48,7 @@ final class CorrectionReviewModel {
         -> (before: String, gated: String, after: String)? {
         let text = recording.transcript
         let word = r.outcome == "applied" ? r.term : r.originalWord
-        guard let range = resolveSpan(word: word, offset: r.publishedStart, in: text)
+        guard let range = ReviewRecordEdit.anchoredRange(of: word, for: r, in: text)
         else { return nil }
         let beforeStart = text.index(range.lowerBound, offsetBy: -window, limitedBy: text.startIndex) ?? text.startIndex
         let afterEnd = text.index(range.upperBound, offsetBy: window, limitedBy: text.endIndex) ?? text.endIndex
@@ -60,8 +62,10 @@ final class CorrectionReviewModel {
     // MARK: - Load
 
     /// Refresh from the actor truth, reconciling every record's anchor to the
-    /// CURRENT transcript text (hand-edits, keyboard-verdict drains, and this
-    /// model's own verdict edits all shift anchors through the same diff).
+    /// CURRENT transcript text (hand-edits, live-ask answers, and this model's
+    /// own verdict edits all shift anchors through the same reconcile). The
+    /// detail view also calls this whenever `RecordingTextMutation` reports a
+    /// change to this recording from anywhere else.
     func reload() async {
         payload = await CorrectionProvenance.shared.reconciledPayload(
             transcriptID: recording.id, currentText: recording.transcript)
@@ -77,12 +81,11 @@ final class CorrectionReviewModel {
         let r = record(forKey: r.key) ?? r
         let priorVerdict = payload.verdicts[r.key]   // for the blocked-keep transition guard below
         // Verdicts here are only term / original — see CorrectionReviewSection.
-        let effectiveChoice = choice
         // kept + term → apply the term here; applied + original → revert here.
-        if effectiveChoice == "term", r.outcome == "kept" {
-            await reportSelfEdit(editText(r, find: r.originalWord, replaceWith: r.term), key: r.key)
-        } else if effectiveChoice == "original", r.outcome == "applied" {
-            await reportSelfEdit(editText(r, find: r.term, replaceWith: r.originalWord), key: r.key)
+        if choice == "term", r.outcome == "kept" {
+            await editOccurrence(of: r, find: r.originalWord, replaceWith: r.term)
+        } else if choice == "original", r.outcome == "applied" {
+            await editOccurrence(of: r, find: r.term, replaceWith: r.originalWord)
         }
         // Learning (Revision 2): picking the term is a correction, keeping the
         // original pauses the pair — one `VocabularyLearning.apply`, the path
@@ -92,30 +95,30 @@ final class CorrectionReviewModel {
         // The receipt is stored under this verdict so Undo reverses exactly it
         // (a switch term → original keeps the term pick's receipt too).
         var receipt: VocabularyLearning.Receipt?
-        if priorVerdict != effectiveChoice,
+        if priorVerdict != choice,
            !payload.records.contains(where: {
-               $0.key != r.key && $0.mappingKey == r.mappingKey && payload.verdicts[$0.key] == effectiveChoice
+               $0.key != r.key && $0.mappingKey == r.mappingKey && payload.verdicts[$0.key] == choice
            }) {
-            if effectiveChoice == "term" {
+            if choice == "term" {
                 receipt = await VocabularyLearning.shared.apply(
                     .correct(heard: r.originalWord, term: r.term))
-            } else if effectiveChoice == "original" {
+            } else if choice == "original" {
                 receipt = await VocabularyLearning.shared.apply(
                     .keepOriginal(heard: r.originalWord, term: r.term))
             }
         }
         let delta = await CorrectionProvenance.shared.setVerdict(
-            transcriptID: recording.id, record: r, verdict: effectiveChoice, receipt: receipt)
+            transcriptID: recording.id, record: r, verdict: choice, receipt: receipt)
         await applyLearning(delta)
         // "Keep original" on a BLOCKED pair contributes 0 to `net` (demote needs an
         // APPLIED revert), so a common-word proposal like "okay"→"Okta" would be
-        // re-asked forever no matter how often it's rejected. Count it separately so
-        // the keyboard stops re-asking after `keyboardKeepSuppressThreshold` keeps.
-        // Keyboard-only suppression (inert on macOS); the transcript pane still
-        // surfaces it. Kept for file parity + so a future keyboard never drifts.
-        // Guard on a genuine transition INTO "original" so a re-pick of the same
-        // verdict can't double-count (the increment is otherwise non-idempotent).
-        if effectiveChoice == "original", r.outcome == "kept", priorVerdict != "original" {
+        // re-asked forever no matter how often it's rejected. Count it separately:
+        // the live ask's suppression gate stops re-asking after
+        // `keyboardKeepSuppressThreshold` keeps (the transcript pane still
+        // surfaces it). Guard on a genuine transition INTO "original" so a
+        // re-pick of the same verdict can't double-count (the increment is
+        // otherwise non-idempotent).
+        if choice == "original", r.outcome == "kept", priorVerdict != "original" {
             await CorrectionStore.shared.noteBlockedKeep(originalWord: r.originalWord, term: r.term)
         }
         await reload()
@@ -133,14 +136,17 @@ final class CorrectionReviewModel {
         let editClosed = payload.isEditClosed(r)
         let common = CorrectionStore.shared.refusesLearning(originalWord: r.originalWord)
         if v == "term", r.outcome == "kept" {
-            await reportSelfEdit(editText(r, find: r.term, replaceWith: r.originalWord), key: r.key)
+            await editOccurrence(of: r, find: r.term, replaceWith: r.originalWord)
         } else if v == "original", r.outcome == "applied" {
-            await reportSelfEdit(editText(r, find: r.originalWord, replaceWith: r.term), key: r.key)
+            await editOccurrence(of: r, find: r.originalWord, replaceWith: r.term)
+        } else if v == "alt0", let alt = r.alternates?.first {
+            // The live ask's wider alternate: its edit is anchored at the record.
+            await editOccurrence(of: r, find: alt.term, replaceWith: alt.find)
         }
         let delta = await CorrectionProvenance.shared.clearVerdict(transcriptID: recording.id, record: r)
         if !(editClosed && common) { await applyLearning(delta) }
         // Symmetric with the blocked-keep increment in `pick`: undoing a "keep
-        // original" on a blocked pair gives back its `blockedKeeps`, so the keyboard
+        // original" on a blocked pair gives back its `blockedKeeps`, so the
         // suppression count never drifts above the real number of standing keeps.
         if v == "original", r.outcome == "kept" {
             await CorrectionStore.shared.clearBlockedKeep(originalWord: r.originalWord, term: r.term)
@@ -162,19 +168,6 @@ final class CorrectionReviewModel {
         await reload()
     }
 
-    /// Hand the exact span of one of OUR OWN edits to the provenance actor —
-    /// anchors shift by report, never by diff-inference, for self edits (a diff
-    /// is ambiguous when replacement and replaced word share a suffix, e.g.
-    /// "nathan" → "Ramanathan", and would shift this record's anchor off its
-    /// own word, breaking Undo).
-    private func reportSelfEdit(_ edit: SelfEdit?, key: String) async {
-        guard let edit else { return }
-        await CorrectionProvenance.shared.noteSelfEdit(
-            transcriptID: recording.id, recordKey: key,
-            start: edit.start, oldLength: edit.oldLength,
-            newLength: edit.newLength, newText: edit.newText)
-    }
-
     /// Move the mapping's global learning net by the provenance-computed deltas.
     /// The package's `setVerdict`/`clearVerdict` now return `[MappingDelta]` (an
     /// alt0 verdict reconciles the base pair AND the chosen alternate's mapping),
@@ -187,61 +180,16 @@ final class CorrectionReviewModel {
 
     // MARK: - Deterministic per-occurrence text edit (plan §v2-A)
 
-    /// What one verdict edit did to the text, in Character offsets — reported
-    /// to the provenance actor so anchors shift exactly (see `reportSelfEdit`).
-    struct SelfEdit {
-        let start: Int
-        let oldLength: Int
-        let newLength: Int
-        let newText: String
-    }
-
-    private func editText(_ r: CorrectionProvenance.Record, find word: String, replaceWith replacement: String) -> SelfEdit? {
+    /// Replace `word` at `r`'s anchored span. STRICT resolution only — if the
+    /// word isn't EXACTLY at its reconciled anchor, the user edited it away;
+    /// the verdict is still recorded (learning) but a guessed span is never
+    /// edited (the old nearest-match fallback fired verdict edits on the WRONG
+    /// occurrence after a hand-edit).
+    private func editOccurrence(of r: CorrectionProvenance.Record, find word: String,
+                                replaceWith replacement: String) async {
         let text = recording.transcript
-        // STRICT resolution only — if the word isn't EXACTLY at its reconciled
-        // anchor, the user edited it away; record the verdict (learning) but
-        // never edit a guessed span. The old nearest-match fallback here is what
-        // fired verdict edits on the WRONG occurrence after a hand-edit.
-        guard let target = resolveSpan(word: word, offset: r.publishedStart, in: text) else { return nil }
-        var newText = text
-        newText.replaceSubrange(target, with: replacement)
-        guard newText != text else { return nil }
-        recording.transcript = newText
-        do {
-            try modelContext.save()
-            return SelfEdit(
-                start: text.distance(from: text.startIndex, to: target.lowerBound),
-                oldLength: text.distance(from: target.lowerBound, to: target.upperBound),
-                newLength: replacement.count,
-                newText: newText)
-        } catch {
-            modelContext.rollback()
-            return nil
-        }
-    }
-
-    /// Whole-word span of `word` starting EXACTLY at `offset` — nil otherwise.
-    /// Strict only: `publishedStart` anchors are reconciled to the live text at
-    /// every reload, so an exact miss means the span was genuinely edited away.
-    /// Fail safe (no edit) rather than guess a repeat of the same word.
-    private func resolveSpan(word: String, offset: Int, in text: String) -> Range<String.Index>? {
-        let needle = word.trimmingCharacters(in: CharacterSet(charactersIn: " .,;:!?\"'\u{2019}\u{201D})]}"))
-        guard !needle.isEmpty else { return nil }
-        return Self.wholeWordRanges(of: needle, in: text)
-            .first { text.distance(from: text.startIndex, to: $0.lowerBound) == offset }
-    }
-
-    /// Every whole-word, case-insensitive occurrence of `word` in `text`.
-    static func wholeWordRanges(of word: String, in text: String) -> [Range<String.Index>] {
-        var ranges: [Range<String.Index>] = []
-        var search = text.startIndex
-        while let r = text.range(of: word, options: [.caseInsensitive], range: search..<text.endIndex) {
-            let before: Character? = r.lowerBound == text.startIndex ? nil : text[text.index(before: r.lowerBound)]
-            let after: Character? = r.upperBound == text.endIndex ? nil : text[r.upperBound]
-            if !(before?.isLetter ?? false) && !(after?.isLetter ?? false) { ranges.append(r) }
-            search = r.upperBound
-            if search == text.endIndex { break }
-        }
-        return ranges
+        guard let target = ReviewRecordEdit.anchoredRange(of: word, for: r, in: text) else { return }
+        await ReviewRecordEdit.replace(NSRange(target, in: text), with: replacement, answering: r,
+                                       in: recording, context: modelContext)
     }
 }

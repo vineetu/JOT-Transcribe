@@ -101,10 +101,9 @@ final class RetentionService {
         if recordingFetchFailed && sessionFetchFailed { return }
         guard !expiredRecordings.isEmpty || !expiredSessions.isEmpty else { return }
 
-        for recording in expiredRecordings {
-            // `RecordingStore.delete` removes the WAV on disk + the row.
-            RecordingStore.delete(recording, from: context)
-        }
+        // `RecordingStore.delete` removes the WAVs on disk, the rows, and
+        // everything derived from them, in one batch.
+        RecordingStore.delete(expiredRecordings, from: context)
         for session in expiredSessions {
             // No WAV to clean up; row-only delete.
             RecordingStore.delete(session, from: context)

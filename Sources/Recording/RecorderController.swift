@@ -48,13 +48,17 @@ final class RecorderController: ObservableObject {
             }
         }
     }
+    /// The last dictation's text — what Paste Last / Copy Last give. Set
+    /// with `lastResult` to the text the session produced (post-cleanup when
+    /// AI cleanup ran), then kept equal to what was actually delivered and
+    /// saved via `adoptDeliveredText(_:)` when a "Did you mean…?" answer
+    /// changes it.
     @Published private(set) var lastTranscript: String?
     /// Timestamp paired with `lastTranscript`. Updated on every write so
     /// `DeliveryService.pasteLast()` can compare against the rewrite
     /// controller's last-output time and replay whichever fired more
     /// recently. Nil until the first transcript lands.
     @Published private(set) var lastTranscriptAt: Date?
-    @Published private(set) var lastTransformedTranscript: String?
     @Published private(set) var lastResult: TranscriptionResult?
 
     /// One-shot informational notice for the next pill cycle. Set by
@@ -95,14 +99,19 @@ final class RecorderController: ObservableObject {
     /// `pasteLast()` (design §7 R4).
     @Published private(set) var lastResultOriginApp: NSRunningApplication?
 
-    /// v1.14 recording-safety contract. When `true`, the delivery bridge
-    /// in `AppDelegate` skips the paste step for the *next* successful
-    /// transcript only; the recording still persists to Recents via
-    /// `RecordingPersister`. Read-and-clear in the bridge — the flag is
-    /// session-scoped, not sticky. Set by `stopWithoutPaste()` (called
-    /// from the in-app Record pill) so clicking the pill again stops
-    /// the recording without pasting at the user's cursor.
-    @Published var skipNextPaste: Bool = false
+    /// v1.14 recording-safety contract: `true` when the session that
+    /// produced `lastResult` was stopped with `stopWithoutPaste()` (the
+    /// in-app Record pill, Esc while recording) — the delivery bridge saves
+    /// it to Recents without pasting. Stamped with `lastResult` like
+    /// `lastResultOriginApp`, so it travels with THAT transcript and can
+    /// never leak onto a later one (a session whose transcription failed
+    /// simply never publishes it).
+    @Published private(set) var lastResultSkipsPaste: Bool = false
+
+    /// The in-flight session's stop-without-paste request. Reset when each
+    /// recording starts; read once at stop and stamped onto
+    /// `lastResultSkipsPaste`.
+    private var sessionSkipsPaste = false
 
     /// Read (not written) here — `DeliveryService` and `GeneralPane` own
     /// these as the source of truth. Mirrored via `@AppStorage` so Origin
@@ -115,8 +124,14 @@ final class RecorderController: ObservableObject {
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "Recorder")
     private var autoRecoveryTask: Task<Void, Never>?
-    private var transformTask: Task<Void, Never>?
-    private var pendingTransform: (recording: AudioRecording, result: TranscriptionResult, rawText: String)?
+    /// The dictation whose AI cleanup is running, so `cancel()` can stop it
+    /// and discard its finalized audio.
+    private struct Cleanup {
+        let id: UUID
+        let recording: AudioRecording
+        let task: Task<Void, Never>
+    }
+    private var cleanup: Cleanup?
     private var activeFlowTask: Task<Void, Never>?
     private var stopContinuation: CheckedContinuation<Void, Error>?
     private var pipelineToken: VoiceInputPipeline.Token?
@@ -182,19 +197,30 @@ final class RecorderController: ObservableObject {
     /// resulting transcript. The recording still flows through
     /// transcription → persistence; only the synthetic ⌘V is skipped.
     ///
-    /// Called from the in-app Record pill's "click to stop" path. The
-    /// flag is read-and-cleared by `AppDelegate`'s delivery bridge so
-    /// it never bleeds into the next session. No-op when not currently
-    /// recording.
+    /// Called from the in-app Record pill's "click to stop" path and Esc
+    /// while recording. The request belongs to this session only: it is
+    /// stamped onto this session's result (`lastResultSkipsPaste`) and reset
+    /// when the next recording starts. No-op when not currently recording.
     func stopWithoutPaste() async {
         guard case .recording = state else { return }
-        skipNextPaste = true
+        sessionSkipsPaste = true
         await toggle()
     }
 
-    /// Drop a recording in progress or cancel Transform. The flow task is
-    /// always cancelled first; pipeline teardown only happens if this
-    /// controller still owns a valid pipeline token.
+    /// The text that was actually delivered (and saved) for the last
+    /// dictation, when a "Did you mean…?" answer changed it after
+    /// `lastResult` — so Paste Last / Copy Last give what the user got, not
+    /// the pre-answer text.
+    func adoptDeliveredText(_ text: String) {
+        guard !text.isEmpty, lastTranscript != text else { return }
+        lastTranscript = text
+    }
+
+    /// Drop a recording in progress, or discard a dictation whose AI cleanup
+    /// is running — no paste, no Recents row, and its audio file removed,
+    /// the same as cancelling any recording (the Esc contract in
+    /// `HotkeyRouter`). The flow task is always cancelled first; pipeline
+    /// teardown only happens if this controller still owns a valid token.
     func cancel() async {
         activeFlowTask?.cancel()
         activeFlowTask = nil
@@ -206,15 +232,14 @@ final class RecorderController: ObservableObject {
 
         switch state {
         case .transforming:
-            transformTask?.cancel()
-            transformTask = nil
-            if let pending = pendingTransform {
-                lastTransformedTranscript = nil
-                lastTranscript = pending.rawText
-                lastTranscriptAt = .now
-                lastAudioRecording = pending.recording
-                lastResult = pending.result
-                pendingTransform = nil
+            // The cleanup task checks `Task.isCancelled` after its await, so
+            // nothing is published for this session. Nothing will reference
+            // the finalized audio, and the orphan scan would otherwise adopt
+            // it as a "Needs transcription" row next launch.
+            if let cleanup {
+                cleanup.task.cancel()
+                try? FileManager.default.removeItem(at: cleanup.recording.fileURL)
+                self.cleanup = nil
             }
             state = .idle
         case .recording, .transcribing:
@@ -242,6 +267,11 @@ final class RecorderController: ObservableObject {
     /// ask after a failure.
     private func noteSuccessfulDelivery(text: String, durationSeconds: TimeInterval) {
         guard !text.isEmpty else { return }
+        #if DEBUG
+        // The replay harness drives this controller next to the owner's
+        // running app; its dictations must not count toward their stats.
+        guard !DictationReplayEnvironment.isActive else { return }
+        #endif
         DonationStore.shared.incrementRecordingCount()
         DictationStats.record(durationSeconds: durationSeconds)
     }
@@ -304,6 +334,9 @@ final class RecorderController: ObservableObject {
         // (including the reciprocal mic→file guard and its documented
         // residual-risk window).
         FileTranscriptionIngest.shared?.cancelInFlight()
+
+        // A stop-without-paste request belongs to the session it was made in.
+        sessionSkipsPaste = false
 
         // "Return to the app I started in" (design §5.1): capture Origin
         // at the TRIGGER instant — before `pipeline.startRecording`'s
@@ -371,6 +404,9 @@ final class RecorderController: ObservableObject {
             // so even if Transform rewrites the transcript the {from,to} pairs are
             // still meaningful (a non-match simply drops that ask).
             let corrections = stopResult.corrections
+            // Final once recording has stopped (it can only be set while
+            // recording); stamped onto this session's result below.
+            let skipsPaste = sessionSkipsPaste
             if pipelineToken == token {
                 pipelineToken = nil
             }
@@ -408,7 +444,6 @@ final class RecorderController: ObservableObject {
             )
 
             if llmConfig.transformEnabled && llmConfig.isMinimallyConfigured {
-                pendingTransform = (recording: recording, result: result, rawText: rawText)
                 guard pipeline.stillActive(token) else { return }
                 state = .transforming
                 let service = AIServices.current(
@@ -417,16 +452,15 @@ final class RecorderController: ObservableObject {
                     appleClient: appleIntelligence,
                     logSink: logSink
                 )
-                transformTask = Task { @MainActor [weak self] in
+                let cleanupID = UUID()
+                let task = Task { @MainActor [weak self] in
                     guard let self else { return }
-                    defer {
-                        self.pendingTransform = nil
-                        self.transformTask = nil
-                    }
+                    // Only this cleanup's own slot: a cancelled cleanup
+                    // finishing late must not clear the NEXT dictation's.
+                    defer { if self.cleanup?.id == cleanupID { self.cleanup = nil } }
                     do {
                         let transformed = try await service.transform(transcript: rawText)
                         guard !Task.isCancelled else { return }
-                        self.lastTransformedTranscript = transformed
                         self.lastTranscript = transformed
                         self.lastTranscriptAt = .now
                         // Per `docs/plans/mic-disconnect-handling.md`:
@@ -436,6 +470,7 @@ final class RecorderController: ObservableObject {
                         self.lastAudioRecording = recording
                         self.lastFallbackNotice = composedNotice
                         self.lastResultOriginApp = origin
+                        self.lastResultSkipsPaste = skipsPaste
                         self.lastResult = result
                         self.noteSuccessfulDelivery(text: transformed, durationSeconds: recording.duration)
                         self.state = .idle
@@ -450,25 +485,26 @@ final class RecorderController: ObservableObject {
                                 context: ["error": "\((error as NSError).domain) code=\((error as NSError).code)"]
                             )
                         }
-                        self.lastTransformedTranscript = nil
                         self.lastTranscript = rawText
                         self.lastTranscriptAt = .now
                         self.lastAudioRecording = recording
                         self.lastFallbackNotice = composedNotice
                         self.lastResultOriginApp = origin
+                        self.lastResultSkipsPaste = skipsPaste
                         self.lastResult = result
                         self.noteSuccessfulDelivery(text: rawText, durationSeconds: recording.duration)
                         self.state = .idle
                     }
                 }
+                cleanup = Cleanup(id: cleanupID, recording: recording, task: task)
             } else {
                 guard pipeline.stillActive(token) else { return }
-                lastTransformedTranscript = nil
                 lastTranscript = rawText
                 lastTranscriptAt = .now
                 lastAudioRecording = recording
                 lastFallbackNotice = composedNotice
                 lastResultOriginApp = origin
+                lastResultSkipsPaste = skipsPaste
                 lastResult = result
                 noteSuccessfulDelivery(text: rawText, durationSeconds: recording.duration)
                 state = .idle

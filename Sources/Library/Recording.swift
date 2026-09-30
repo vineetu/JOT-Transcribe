@@ -61,6 +61,11 @@ final class Recording {
     var summaryText: String?
     var summaryKind: String?
     var summaryGeneratedAt: Date?
+    /// `true` once the transcript changed after `summaryText` was generated —
+    /// the detail view then offers to regenerate. Set by
+    /// `RecordingTextMutation`, cleared when a summary is generated. Optional
+    /// default `nil` = the same never-versioned additive migration as above.
+    var summaryIsStale: Bool? = nil
 
     init(
         id: UUID = UUID(),

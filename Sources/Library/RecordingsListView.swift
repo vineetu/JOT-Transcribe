@@ -647,41 +647,15 @@ private struct PagedRecordingsList: View {
     }
 
     private func retranscribe(_ r: Recording) {
-        // Mic → re-transcribe guard (mirrors `FileTranscriptionIngest.enqueue`
-        // guard 2): on the multilingual Nemotron ship this shares the live
-        // streaming engine with dictation, so starting mid-dictation would
-        // collide (`TranscriberError.busy` at best, interleaved decoder state
-        // at worst). Surfaces the existing re-transcribe alert instead of
-        // silently dropping the tap. `shared == nil` (ingest not built yet)
-        // falls through — the engine-level busy guard still protects.
-        guard FileTranscriptionIngest.shared?.recorderIsCurrentlyIdle ?? true else {
-            retranscribeError = "Finish dictating first, then try again."
-            return
-        }
         let transcriber = transcriberHolder.transcriber
-        let url = RecordingStore.audioURL(for: r)
-        Task {
+        Task { @MainActor in
             do {
-                // List-row re-transcribe only rewrites transcript text; it never
-                // commits provenance, so it must not touch the shared slot.
-                let result = try await transcriber.transcribeFile(url, recordsProvenance: false)
-                await MainActor.run {
-                    r.rawTranscript = result.rawText
-                    r.transcript = result.text
-                    // Fresh machine output — clear any hand-edited marker.
-                    r.editedAt = nil
-                    // "Never lose audio" safety net: this row is no longer
-                    // pending once its transcript is filled in.
-                    r.pendingSince = nil
-                    try? context.save()
-                    // F3 (review C2): index the filled transcript so a recovered
-                    // pending row becomes findable in AI/semantic search.
-                    RecordingIndexer.shared?.index(recordingID: r.id, text: result.text)
-                }
+                // The one re-transcribe path, shared with the detail view, so
+                // both leave identical state (segments, verdicts, title,
+                // summary, search, provenance).
+                try await RecordingRetranscription.retranscribe(r, using: transcriber, context: context)
             } catch {
-                await MainActor.run {
-                    retranscribeError = error.localizedDescription
-                }
+                retranscribeError = error.localizedDescription
             }
         }
     }

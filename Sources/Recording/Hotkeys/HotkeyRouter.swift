@@ -123,8 +123,9 @@ final class HotkeyRouter {
                     await self.recorder.stopWithoutPaste()
                 } else {
                     // Transcribing / transforming / error — genuine abort.
-                    // Past the "stop recording" moment, so the cancel-and-
-                    // discard semantics still match user intent here.
+                    // Past the "stop recording" moment, `cancel()` DISCARDS
+                    // the dictation: no paste, no Recents row, its audio
+                    // removed — during AI cleanup too.
                     await self.recorder.cancel()
                 }
             }

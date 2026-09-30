@@ -68,15 +68,22 @@ enum VocabAskFilterTests {
 
     // MARK: - wider-span alt0 splice (altFind → altTerm)
 
+    /// The live ask's splice with no review record to anchor on: the first
+    /// whole-word occurrence (`WholeWord`, the one shared matcher).
+    private static func splicingFirst(_ word: String, with replacement: String, in text: String) -> String {
+        guard let range = WholeWord.firstRange(of: word, in: text) else { return text }
+        return text.replacingCharacters(in: range, with: replacement)
+    }
+
     static func test_widerSpanSplice_multiWord() {
-        let out = AppDelegate.replaceWholeWord("sri ram", with: "Sriram", in: "please call sri ram now")
+        let out = splicingFirst("sri ram", with: "Sriram", in: "please call sri ram now")
         assert(out == "please call Sriram now",
                "multi-word altFind should splice to the wider altTerm, got \(out)")
     }
 
     static func test_widerSpanSplice_wordBoundarySafe() {
         // The alternate slice must match on whole-word boundaries (first occurrence).
-        let out = AppDelegate.replaceWholeWord("ann", with: "Anne", in: "announcement by ann today")
+        let out = splicingFirst("ann", with: "Anne", in: "announcement by ann today")
         assert(out == "announcement by Anne today",
                "splice must skip 'ann' inside 'announcement', got \(out)")
     }
@@ -158,16 +165,16 @@ enum VocabAskFilterTests {
 
     static func test_alternateOffer_reGatedByStagedText() {
         // The alt is offered only when its in-text slice is still present.
-        assert(AppDelegate.containsWholeWord("sri ram", in: "call sri ram now"),
+        assert(WholeWord.firstRange(of: "sri ram", in: "call sri ram now") != nil,
                "altFind present → offerable")
-        assert(!AppDelegate.containsWholeWord("sri ram", in: "call Sri now"),
+        assert(WholeWord.firstRange(of: "sri ram", in: "call Sri now") == nil,
                "a prior ask's edit removed altFind → not offerable")
     }
 
     static func test_widerSpanSplice_firstOccurrenceOnly() {
         // Documents the M2 limitation shape: a repeat phrase splices only the FIRST
         // occurrence (the confirmed alt doesn't auto-apply the rest / next time).
-        let out = AppDelegate.replaceWholeWord("sri ram", with: "Sriram", in: "sri ram and sri ram")
+        let out = splicingFirst("sri ram", with: "Sriram", in: "sri ram and sri ram")
         assert(out == "Sriram and sri ram",
                "only the first occurrence is spliced, got \(out)")
     }

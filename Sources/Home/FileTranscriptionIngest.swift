@@ -403,10 +403,8 @@ final class FileTranscriptionIngest: ObservableObject {
                 transcript: recording.transcript,
                 sliceTranscribe: SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber)
             )
-            if !Task.isCancelled, let payload = outcome.payload, let data = try? JSONEncoder().encode(payload) {
-                recording.speakerTimeline = data
-                applySlicedTranscriptIfAvailable(outcome, to: recording)
-                try? context.save()
+            if !Task.isCancelled, let payload = outcome.payload {
+                saveDiarization(outcome, payload: payload, to: recording)
             }
         } catch is CancellationError {
             // Preempted AGAIN mid-resume — `cancelInFlight` re-captured it
@@ -427,30 +425,36 @@ final class FileTranscriptionIngest: ObservableObject {
         scheduleClear()
     }
 
-    /// Segment-sliced transcription (docs/speaker-diarization follow-up):
-    /// when the diarize pass produced per-run slice transcripts, the runs'
-    /// joined text IS the recording's plain transcript for a diarized import
-    /// (speaker changes = paragraph breaks) — attribution-exact, and it keeps
-    /// transcript and timeline agreeing. Re-indexes for AI search since the
-    /// insert-time index call used the superseded whole-file text.
-    /// `rawTranscript` deliberately keeps the whole-file raw decode (its
-    /// "pre-cleanup original" role is unchanged). No-op for the proportional
-    /// fallback (`slicedTranscript == nil`) — the whole-file transcript the
-    /// import already saved stays authoritative there.
-    private func applySlicedTranscriptIfAvailable(
+    /// Save a diarize pass onto `recording`: its speaker segments and, with
+    /// segment-sliced transcription (docs/speaker-diarization follow-up), the
+    /// runs' joined text as the plain transcript — attribution-exact (speaker
+    /// changes = paragraph breaks), and it keeps transcript and timeline
+    /// agreeing. The text goes through `RecordingTextMutation`, which
+    /// re-indexes for AI search (the insert-time index used the superseded
+    /// whole-file text). `rawTranscript` deliberately keeps the whole-file raw
+    /// decode (its "pre-cleanup original" role is unchanged). Without sliced
+    /// text (the proportional fallback) only the segments are saved — the
+    /// whole-file transcript the import already saved stays authoritative.
+    private func saveDiarization(
         _ outcome: DiarizationRunner.Outcome,
+        payload: SpeakerTimelinePayload,
         to recording: Recording
     ) {
-        guard let sliced = outcome.slicedTranscript, !sliced.isEmpty else { return }
         // A PARKED diarize pass (`runDiarizeOnly`) can fire hours after the
         // import — long enough for the user to have hand-edited the
         // transcript in the detail view. Never clobber a hand-edit: the
         // sliced timeline payload is still saved (exact attribution), but
         // the plain transcript stays the user's. `editedAt` is set by the
-        // detail-view editor and cleared by re-transcribe.
-        guard recording.editedAt == nil else { return }
-        recording.transcript = sliced
-        RecordingIndexer.shared?.index(recordingID: recording.id, text: sliced)
+        // detail-view editor and cleared by re-transcribe. An edit still OPEN
+        // keeps its draft (`TranscriptEditSessions`): the draft wins on Done.
+        if let sliced = outcome.slicedTranscript, !sliced.isEmpty, recording.editedAt == nil {
+            // A failed save is logged by the helper; the import's text stays.
+            _ = try? RecordingTextMutation.apply(.machineText(sliced, raw: nil), to: recording, in: context,
+                                                 timeline: .replace(payload.segments))
+        } else {
+            recording.speakerTimeline = try? JSONEncoder().encode(payload)
+            try? context.save()
+        }
     }
 
     /// FFmpeg-only formats (design §8.5, review R5 — a FINITE explicit
@@ -953,10 +957,8 @@ final class FileTranscriptionIngest: ObservableObject {
                             transcript: recording.transcript,
                             sliceTranscribe: SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber)
                         )
-                        if !Task.isCancelled, let payload = outcome.payload, let data = try? JSONEncoder().encode(payload) {
-                            recording.speakerTimeline = data
-                            applySlicedTranscriptIfAvailable(outcome, to: recording)
-                            try? context.save()
+                        if !Task.isCancelled, let payload = outcome.payload {
+                            saveDiarization(outcome, payload: payload, to: recording)
                         }
                     } catch is CancellationError {
                         // Live dictation preempted mid-diarize — no error, no
