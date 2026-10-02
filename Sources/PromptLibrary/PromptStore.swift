@@ -51,8 +51,7 @@ final class PromptStore: ObservableObject {
     static let defaultPromptIDKey = "jot.prompts.defaultPromptID"
 
     /// Bundled-library id of the read-only "Rewrite" prompt. Its body is
-    /// the fixed-Rewrite system prompt (kept in sync with
-    /// `RewritePrompt.default`). The fixed `.rewrite` hotkey resolves its
+    /// `RewritePrompt.default`, filled in at load (`loadBundled`). The fixed `.rewrite` hotkey resolves its
     /// instruction from this prompt when no user default is selected, so
     /// "Rewrite" shows up in the picker like any other bundled prompt and
     /// is the rewrite default.
@@ -101,7 +100,16 @@ final class PromptStore: ObservableObject {
             let data = try Data(contentsOf: url)
             let decoded = try JSONDecoder().decode(PromptLibraryFile.self, from: data)
             log.info("Loaded \(decoded.prompts.count, privacy: .public) bundled prompts (file version \(decoded.version))")
-            return decoded.prompts
+            // The "Rewrite" entry's body is `RewritePrompt.default` — one
+            // source, so the JSON carries no copy of it.
+            return decoded.prompts.map { prompt in
+                guard prompt.id == bundledRewritePromptID else { return prompt }
+                return Prompt(
+                    id: prompt.id, title: prompt.title, tier: prompt.tier, category: prompt.category,
+                    tags: prompt.tags, body: RewritePrompt.default, sampleInput: prompt.sampleInput,
+                    sampleOutput: prompt.sampleOutput, voiceAugmentHint: prompt.voiceAugmentHint,
+                    providerCompatibility: prompt.providerCompatibility)
+            }
         } catch {
             log.error("Failed to decode prompt-library.json: \(String(describing: error), privacy: .public)")
             return []

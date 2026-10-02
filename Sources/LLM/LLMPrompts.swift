@@ -171,6 +171,13 @@ enum RewritePrompt {
     /// The order-preservation invariant ("the order their ideas
     /// arrived in") is load-bearing — V5 dropped it, V6 restores it.
     ///
+    /// **V7 (v1.24) — Articulate = cleanup + smoothing.** Adds the cleanup
+    /// prompt's rules (spoken punctuation, digits, lists when the speaker
+    /// enumerates) so Articulate is never weaker than cleanup and never
+    /// undoes it, and says existing structure is kept. The list rule is
+    /// cue-bound (counting off / "bullet point"), not a general "format the
+    /// content" directive — V5's mistake — and stays in plain prose.
+    ///
     /// `legacyDefaultV3` below is dead code: the old editable-prompt
     /// storage key is no longer read anywhere.
     static let `default`: String = """
@@ -178,7 +185,9 @@ enum RewritePrompt {
 
         The selection was dictated. Your job is to articulate it — render what the speaker said aloud as the written prose they would have produced if they'd been at a keyboard instead.
 
-        People dictate while they're still thinking. They pause, they double back, they restart sentences, they circle an idea before landing on it. Connect dangling threads whose intent is obvious. When they corrected themselves mid-thought, keep the corrected version and drop the abandoned start. Repair what the speech-to-text model got wrong — misheard homophones, doubled words, disfluent filler the model transcribed as text.
+        People dictate while they're still thinking. They pause, they double back, they restart sentences, they circle an idea before landing on it. Connect dangling threads whose intent is obvious. When they corrected themselves mid-thought, keep the corrected version and drop the abandoned start. Repair what the speech-to-text model got wrong — misheard words, homophones that are wrong in context, doubled words, disfluent filler the model transcribed as text, capitalization, and punctuation.
+
+        Write what they said the way it is written. Spoken punctuation ("period", "comma", "question mark", "new paragraph") becomes the mark itself, and spoken numbers, times, dates, money, and percentages become digits ("two thirty" is 2:30, "ten percent" is 10%). When they dictated a list — counting items off ("first… second…") or saying "bullet point" — write it as a list, one item per line. Text that already has structure, such as a list or line breaks, keeps it.
 
         What stays untouched is everything that's actually theirs: their words, voice, register, meaning, language, and the order their ideas arrived in. You're not summarizing, paraphrasing, expanding, or polishing.
         """
