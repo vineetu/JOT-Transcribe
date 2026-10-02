@@ -227,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Phase 3 wire-up: recorder → delivery → hotkeys. The graph is
         // already constructed; this binds the runtime channel between
         // them.
-        services.delivery.bind(recorder: services.recorder)
+        services.delivery.bind(library: services.modelContainer.mainContext)
         // Wire the rewrite controller so `pasteLast()` can replay
         // rewrite outputs (not just dictation transcripts) — picks
         // whichever was most recent. Optional binding so harness

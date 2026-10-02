@@ -613,7 +613,7 @@ enum JotComposition {
             logSink: logSink,
             permissions: permissions
         )
-        // Note: `delivery.bind(recorder:)` is wire-up, not construction; it
+        // Note: `delivery.bind(library:)` is wire-up, not construction; it
         // runs in `AppDelegate.wireUp(_:)` after this method returns.
         // Without that call, `DeliveryService` never receives its recorder
         // reference and dictation silently fails to deliver. (Recorder is

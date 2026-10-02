@@ -46,14 +46,17 @@ User-facing features in the shipping build. This is the product surface — not 
 
 Off by default. When enabled and an LLM provider is configured, Jot runs a lightweight "cleanup" pass on every transcript before delivery.
 
-- **Remove filler words** (um, uh, like, you know) and false starts.
-- **Fix grammar, punctuation, and capitalization.**
-- **Preserve meaning, tone, and vocabulary** — no synonym swaps, no injected words.
+- **Remove filler words** (um, uh, like, you know), stutters, and false starts (keeps the self-corrected version).
+- **Fix spelling, grammar, punctuation, capitalization, and misheard words** — including homophones that are wrong in context (brake/break, their/there).
+- **Spoken punctuation becomes symbols** — "period", "comma", "question mark", "new line", "new paragraph".
+- **Numbers, times, dates, money, percentages as digits** — "two thirty" → 2:30, "ten percent" → 10%, "five dollars" → $5.
+- **Lists when you dictate one** — "first… second…", "three things: …", "bullet point…" becomes a numbered or bulleted list; ordinary sentences stay prose.
+- **Preserve meaning and word order** — no paraphrasing, no injected words. One prompt for every provider (v1.24; modeled on Handy's default).
 - **Graceful fallback** — if the LLM call fails or times out (10 s budget), Jot delivers the raw transcript instead.
 - **Cleaning-up indicator** — the status pill shows a "Cleaning up…" state during the transform.
 - **Raw + cleaned are both stored** — the Recordings detail view offers a "Show original" toggle.
 - **Provider options** — Apple Intelligence (on-device, default on macOS 26+; today's on-device model is capacity-limited and Settings → AI shows a quality-caveat banner recommending OpenAI / Anthropic / Gemini / Ollama for stronger results until Apple ships an upgrade), OpenAI, Anthropic, Gemini, Ollama (fully local), or LM Studio (fully local).
-- **Editable prompt** — the cleanup prompt (filler removal → grammar → numeric normalization → list detection → paragraph structure → "return only" contract) is managed in the unified **Settings → Prompts → Cleanup** section, alongside every other prompt, under a "Customize prompt" chevron with a "Reset to default" escape hatch. The Auto-correct on/off toggle stays in Settings → AI (it governs whether cleanup runs automatically); a "Open Prompts →" link there jumps straight to the editor.
+- **Fixed prompt** — since v1.16 the cleanup prompt (`TransformPrompt.default`) is not user-editable. The Auto-correct on/off toggle lives in Settings → AI.
 - **Prompt safety framing** — LLM cleanup prepends an immutable safety preamble before the editable prompt, treating the transcript as data and preventing embedded transcript instructions from overriding cleanup behavior.
 - **Inline "Set up AI →"** — if the Auto-correct toggle is disabled because AI isn't configured, the pane offers a direct jump to the AI pane instead of leaving the user to find it.
 
@@ -135,7 +138,7 @@ All shortcuts are bindable in the Shortcuts pane. Defaults and bindings:
 
 - **Toggle Recording** — default `⌥Space`.
 - **Cancel Recording** — default `Esc`, active only while recording, transforming, or rewriting so it doesn't steal `Esc` from other apps when idle.
-- **Paste Last Transcription** — default `⌥,`.
+- **Paste Last Transcription** — default `⌥,`. Pastes the latest saved transcription.
 - **Push to Talk** — unbound by default.
 - **Rewrite with Voice** — voice-driven rewrite of selected text; default `⌥.`.
 - **Rewrite** — applies a fixed `"Rewrite this"` prompt to the selected text (no voice step); default `⌥/`.

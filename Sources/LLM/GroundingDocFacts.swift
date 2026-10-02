@@ -20,9 +20,10 @@ import Foundation
 /// ordered rules change, update this enum too.
 enum CleanupPass: String, CaseIterable, Sendable {
     case fillerRemoval = "filler removal"
-    case grammarPunctCapitalization = "grammar and punctuation"
+    case grammarPunctCapitalization = "grammar, spelling, and misheard words"
+    case spokenPunctuation = "spoken punctuation to symbols"
     case numberNormalization = "number normalization"
-    case structurePreservation = "structure preservation"
+    case listFormatting = "lists when you dictate one"
 }
 
 /// The three invariants baked into every Rewrite branch prompt.

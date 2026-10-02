@@ -583,7 +583,7 @@ final class JotMenuBarController: NSObject {
     }
 
     @objc private func copyLastTranscription() {
-        guard let text = recorder.lastTranscript, !text.isEmpty else { return }
+        guard let text = RecordingStore.latest(in: modelContext)?.transcript, !text.isEmpty else { return }
         _ = pasteboard.write(text)
     }
 

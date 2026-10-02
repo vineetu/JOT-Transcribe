@@ -409,14 +409,10 @@ final class DictationDeliveryBridge {
         }
         guard let saved = RecordingStore.recording(id: run.recordingID, in: context)?.transcript else { return }
         run.expected = saved
-        // Paste Last / Copy Last follow the saved text even if the sequence
-        // is abandoned before it pastes.
-        recorder.adoptDeliveredText(saved)
     }
 
     /// Paste the sequence's final text exactly once.
     private func finish(_ run: AskRun, text: String) {
-        recorder.adoptDeliveredText(text)
         deliver(text, originApp: run.originApp)
     }
 

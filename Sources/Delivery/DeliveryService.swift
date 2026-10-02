@@ -3,6 +3,7 @@ import AppKit
 import Combine
 import CoreGraphics
 import Foundation
+import SwiftData
 import SwiftUI
 import os.log
 
@@ -27,7 +28,7 @@ final class DeliveryService: ObservableObject {
 
     private let log = Logger(subsystem: "com.jot.Jot", category: "Delivery")
     private let permissions: any PermissionsObserving
-    private weak var recorder: RecorderController?
+    private var library: ModelContext?
     /// Read for `pasteLast()` so the hotkey replays the most recent
     /// Jot output regardless of whether it was a dictation or a
     /// rewrite. Optional so the test harness can construct a
@@ -74,16 +75,13 @@ final class DeliveryService: ObservableObject {
         self.permissions = permissions ?? PermissionsService.shared
     }
 
-    /// Must be called once after `RecorderController` is constructed so
-    /// `pasteLast()` has something to replay. Recorder is constructed
-    /// after `DeliveryService` in `JotComposition.build` (so it can
-    /// take the delivery as a constructor arg), so this remains a
-    /// post-init binder.
-    func bind(recorder: RecorderController) {
-        self.recorder = recorder
+    /// The recordings store `pasteLast()` replays the newest saved
+    /// dictation from. Called once from composition.
+    func bind(library: ModelContext) {
+        self.library = library
     }
 
-    /// Optional companion to `bind(recorder:)` — wires the rewrite
+    /// Optional companion to `bind(library:)` — wires the rewrite
     /// controller so `pasteLast()` can replay the most recent rewrite
     /// when it's newer than the most recent dictation. Called from
     /// composition after both controllers exist.
@@ -133,8 +131,9 @@ final class DeliveryService: ObservableObject {
     /// Shortcuts to "Paste last result"; the storage key is kept
     /// stable so existing user bindings don't reset).
     func pasteLast() async {
-        let transcript = recorder?.lastTranscript ?? ""
-        let transcriptAt = recorder?.lastTranscriptAt
+        let latest = library.flatMap(RecordingStore.latest(in:))
+        let transcript = latest?.transcript ?? ""
+        let transcriptAt = latest?.createdAt
         let rewrite = rewriteController?.lastRewrite ?? ""
         let rewriteAt = rewriteController?.lastRewriteAt
 

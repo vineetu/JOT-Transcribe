@@ -48,11 +48,10 @@ final class RecorderController: ObservableObject {
             }
         }
     }
-    /// The last dictation's text — what Paste Last / Copy Last give. Set
-    /// with `lastResult` to the text the session produced (post-cleanup when
-    /// AI cleanup ran), then kept equal to what was actually delivered and
-    /// saved via `adoptDeliveredText(_:)` when a "Did you mean…?" answer
-    /// changes it.
+    /// The text this session produced (post-cleanup when AI cleanup ran),
+    /// set with `lastResult` for `DictationDeliveryBridge` to save and paste.
+    /// Paste Last / Copy Last read the saved row instead
+    /// (`RecordingStore.latest`), so later answers and edits are included.
     @Published private(set) var lastTranscript: String?
     /// Timestamp paired with `lastTranscript`. Updated on every write so
     /// `DeliveryService.pasteLast()` can compare against the rewrite
@@ -205,15 +204,6 @@ final class RecorderController: ObservableObject {
         guard case .recording = state else { return }
         sessionSkipsPaste = true
         await toggle()
-    }
-
-    /// The text that was actually delivered (and saved) for the last
-    /// dictation, when a "Did you mean…?" answer changed it after
-    /// `lastResult` — so Paste Last / Copy Last give what the user got, not
-    /// the pre-answer text.
-    func adoptDeliveredText(_ text: String) {
-        guard !text.isEmpty, lastTranscript != text else { return }
-        lastTranscript = text
     }
 
     /// Drop a recording in progress, or discard a dictation whose AI cleanup

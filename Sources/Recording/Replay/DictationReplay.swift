@@ -13,7 +13,7 @@ import Foundation
 //
 //   Jot.app/Contents/MacOS/Jot --jot-replay <file> --jot-replay-out <result.json>
 //       [--speed 1] [--scenario plain|cancel-then-new|cold|stop-without-paste
-//                    |ask-confirm|ask-keep|ask-alternate|ask-timeout|self-tests]
+//                    |ask-confirm|ask-keep|ask-alternate|ask-timeout|edit-then-paste-last|self-tests]
 //       [--jot-replay-second <file>] [--cancel-after <seconds>]
 //       [--jot-replay-sandbox <dir>] [--no-reference]
 //
@@ -273,6 +273,16 @@ private final class DictationReplayRunner {
                 var failures: [String] = []
                 report["delivery"] = try await DeliveryReplayScenarios.stopWithoutPasteThenDictate(
                     stack: stack, capture: capture, input: inputURL, speed: speed, errors: &failures)
+                errors += failures
+
+            case "edit-then-paste-last":
+                try await warm(holder: holder, report: &report, prepareVocabulary: prepareVocabulary)
+                let stack = try DeliveryReplayScenarios.makeStack(
+                    pipeline: pipeline, holder: holder, defaults: holderDefaults,
+                    permissions: ReplayPermissions(), answer: .timeout)
+                var failures: [String] = []
+                report["delivery"] = try await DeliveryReplayScenarios.editThenPasteLast(
+                    stack: stack, capture: capture, input: inputURL, errors: &failures)
                 errors += failures
 
             case "self-tests":

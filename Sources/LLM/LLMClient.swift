@@ -1048,9 +1048,9 @@ actor LLMClient {
         let config = await MainActor.run { [llmConfiguration] in
             let c = llmConfiguration
             let p = c.provider
-            // Homophone rule appends only for cloud providers. Apple
-            // Intelligence's on-device model regresses with it (reverts
-            // correct fixes, over-edits). See TransformPrompt.homophoneRule.
+            // One prompt for every provider, Apple Intelligence included
+            // (owner call 2026-10-02: don't shape cleanup around the
+            // on-device model's weaker results).
             //
             // v1.16: the cleanup prompt is hard-coded to
             // `TransformPrompt.default`. The editable cleanup prompt was
@@ -1059,9 +1059,7 @@ actor LLMClient {
             let sanitizedTransformPrompt = CleanupPromptHardening.stripControlCharacters(
                 from: TransformPrompt.default
             )
-            var systemPrompt = p == .appleIntelligence
-                ? sanitizedTransformPrompt
-                : sanitizedTransformPrompt + "\n\n" + TransformPrompt.homophoneRule
+            var systemPrompt = sanitizedTransformPrompt
             // Speaker Labels piece A: append the label-preservation rule
             // when the input carries `Name:` prefixes. Applies on both
             // Apple Intelligence and cloud providers (Decision #16).

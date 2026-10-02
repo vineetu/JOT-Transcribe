@@ -92,6 +92,14 @@ enum RecordingStore {
         }
     }
 
+    /// The newest saved dictation — what Paste Last / Copy Last give. Its
+    /// text already carries AI cleanup, "Did you mean…?" answers, and edits.
+    static func latest(in context: ModelContext) -> Recording? {
+        var descriptor = FetchDescriptor<Recording>(sortBy: [SortDescriptor(\.createdAt, order: .reverse)])
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
     /// The row with `id`, or nil when it was deleted.
     static func recording(id: UUID, in context: ModelContext) -> Recording? {
         var descriptor = FetchDescriptor<Recording>(predicate: #Predicate { $0.id == id })

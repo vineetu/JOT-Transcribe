@@ -21,6 +21,10 @@ import SwiftData
 //       stopped with stop-without-paste whose transcription fails (stopped
 //       under 1 s → too short), then a normal dictation of the input file,
 //       which must paste — the saved row's text.
+//   --scenario edit-then-paste-last
+//       Real audio + model: dictate the input file, then hand-edit the saved
+//       row (Edit → Done's path, `RecordingTextMutation`), then Paste Last —
+//       which must paste the edited text, not the first draft.
 //   --scenario self-tests
 //       The DEBUG unit self-tests for the text helper, speaker-segment
 //       carrying, and the ask filters (they `assert`, so a failure crashes
@@ -113,6 +117,7 @@ enum DeliveryReplayScenarios {
         let recorder: RecorderController
         let persister: RecordingPersister
         let pasteboard: ReplayPasteboard
+        let delivery: DeliveryService
         let prompter: ReplayPrompter
         let bridge: DictationDeliveryBridge
 
@@ -143,13 +148,13 @@ enum DeliveryReplayScenarios {
         persister.start()
         let pasteboard = ReplayPasteboard()
         let delivery = DeliveryService(pasteboard: pasteboard, logSink: ErrorLog.shared, permissions: permissions)
-        delivery.bind(recorder: recorder)
+        delivery.bind(library: container.mainContext)
         let prompter = ReplayPrompter(answer: answer)
         let bridge = DictationDeliveryBridge(
             recorder: recorder, persister: persister, delivery: delivery,
             prompt: prompter, context: container.mainContext)
         return Stack(container: container, recorder: recorder, persister: persister,
-                     pasteboard: pasteboard, prompter: prompter, bridge: bridge)
+                     pasteboard: pasteboard, delivery: delivery, prompter: prompter, bridge: bridge)
     }
 
     // MARK: - Ask scenarios
@@ -211,7 +216,7 @@ enum DeliveryReplayScenarios {
             "savedEqualsPasted": pasted != nil && saved == pasted,
             "savedIsExpected": saved == expectedText,
             "verdict": verdicts == expectedVerdicts,
-            "pasteLastIsPasted": stack.recorder.lastTranscript == pasted,
+            "pasteLastIsPasted": RecordingStore.latest(in: stack.container.mainContext)?.transcript == pasted,
         ]
         record(checks, scenario: "ask-\(answer.rawValue)", into: &errors)
         return [
@@ -221,7 +226,7 @@ enum DeliveryReplayScenarios {
             "saved": saved ?? NSNull(),
             "expected": expectedText,
             "verdicts": verdicts,
-            "lastTranscript": stack.recorder.lastTranscript ?? NSNull(),
+            "pasteLastText": RecordingStore.latest(in: stack.container.mainContext)?.transcript ?? NSNull(),
             "checks": checks,
         ]
     }
@@ -270,7 +275,7 @@ enum DeliveryReplayScenarios {
             "firstPastedNothing": firstWrites == 0,
             "secondPasted": pasted != nil,
             "savedEqualsPasted": pasted != nil && saved == pasted,
-            "pasteLastIsPasted": recorder.lastTranscript == pasted,
+            "pasteLastIsPasted": RecordingStore.latest(in: stack.container.mainContext)?.transcript == pasted,
         ]
         record(checks, scenario: "stop-without-paste", into: &errors)
         return [
@@ -279,6 +284,43 @@ enum DeliveryReplayScenarios {
             "pasted": pasted ?? NSNull(),
             "saved": saved ?? NSNull(),
             "rows": stack.rows().count,
+            "checks": checks,
+        ]
+    }
+
+    // MARK: - Edit, then Paste Last
+
+    static func editThenPasteLast(
+        stack: Stack, capture: FileAudioCapture, input: URL, errors: inout [String]
+    ) async throws -> [String: Any] {
+        let recorder = stack.recorder
+        stack.bridge.start()
+
+        try capture.prepareSource(input)
+        await recorder.toggle()
+        guard await wait(timeout: 30, until: { if case .recording = recorder.state { true } else { false } }) else {
+            throw ReplayScenarioError("dictation never started recording")
+        }
+        await capture.waitUntilExhausted()
+        await recorder.toggle()
+        let pasted = await stack.pasteboard.firstWrite(timeout: 180)
+        guard let row = stack.rows().last else { throw ReplayScenarioError("dictation was not saved") }
+
+        let edited = row.transcript + " Edited after paste."
+        try RecordingTextMutation.apply(.handEdit(edited), to: row, in: stack.container.mainContext)
+        await stack.delivery.pasteLast()
+        _ = await wait(timeout: 20, until: { stack.pasteboard.writes.count >= 2 })
+        let replayed = stack.pasteboard.writes.count >= 2 ? stack.pasteboard.writes[1] : nil
+
+        let checks: [String: Bool] = [
+            "pasted": pasted != nil,
+            "pasteLastPastesEdit": replayed == edited,
+        ]
+        record(checks, scenario: "edit-then-paste-last", into: &errors)
+        return [
+            "pasted": pasted ?? NSNull(),
+            "edited": edited,
+            "pasteLast": replayed ?? NSNull(),
             "checks": checks,
         ]
     }
