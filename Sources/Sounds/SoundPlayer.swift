@@ -89,6 +89,7 @@ final class SoundPlayer {
     /// than to silence. Themed files are `.mp3`; the stock set is `.wav`.
     private static func soundURL(for effect: SoundEffect) -> URL? {
         let theme = JotTheme.current
+        if let url = theme.soundURL(for: effect) { return url }
         if theme.soundPrefix != nil {
             let themed = effect.fileName(for: theme)
             if let url = Bundle.main.url(forResource: themed, withExtension: "mp3") { return url }

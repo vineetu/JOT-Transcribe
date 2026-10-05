@@ -625,12 +625,7 @@ private struct ExpandedRecordingContent: View {
                             .id("transcript")
                     }
                 }
-                .onChange(of: streamingPartial ?? "") { _, _ in
-                    guard !transcript.isEmpty else { return }
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo("transcript", anchor: .bottom)
-                    }
-                }
+                .followsNewText(transcript, id: "transcript", proxy: proxy)
             }
         }
         .transition(.opacity.animation(.easeOut(duration: 0.14)))

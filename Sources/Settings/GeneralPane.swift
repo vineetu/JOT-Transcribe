@@ -191,7 +191,7 @@ struct GeneralPane: View {
             // look is a plain preference, not a power-user setting.
             // Only when a build registered themes: with Default alone there is
             // nothing to pick, so the stock build shows no Appearance section.
-            if JotTheme.allCases.count > 1 {
+            if JotTheme.allCases.count > 1 || (advancedEnabled && ThemePacks.customThemes != nil) {
                 appearanceSection
             }
             // The toggle stays PUT when it is switched on: everything it
@@ -808,7 +808,51 @@ struct GeneralPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            // Making a theme is an Advanced feature; packs already in the
+            // folder still load and show in the picker either way.
+            if advancedEnabled, let custom = ThemePacks.customThemes {
+                customThemeRows(custom)
+            }
         }
+    }
+
+    @State private var customThemeProblems: [String] = []
+    @State private var copiedBrief = false
+
+    /// "Make your own theme": the user's own AI agent builds a theme folder
+    /// from the brief; Jot only says what to make and loads the result.
+    @ViewBuilder
+    private func customThemeRows(_ custom: any CustomThemeSupport) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Make your own theme")
+                .font(.subheadline.weight(.semibold))
+            Text("Copy the brief and give it to the AI agent on your Mac. It lists "
+                 + "every image, size and sound a theme needs. Put the finished "
+                 + "folder in the Themes folder and reload.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Button(copiedBrief ? "Copied" : "Copy Brief") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(custom.brief, forType: .string)
+                    copiedBrief = true
+                    Task { try? await Task.sleep(for: .seconds(1.5)); copiedBrief = false }
+                }
+                Button("Open Themes Folder") { custom.openFolder() }
+                Button("Reload Themes") {
+                    customThemeProblems = custom.reload()
+                    themeStore.reload(force: true)
+                }
+            }
+            .controlSize(.small)
+            ForEach(customThemeProblems.isEmpty ? custom.problems : customThemeProblems, id: \.self) { problem in
+                Label(problem, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - Dictation delivery (relocated from TranscriptionPane, advanced-only)

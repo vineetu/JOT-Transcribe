@@ -25,10 +25,17 @@ protocol ThemeDescriptor: Sendable {
     @MainActor var pillSkin: (any PillSkin)? { get }
     /// Replacement rewrite-panel chrome, or nil to keep the stock panel.
     @MainActor var rewritePanelSkin: (any RewritePanelSkin)? { get }
+    /// Backdrop art as a file on disk (a theme that is not bundled). Wins over
+    /// `backdropImageName` when set.
+    var backdropImageURL: URL? { get }
+    /// A chime as a file on disk, or nil to use `soundPrefix` / the stock chime.
+    func soundURL(for effect: SoundEffect) -> URL?
 }
 
 extension ThemeDescriptor {
     @MainActor var rewritePanelSkin: (any RewritePanelSkin)? { nil }
+    var backdropImageURL: URL? { nil }
+    func soundURL(for effect: SoundEffect) -> URL? { nil }
 }
 
 /// An appearance theme.
@@ -76,6 +83,13 @@ struct JotTheme: Hashable, Sendable {
         let theme = JotTheme(id: descriptor.id, descriptor: descriptor)
         registered.removeAll { $0.id == theme.id }
         registered.append(theme)
+        invalidateCache()
+    }
+
+    /// Remove a registered theme (a user theme whose files went away). The
+    /// stored selection then resolves to Default like any unknown id.
+    static func unregister(id: String) {
+        registered.removeAll { $0.id == id }
         invalidateCache()
     }
 
@@ -162,14 +176,29 @@ struct JotTheme: Hashable, Sendable {
     /// builds, so a missing file simply means no art — every consumer falls
     /// back to the plain colour surfaces.
     var backdropImage: NSImage? {
-        guard let name = descriptor?.backdropImageName else { return nil }
+        guard let descriptor else { return nil }
+        let url: URL?
+        let key: String
+        if let fileURL = descriptor.backdropImageURL {
+            url = fileURL; key = fileURL.path
+        } else if let name = descriptor.backdropImageName {
+            url = Bundle.main.url(forResource: name, withExtension: "jpg"); key = name
+        } else {
+            return nil
+        }
         // Misses are cached too (as nil): this is read on every render, and a
         // build without the art would otherwise hit the bundle each time.
-        if let cached = Self.imageCache[name] { return cached }
-        let image = Bundle.main.url(forResource: name, withExtension: "jpg").flatMap(NSImage.init(contentsOf:))
-        Self.imageCache[name] = .some(image)
+        if let cached = Self.imageCache[key] { return cached }
+        let image = url.flatMap(NSImage.init(contentsOf:))
+        Self.imageCache[key] = .some(image)
         return image
     }
+
+    /// Drop cached art (a user theme's files changed on disk).
+    static func invalidateImageCache() { imageCache = [:] }
+
+    /// A chime file the theme supplies on disk, or nil for the bundled lookup.
+    func soundURL(for effect: SoundEffect) -> URL? { descriptor?.soundURL(for: effect) }
 
     nonisolated(unsafe) private static var imageCache: [String: NSImage?] = [:]
 
@@ -197,9 +226,30 @@ struct JotTheme: Hashable, Sendable {
     @MainActor static func loadThemePacks()
 }
 
+/// What Settings needs from a build that lets the user add their own themes
+/// from a folder on disk. Registered by the theme-pack loader; the stock build
+/// registers none, so the Appearance section shows no such rows.
+@MainActor
+protocol CustomThemeSupport: AnyObject {
+    /// Where the user's theme folders live.
+    var folderURL: URL { get }
+    /// The brief the user hands to their own AI agent: every file, size and
+    /// field a theme needs. Also written into `folderURL` by `openFolder()`.
+    var brief: String { get }
+    /// Create the folder if needed, write the brief into it, reveal it.
+    func openFolder()
+    /// Re-read the folder. Returns the problems found, one line per theme.
+    func reload() -> [String]
+    /// Problems from the last load.
+    var problems: [String] { get }
+}
+
 enum ThemePacks {
     /// Runtime class name a variant defines with `@objc(...)`.
     static let loaderClassName = "JotThemePackLoader"
+
+    /// Set by the loader when the build supports user theme folders.
+    @MainActor static var customThemes: (any CustomThemeSupport)?
 
     /// Register any bundled themes. Idempotent enough to call once from
     /// `JotApp.init()`, before any scene or `ThemeStore` read.

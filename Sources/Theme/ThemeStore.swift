@@ -42,10 +42,14 @@ final class ThemeStore: ObservableObject {
 
     /// Re-read from defaults. Used after a reset wipes the domain, so the
     /// in-memory value doesn't drift from what's stored.
-    func reload() {
+    /// `force` re-publishes even when the id is unchanged: the same id can
+    /// carry re-read theme files (a user theme reloaded from disk), and
+    /// equality is by id only. Launch and Reset leave it false, so the stock
+    /// path does no extra work.
+    func reload(force: Bool = false) {
         JotTheme.invalidateCache()
         let stored = JotTheme.current
-        guard stored != theme else { return }
+        guard force || stored != theme else { return }
         theme = stored
         SoundPlayer.shared.themeDidChange()
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
