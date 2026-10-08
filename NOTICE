@@ -19,7 +19,6 @@ Manager); each remains under its own license:
 - sindresorhus/KeyboardShortcuts — MIT
 - sparkle-project/Sparkle — MIT and permissive component licenses
   (see Sparkle's bundled LICENSE)
-- john-rocky/CoreML-LLM — MIT
 - mattt/EventSource — MIT
 - apple/swift-asn1, swift-atomics, swift-collections, swift-crypto,
   swift-nio, swift-system — Apache License 2.0
@@ -35,15 +34,22 @@ Bundled binary (not via Swift Package Manager):
   (WebM, MKV, WMA, AVI, …). It is built with no GPL/nonfree codecs and is
   invoked as a separate executable (not statically linked into Jot's binary),
   so the LGPL relink requirement is satisfied by replacing the binary. The
-  full license text and exact build recipe ship in the source at
-  `Vendor/ffmpeg/COPYING.LGPLv2.1` and `Vendor/ffmpeg/BUILD.md`; corresponding
-  source is available on request. FFmpeg is a trademark of Fabrice Bellard.
+  license text ships in the app (`Contents/Resources/ffmpeg-COPYING.LGPLv2.1`)
+  and the source at `Vendor/ffmpeg/COPYING.LGPLv2.1`; the exact build recipe
+  is `Vendor/ffmpeg/BUILD.md`, and the corresponding source is the unmodified
+  upstream release <https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz>.
+  FFmpeg is a trademark of Fabrice Bellard.
 
 Apache-2.0-licensed components are used unmodified; their license and
 any NOTICE files ship with the packages themselves.
 
 Speech models are fetched at runtime by FluidAudio and are covered by
-their own upstream licenses (Parakeet: MIT/Apache-2.0).
+their own upstream licenses; About → Models and open-source licenses
+lists each one (Parakeet and CTC: CC BY 4.0; Nemotron streaming: NVIDIA
+Open Model License; Nemotron 3.5 Multilingual: OpenMDW 1.1).
+
+- intfloat/multilingual-e5-small (AI search; Core ML conversion by Jot,
+  downloaded on first use) — MIT, Copyright (c) Microsoft Corporation.
 
 - NVIDIA Nemotron 3 Diarization (speaker labels; CoreML conversion by
   FluidInference, `FluidInference/nemotron-3-diarization-coreml`) —

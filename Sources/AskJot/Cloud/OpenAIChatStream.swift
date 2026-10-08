@@ -127,9 +127,14 @@ struct OpenAIChatStream: CloudChatStream {
         var payload: [String: Any] = [
             "model": model,
             "messages": ([RequestMessage.system(content: systemInstructions)] + conversation).map(\.jsonObject),
-            "max_tokens": maxTokens,
+            Self.tokenLimitKey(forModel: model): maxTokens,
             "stream": true
         ]
+        // Reasoning models otherwise think at medium effort, which can use up
+        // the whole reply budget before any answer text (empty Ask Jot reply).
+        if let effort = LLMClient.openAIReasoningEffort(forModel: model) {
+            payload["reasoning_effort"] = effort
+        }
         if includeTools {
             payload["tools"] = [Self.showFeatureToolDefinition]
         }
@@ -359,6 +364,17 @@ struct OpenAIChatStream: CloudChatStream {
                 return .tool(toolCallID: callID, content: message.content)
             }
         }
+    }
+
+    /// OpenAI's reasoning models (gpt-5 and later, o-series) reject
+    /// `max_tokens` with HTTP 400 and want `max_completion_tokens` — verified
+    /// 2026-10-08 on gpt-5.6-luna and gpt-6-luna. Other models served through
+    /// this adapter (LM Studio) keep the classic key.
+    static func tokenLimitKey(forModel model: String) -> String {
+        let m = model.lowercased()
+        let reasoning = m.hasPrefix("gpt-5") || m.hasPrefix("gpt-6")
+            || m.hasPrefix("o1") || m.hasPrefix("o3") || m.hasPrefix("o4")
+        return reasoning ? "max_completion_tokens" : "max_tokens"
     }
 
     private static let maxToolInvocationsPerTurn = 2

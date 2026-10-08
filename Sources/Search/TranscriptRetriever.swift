@@ -38,7 +38,7 @@ struct RetrievedChunk: Sendable {
 /// so the **fetch** must run on the main actor. But a fetch returns
 /// `RecordingChunk` model objects, which are NOT `Sendable` — we cannot carry
 /// them off-actor. So the flow is:
-///   1. Embed the query on the `EmbeddingGemmaService` actor (`await`).
+///   1. Embed the query on the `E5EmbeddingService` actor (`await`).
 ///   2. Hop to `@MainActor` to fetch chunks and immediately project each row
 ///      into a plain `Sendable` value (`ScannableChunk`) — copying the decoded
 ///      `[Float]` vector + text + ids + offsets out of the model object. After
@@ -74,10 +74,11 @@ enum TranscriptRetriever {
     /// - Parameters:
     ///   - query: Natural-language query. Trimmed; empty → `[]`.
     ///   - k: Maximum number of chunks to return (after sort + dedup).
-    ///   - minScore: Cosine cutoff. Defaults to 0.30 — slightly below the live
-    ///     search gate (0.35) because a RAG caller wants a few extra candidate
+    ///   - minScore: Cosine cutoff. Defaults to 0.80 — slightly below the live
+    ///     search gate (0.81) because a RAG caller wants a few extra candidate
     ///     passages and the LLM can ignore weak ones; ranking still puts the
-    ///     strongest first.
+    ///     strongest first. Matches the old Gemma 0.30's recall on MIRACL
+    ///     (99.6% vs 99.8%); see `SemanticSearchController.defaultThreshold`.
     ///   - allowMultiplePerRecording: When `false`, keeps only the single
     ///     best-scoring chunk per `recordingID` (mirrors the live search dedup).
     ///     When `true` (default), multiple chunks from the same recording may
@@ -91,7 +92,7 @@ enum TranscriptRetriever {
     static func retrieve(
         query: String,
         k: Int,
-        minScore: Float = 0.30,
+        minScore: Float = 0.80,
         allowMultiplePerRecording: Bool = true,
         dateInterval: DateInterval? = nil,
         container: ModelContainer
@@ -99,11 +100,11 @@ enum TranscriptRetriever {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, k > 0 else { return [] }
 
-        // Step 1 — embed the query off the main actor (on the Gemma actor).
+        // Step 1 — embed the query off the main actor (on the e5 actor).
         // Asymmetric prompt: chunks were indexed with `role: .document`, so the
         // query MUST use `role: .query` to land in the same vector space.
-        let modelVersion = EmbeddingGemmaService.modelVersion
-        guard let queryVector = try? await EmbeddingGemmaService.shared.encode(trimmed, role: .query) else {
+        let modelVersion = E5EmbeddingService.modelVersion
+        guard let queryVector = try? await E5EmbeddingService.shared.encode(trimmed, role: .query) else {
             log.debug("retrieve: query embed failed or feature unavailable")
             return []
         }
@@ -182,8 +183,8 @@ enum TranscriptRetriever {
     /// SwiftData, so it runs on the main actor.
     static func isAvailable(container: ModelContainer) async -> Bool {
         guard SemanticSearchSettings.isEnabled else { return false }
-        guard EmbeddingGemmaService.isDownloaded() else { return false }
-        let modelVersion = EmbeddingGemmaService.modelVersion
+        guard E5EmbeddingService.isDownloaded() else { return false }
+        let modelVersion = E5EmbeddingService.modelVersion
         let count = await MainActor.run {
             ChunkStore.count(modelVersion: modelVersion, container: container)
         }
@@ -202,7 +203,7 @@ enum TranscriptRetriever {
         let normalizedQuery = normalize(queryVector)
         guard !normalizedQuery.isEmpty else { return [] }
 
-        // Both query and chunk vectors are unit-norm out of Gemma (cosine == dot);
+        // Both query and chunk vectors are unit-norm out of e5 (cosine == dot);
         // we defensively re-normalize so a stray blob can't poison the score.
         var scored: [RetrievedChunk] = []
         scored.reserveCapacity(chunks.count)

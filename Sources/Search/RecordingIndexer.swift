@@ -16,8 +16,8 @@ import os.log
 ///
 /// ## Pipeline (per recording)
 /// 1. Bail if the feature is off, or the text is empty.
-/// 2. Split into ~110-token chunks (`TranscriptChunker`).
-/// 3. Embed each chunk with EmbeddingGemma (`role: .document`).
+/// 2. Split into ~220-token chunks (`TranscriptChunker`).
+/// 3. Embed each chunk with e5 (`role: .document`).
 /// 4. Persist via `ChunkStore.replaceChunks(...)` (delete-then-insert),
 ///    denormalizing the parent's `createdAt` / `durationSeconds`.
 ///
@@ -54,11 +54,11 @@ final class RecordingIndexer {
     /// manual rebuild).
     @ObservationIgnored private var sweepRunning = false
 
-    /// Chunk to ~110 tokens, NOT the chunker's 256 default: the bundled
-    /// EmbeddingGemma model has `max_seq_len = 128`, so longer chunks are
-    /// silently truncated. 110 leaves headroom for the task-prefix tokens the
-    /// encoder prepends. (Ported verbatim from mobile.)
-    private let targetTokens = 110
+    /// Chunk to ~220 tokens: the e5 model takes 256 (`E5EmbeddingService
+    /// .sequenceLength`) and longer chunks are truncated. 220 leaves room for
+    /// the `"passage: "` prefix, the `<s>`/`</s>` markers and the chunker's
+    /// rough 4-characters-per-token estimate.
+    private let targetTokens = 220
 
     init(
         container: ModelContainer,
@@ -100,7 +100,7 @@ final class RecordingIndexer {
         guard SemanticSearchSettings.isEnabled else { return }
         guard !sweepRunning else { return }
         let missing = ChunkStore.recordingIDsMissingChunks(
-            modelVersion: EmbeddingGemmaService.modelVersion,
+            modelVersion: E5EmbeddingService.modelVersion,
             limit: Int.max,
             container: container
         )
@@ -124,7 +124,7 @@ final class RecordingIndexer {
     /// Diagnostic count of recordings not yet indexed at the current version.
     func unindexedCount() -> Int {
         let missing = ChunkStore.recordingIDsMissingChunks(
-            modelVersion: EmbeddingGemmaService.modelVersion,
+            modelVersion: E5EmbeddingService.modelVersion,
             limit: Int.max,
             container: container
         )
@@ -204,7 +204,7 @@ final class RecordingIndexer {
             embedded.reserveCapacity(drafts.count)
             for draft in drafts {
                 if Task.isCancelled { return }
-                let vector = try await EmbeddingGemmaService.shared.encode(draft.text, role: .document)
+                let vector = try await E5EmbeddingService.shared.encode(draft.text, role: .document)
                 embedded.append((draft.chunkIndex, draft.text, vector, draft.charStart, draft.charEnd))
             }
             let chunks = embedded
@@ -227,7 +227,7 @@ final class RecordingIndexer {
                 try ChunkStore.replaceChunks(
                     recordingID: recordingID,
                     chunks: chunks,
-                    modelVersion: EmbeddingGemmaService.modelVersion,
+                    modelVersion: E5EmbeddingService.modelVersion,
                     createdAt: parent.createdAt,
                     durationSeconds: parent.durationSeconds,
                     container: container

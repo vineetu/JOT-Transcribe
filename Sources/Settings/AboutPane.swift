@@ -22,6 +22,7 @@ struct AboutPane: View {
     /// browse in-app and only the actual donate step opens
     /// every.org in the system browser.
     @State private var isShowingDonations = false
+    @State private var isShowingAcknowledgements = false
     /// Drives the in-app feedback composer sheet. Non-nil =
     /// a pre-computed (redacted + raw) log footer is being passed
     /// into the composer to be sent inline with the user's
@@ -93,6 +94,9 @@ struct AboutPane: View {
         // the user out to the website.
         .sheet(isPresented: $isShowingDonations) {
             DonationsView()
+        }
+        .sheet(isPresented: $isShowingAcknowledgements) {
+            AcknowledgementsView()
         }
         // Feedback composer — always pre-filled with the redacted
         // log + app-details block and an in-sheet toggle to swap to
@@ -520,6 +524,19 @@ struct AboutPane: View {
                     .textSelection(.enabled)
             }
             .font(.system(size: 11))
+            Button {
+                isShowingAcknowledgements = true
+            } label: {
+                HStack {
+                    Text("Models and open-source licenses")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 

@@ -1,3 +1,4 @@
+import Accelerate
 import Foundation
 import SwiftData
 import os.log
@@ -10,18 +11,26 @@ import os.log
 /// The controller publishes ONLY the semantic half of the result — substring
 /// matching is cheap and stays in the view's existing filter. The view composes
 /// `searchText.contains(...)` ∪ `semanticMatches.contains(recording.id)`.
-/// Substring matches surface instantly on keystroke; the semantic set fills in
-/// ~250-400 ms later (200 ms debounce + ~40 ms query embed + ~15 ms cosine scan).
+/// The view debounces typing and calls `search(query:)` once the user pauses;
+/// the semantic set lands ~10-50 ms later (query embed + one matrix-vector
+/// multiply over the in-memory vector index).
+///
+/// ## Vector index
+/// Every chunk vector for the current model version is loaded once, off the
+/// main actor, into one flat pre-normalised `[Float]` matrix. A search is a
+/// single `vDSP_mmul` against it, not a database fetch. The index is rebuilt
+/// only when the chunk table changes (row count or newest `embeddedAt`), which
+/// a cheap count + one-row fetch detects before each search.
 ///
 /// ## Chunk-based retrieval
 /// Each recording is split into chunks at index time; every chunk gets its own
-/// 256-d unit-norm Gemma vector (`role: .document`). At search time the query is
+/// 384-d unit-norm e5 vector (`role: .document`). At search time the query is
 /// embedded with `role: .query` (asymmetric prompt) and scored against every
 /// chunk. A recording matches if ANY of its chunks clears the threshold; we dedup
 /// to the single best-scoring chunk per recording.
 ///
 /// ## Graceful degradation
-/// If EmbeddingGemma fails to load (missing/corrupt model, or feature off),
+/// If the e5 model fails to load (missing/corrupt model, or feature off),
 /// `semanticMatches` stays empty and the substring union still works — the search
 /// field is never blocked on the embedder.
 @MainActor
@@ -35,13 +44,14 @@ final class SemanticSearchController {
     /// `true` while a search task is in flight (post-debounce).
     private(set) var isSearching: Bool = false
 
-    /// Cosine cutoff. Higher = more precise, fewer results. Mobile shipped 0.50
-    /// (English-primary), but the macOS multilingual sweep (2026-06-20, 13
-    /// languages) showed correct #1-ranked matches in Spanish/French/etc. score
-    /// 0.34–0.49 — a 0.50 gate silently drops them. Lowered to 0.35 to retain the
-    /// proven-correct non-English matches; ranking/dedup keep noise bounded.
-    /// (English typically clears 0.45+, so this mainly rescues other languages.)
-    private let defaultThreshold: Float = 0.35
+    /// Cosine cutoff. Higher = more precise, fewer results. e5 scores run
+    /// high (unrelated text still lands ~0.7), so this is not comparable to the
+    /// old Gemma 0.35. Chosen on MIRACL (public, 11 languages: en es fr de ru
+    /// fi ja zh ko ar hi; 498 judged-relevant passages) to keep the operating
+    /// point Gemma shipped with: 0.81 keeps 99.2% of relevant passages (Gemma
+    /// at 0.35: 99.0%) and lets 0.6% of unrelated ones through (Gemma 0.3%).
+    /// Owner recordings were not used. Script: docs/ai-search/e5-swap.md.
+    private let defaultThreshold: Float = 0.81
 
     @ObservationIgnored private let container: ModelContainer
     @ObservationIgnored private var searchTask: Task<Void, Never>?
@@ -53,9 +63,9 @@ final class SemanticSearchController {
         self.container = container
     }
 
-    /// Updates the search query. Cancels any in-flight task, debounces ~200 ms,
-    /// then embeds + matches. Empty / whitespace / feature-off clears matches
-    /// synchronously.
+    /// Runs the semantic half for `query`. Cancels any in-flight search. The
+    /// caller debounces typing; empty / whitespace / feature-off clears
+    /// matches synchronously.
     func search(query: String) {
         searchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -68,26 +78,21 @@ final class SemanticSearchController {
         let container = self.container
         let threshold = self.defaultThreshold
         searchTask = Task { [weak self] in
-            // Debounce — keystroke storms shouldn't spawn one embed per stroke.
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            if Task.isCancelled { return }
             // Asymmetric prompt: chunks were indexed with `role: .document`, so
             // the query MUST use `role: .query` to land in the same space.
-            guard let queryVector = try? await EmbeddingGemmaService.shared.encode(trimmed, role: .query) else {
-                await MainActor.run { self?.isSearching = false }
+            guard let queryVector = try? await E5EmbeddingService.shared.encode(trimmed, role: .query) else {
+                self?.isSearching = false
                 return
             }
-            if Task.isCancelled { return }
-            let matches = await Self.findMatches(
-                queryVector: queryVector,
-                threshold: threshold,
-                container: container
-            )
-            if Task.isCancelled { return }
-            await MainActor.run {
-                self?.semanticMatches = matches
-                self?.isSearching = false
-            }
+            guard !Task.isCancelled, let self else { return }
+            let index = await self.currentIndex(container: container)
+            guard !Task.isCancelled else { return }
+            let matches = await Task.detached(priority: .userInitiated) {
+                index.matches(for: queryVector, threshold: threshold)
+            }.value
+            guard !Task.isCancelled else { return }
+            self.semanticMatches = matches
+            self.isSearching = false
         }
     }
 
@@ -98,58 +103,111 @@ final class SemanticSearchController {
         isSearching = false
     }
 
-    // MARK: - Cosine scan
+    // MARK: - Vector index
 
-    @MainActor
-    private static func findMatches(
-        queryVector: [Float],
-        threshold: Float,
-        container: ModelContainer
-    ) async -> Set<UUID> {
-        let normalizedQuery = normalize(queryVector)
-        guard !normalizedQuery.isEmpty else { return [] }
+    @ObservationIgnored private var index: VectorIndex?
+    @ObservationIgnored private var indexBuild: Task<VectorIndex, Never>?
 
-        // Version-scope the pool so stale vectors from a prior model can't match.
-        let chunks = ChunkStore.allChunks(
-            modelVersion: EmbeddingGemmaService.modelVersion,
-            container: container
-        )
-        guard !chunks.isEmpty else { return [] }
-
-        // Both query and chunk vectors are unit-norm out of Gemma (cosine == dot);
-        // we defensively re-normalize so a stray blob can't poison the score.
-        var bestByRecording: [UUID: Float] = [:]
-        for chunk in chunks {
-            let vector = chunk.vector
-            guard vector.count == normalizedQuery.count else { continue }
-            let normalizedRow = normalize(vector)
-            guard !normalizedRow.isEmpty else { continue }
-            let cosine = dot(normalizedQuery, normalizedRow)
-            guard cosine >= threshold else { continue }
-            let id = chunk.recordingID
-            if let existing = bestByRecording[id] {
-                if cosine > existing { bestByRecording[id] = cosine }
-            } else {
-                bestByRecording[id] = cosine
-            }
+    /// The cached index, rebuilt off-main when the chunk table has changed.
+    private func currentIndex(container: ModelContainer) async -> VectorIndex {
+        let stamp = await Task.detached(priority: .userInitiated) {
+            VectorIndex.Stamp.current(container: container)
+        }.value
+        if let index, index.stamp == stamp { return index }
+        if let indexBuild {
+            let built = await indexBuild.value
+            if built.stamp == stamp { return built }
         }
-        return Set(bestByRecording.keys)
+        let build = Task.detached(priority: .userInitiated) {
+            VectorIndex.build(container: container, stamp: stamp)
+        }
+        indexBuild = build
+        let built = await build.value
+        index = built
+        indexBuild = nil
+        Self.log.info("Search index loaded: \(built.count, privacy: .public) chunks")
+        return built
+    }
+}
+
+/// Flat, pre-normalised chunk vectors for one model version, plus the
+/// recording each row belongs to. Immutable once built, so it is shared across
+/// searches and scanned off the main actor.
+struct VectorIndex: Sendable {
+    /// What the index was built from; a different stamp means the chunk
+    /// table changed (rows added, removed or re-embedded).
+    struct Stamp: Equatable, Sendable {
+        let count: Int
+        let newest: Date?
+
+        static func current(container: ModelContainer) -> Stamp {
+            let context = ModelContext(container)
+            let version = E5EmbeddingService.modelVersion
+            let match = #Predicate<RecordingChunk> { $0.modelVersion == version }
+            let count = (try? context.fetchCount(FetchDescriptor(predicate: match))) ?? 0
+            var newest = FetchDescriptor(predicate: match, sortBy: [SortDescriptor(\.embeddedAt, order: .reverse)])
+            newest.fetchLimit = 1
+            newest.propertiesToFetch = [\.embeddedAt]
+            return Stamp(count: count, newest: (try? context.fetch(newest))?.first?.embeddedAt)
+        }
     }
 
-    // MARK: - Math
+    let stamp: Stamp
+    let recordingIDs: [UUID]
+    /// Row-major `count × dim`, each row unit-norm.
+    let vectors: [Float]
+    let dim: Int
+    var count: Int { recordingIDs.count }
 
-    private static func normalize(_ v: [Float]) -> [Float] {
-        var sumSq: Float = 0
-        for x in v { sumSq += x * x }
-        let norm = sumSq.squareRoot()
-        guard norm > 0 else { return [] }
-        return v.map { $0 / norm }
+    static func build(container: ModelContainer, stamp: Stamp) -> VectorIndex {
+        let dim = E5EmbeddingService.outputDim
+        let context = ModelContext(container)
+        let version = E5EmbeddingService.modelVersion
+        var descriptor = FetchDescriptor<RecordingChunk>(
+            predicate: #Predicate { $0.modelVersion == version }
+        )
+        descriptor.propertiesToFetch = [\.recordingID, \.vectorData]
+        let chunks = (try? context.fetch(descriptor)) ?? []
+
+        // Existence backstop: chunks of a recording deleted mid-index never match.
+        var live = FetchDescriptor<Recording>()
+        live.propertiesToFetch = [\.id]
+        let liveIDs = Set(((try? context.fetch(live)) ?? []).map(\.id))
+
+        var ids: [UUID] = []
+        var flat: [Float] = []
+        ids.reserveCapacity(chunks.count)
+        flat.reserveCapacity(chunks.count * dim)
+        for chunk in chunks where liveIDs.contains(chunk.recordingID) {
+            let v = chunk.vector
+            guard v.count == dim else { continue }
+            var norm: Float = 0
+            vDSP_svesq(v, 1, &norm, vDSP_Length(dim))
+            norm = norm.squareRoot()
+            guard norm.isFinite, norm > 0 else { continue }
+            ids.append(chunk.recordingID)
+            flat.append(contentsOf: v.map { $0 / norm })
+        }
+        return VectorIndex(stamp: stamp, recordingIDs: ids, vectors: flat, dim: dim)
     }
 
-    private static func dot(_ a: [Float], _ b: [Float]) -> Float {
-        let n = min(a.count, b.count)
-        var sum: Float = 0
-        for i in 0..<n { sum += a[i] * b[i] }
-        return sum
+    /// Recordings whose best chunk scores at least `threshold` against `query`.
+    func matches(for query: [Float], threshold: Float) -> Set<UUID> {
+        guard count > 0, query.count == dim else { return [] }
+        var norm: Float = 0
+        vDSP_svesq(query, 1, &norm, vDSP_Length(dim))
+        norm = norm.squareRoot()
+        guard norm.isFinite, norm > 0 else { return [] }
+        let q = query.map { $0 / norm }
+
+        // scores (count × 1) = vectors (count × dim) · q (dim × 1)
+        var scores = [Float](repeating: 0, count: count)
+        vDSP_mmul(vectors, 1, q, 1, &scores, 1, vDSP_Length(count), 1, vDSP_Length(dim))
+
+        var result = Set<UUID>()
+        for i in 0..<count where scores[i] >= threshold {
+            result.insert(recordingIDs[i])
+        }
+        return result
     }
 }

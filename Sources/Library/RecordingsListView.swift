@@ -76,6 +76,12 @@ private struct PagedRecordingsList: View {
     private let onLoadMore: () -> Void
 
     @State private var searchText: String = ""
+    /// The query the list is actually filtered by: `searchText` once typing
+    /// pauses (`searchDebounce`). Filtering means fetching every recording and
+    /// scanning its transcript, so it must not run on every keystroke.
+    @State private var appliedQuery: String = ""
+    @State private var searchDebounceTask: Task<Void, Never>?
+    private static let searchDebounce: Duration = .milliseconds(300)
     /// Active tag filter (exact match, recordings only). Independent of
     /// `searchText`; when set, the result set routes through the UNLIMITED fetch
     /// (design M4) so older tagged recordings aren't hidden behind the paging
@@ -128,7 +134,7 @@ private struct PagedRecordingsList: View {
         let tag = selectedTag
         // A search OR a tag filter routes through the unlimited fetch + bypasses
         // the paging cap, so older matches/tagged rows still surface (design M4).
-        let filtersActive = !searchText.isEmpty || tag != nil
+        let filtersActive = !appliedQuery.isEmpty || tag != nil
 
         let recordingsPool: [Recording]
         let rewritesPool: [RewriteSession]
@@ -140,7 +146,7 @@ private struct PagedRecordingsList: View {
             rewritesPool = rewrites
         }
 
-        let needle = searchText.lowercased()
+        let needle = appliedQuery
 
         // AI-search Stage B (review M3): read `semanticMatches` UNCONDITIONALLY
         // on the rendered path — NOT behind the `needle.isEmpty` early-return —
@@ -156,9 +162,10 @@ private struct PagedRecordingsList: View {
             // Substring ∪ semantic: a row surfaces if its title/transcript/tags
             // contain the needle OR its id is in the semantic match set. Tags are
             // substring-matched only (not semantically indexed — design M4).
-            if r.title.lowercased().contains(needle)
-                || r.transcript.lowercased().contains(needle)
-                || r.tags.contains(where: { $0.contains(needle) })
+            // Case-insensitive search without lowercasing whole transcripts.
+            if r.title.range(of: needle, options: .caseInsensitive) != nil
+                || r.transcript.range(of: needle, options: .caseInsensitive) != nil
+                || r.tags.contains(where: { $0.range(of: needle, options: .caseInsensitive) != nil })
                 || semanticMatches.contains(r.id) {
                 return .recording(r)
             }
@@ -247,11 +254,25 @@ private struct PagedRecordingsList: View {
                     // (return-navigation / future deep-link), seed the semantic
                     // query now — `onChange` only fires on subsequent edits.
                     if !searchText.isEmpty {
-                        semanticController?.search(query: searchText)
+                        appliedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        semanticController?.search(query: appliedQuery)
                     }
                 }
                 .onChange(of: searchText) { _, newValue in
-                    semanticController?.search(query: newValue)
+                    // Clearing applies at once; typing applies when it pauses.
+                    searchDebounceTask?.cancel()
+                    let query = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !query.isEmpty else {
+                        appliedQuery = ""
+                        semanticController?.search(query: "")
+                        return
+                    }
+                    searchDebounceTask = Task {
+                        try? await Task.sleep(for: Self.searchDebounce)
+                        guard !Task.isCancelled, query != appliedQuery else { return }
+                        appliedQuery = query
+                        semanticController?.search(query: query)
+                    }
                 }
                 // v1.14: searchable moved out of the toolbar into a
                 // list-row filter just above the rows (see `inlineSearch`
@@ -591,7 +612,7 @@ private struct PagedRecordingsList: View {
     }
 
     private var emptyState: some View {
-        let filtering = !searchText.isEmpty || selectedTag != nil
+        let filtering = !appliedQuery.isEmpty || selectedTag != nil
         return VStack(spacing: 8) {
             Image(systemName: filtering ? "magnifyingglass" : "waveform")
                 .font(.system(size: 28))
@@ -599,7 +620,7 @@ private struct PagedRecordingsList: View {
             Text(filtering ? "No matches" : "No library items yet")
                 .font(.system(size: 13, weight: .semibold))
             Text(filtering
-                 ? (selectedTag != nil && searchText.isEmpty
+                 ? (selectedTag != nil && appliedQuery.isEmpty
                     ? "No recordings with this tag."
                     : "Try a different search term.")
                  : "Your dictations and rewrites will appear here.")
@@ -628,7 +649,7 @@ private struct PagedRecordingsList: View {
     private func maybeLoadMore(renderedCount: Int) {
         // Search and tag filters both bypass the paging window (unlimited fetch),
         // so paging must not bump while either is active.
-        guard searchText.isEmpty, selectedTag == nil else { return }
+        guard appliedQuery.isEmpty, selectedTag == nil else { return }
         guard renderedCount >= visibleLimit else { return }
         onLoadMore()
     }

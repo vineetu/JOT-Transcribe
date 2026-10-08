@@ -114,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
 
         #if DEBUG
+        E5SelfTest.runIfRequested()
         HelpInfraTests.runAll()
         ThemeTests.runAll()
         ChatbotVoiceInputTests.runAll()
@@ -325,13 +326,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // existing library is never indexed and search returns nothing until the
         // user manually toggles. backfillMissing() guards its own re-entrancy.
         if SemanticSearchSettings.isEnabled {
-            Task.detached(priority: .utility) { try? await EmbeddingGemmaService.shared.prewarm() }
+            Task.detached(priority: .utility) { try? await E5EmbeddingService.shared.prewarm() }
             Task(priority: .background) { await RecordingIndexer.shared?.backfillMissing() }
         }
         // One-time: drop search chunks left behind by recordings deleted
         // before deleting a recording removed its chunks (they could still
         // surface a deleted recording in Ask Jot). Runs whatever the toggle.
         ChunkStore.purgeOrphanedChunksOnce(container: services.modelContainer)
+        // The search model moved from EmbeddingGemma to e5 (v1.23.4): drop the
+        // old model's files and its index rows. backfillMissing() above
+        // re-indexes at the new version. Both are no-ops once done.
+        Task.detached(priority: .background) {
+            E5EmbeddingService.removeRetiredModel()
+        }
+        ChunkStore.purgeRetiredModelVersions(
+            E5EmbeddingService.retiredModelVersions,
+            container: services.modelContainer
+        )
 
         // Sound chimes: prewarm the five bundled WAVs and subscribe to
         // recorder state so transitions fire audio cues. Prewarm runs on

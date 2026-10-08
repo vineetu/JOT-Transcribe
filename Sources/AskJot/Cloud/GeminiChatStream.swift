@@ -119,7 +119,7 @@ struct GeminiChatStream: CloudChatStream {
             contents: contents,
             systemInstruction: .init(parts: [.text(systemInstructions)]),
             tools: includeTools ? [.showFeature] : nil,
-            generationConfig: .init(maxOutputTokens: maxTokens, thinkingConfig: .init(thinkingBudget: 0))
+            generationConfig: .init(maxOutputTokens: maxTokens, thinkingConfig: .forModel(model))
         )
 
         var request = URLRequest(url: url)
@@ -284,8 +284,16 @@ private struct GeminiSystemInstruction: Encodable { let parts: [GeminiPart] }
 private struct GeminiGenerationConfig: Encodable { let maxOutputTokens: Int; let thinkingConfig: GeminiThinkingConfig }
 // Gemini 3.x models think by default, and thinking tokens count against
 // `maxOutputTokens` — so a capped response can be exhausted by thinking and
-// come back empty/truncated. Disable thinking for the help-chat use case.
-private struct GeminiThinkingConfig: Encodable { let thinkingBudget: Int }
+// come back empty/truncated. Disable thinking for the help-chat use case,
+// with the knob each model accepts (see `LLMClient.geminiThinkingConfig`).
+private struct GeminiThinkingConfig: Encodable {
+    var thinkingBudget: Int?
+    var thinkingLevel: String?
+    static func forModel(_ model: String) -> GeminiThinkingConfig {
+        let config = LLMClient.geminiThinkingConfig(forModel: model)
+        return .init(thinkingBudget: config["thinkingBudget"] as? Int, thinkingLevel: config["thinkingLevel"] as? String)
+    }
+}
 private struct GeminiEvent: Decodable { let candidates: [GeminiCandidate]? }
 private struct GeminiCandidate: Decodable { let content: GeminiContent? }
 

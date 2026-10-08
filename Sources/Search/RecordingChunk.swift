@@ -7,7 +7,7 @@ import SwiftData
 /// `transcriptID` → `recordingID` to match macOS Jot's `Recording` model.
 ///
 /// A transcript is split into ~110-token windows (`TranscriptChunker`); each
-/// window gets its own 256-d EmbeddingGemma vector so a specific idea inside a
+/// window gets its own 384-d e5 vector so a specific idea inside a
 /// long recording is retrievable (vs. a blurry whole-transcript average).
 ///
 /// ## Storage

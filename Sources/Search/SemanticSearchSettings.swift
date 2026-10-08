@@ -3,7 +3,7 @@ import Foundation
 /// Single source of truth for the semantic-search feature gate.
 ///
 /// Semantic search ships **ON by default** — the toggle is an opt-OUT. On first
-/// run it kicks off the (one-time, non-blocking) ~339 MB EmbeddingGemma download
+/// run it kicks off the (one-time, non-blocking) ~113 MB e5 search-model download
 /// and a gentle background backfill of the existing library. Substring search in
 /// `RecordingsListView` always works regardless of this flag — semantic recall
 /// is purely additive on top of it, and arrives silently once the index fills.

@@ -4,7 +4,7 @@ Native macOS dictation utility. Press a hotkey, speak, and the transcript is pas
 
 **Stack:** Swift / SwiftUI with AppKit interop (`NSStatusItem`, `NSPanel`). Transcription via [FluidAudio](https://github.com/FluidInference/FluidAudio) running Parakeet (TDT v2 / v3 / JA) and Nemotron (streaming English + 3.5 Multilingual) on the Apple Neural Engine. The app pins a Jot fork of FluidAudio (`vineetu/FluidAudio`, branch `jot/learned-pairs`, by exact revision) that adds decode-time vocabulary bias and learned-pair bias to the Nemotron Multilingual decoder; `tools/jot-cli` still pins upstream 0.17.4. Speaker labels via NVIDIA Nemotron 3 Diarization (FluidAudio, OpenMDW-1.1). Audio capture through `AVAudioEngine` + `AVAudioConverter` (16 kHz mono Float32). Global hotkeys via `sindresorhus/KeyboardShortcuts`. Persistence via SwiftData; prefs via `@AppStorage` / `UserDefaults`.
 
-**Platform:** Apple Silicon only, macOS Sequoia 15.0+. Intel Macs are out of scope — Parakeet on the ANE is an Apple Silicon feature. (Deployment floor raised 14→15 to adopt CoreMLLLM for on-device AI search.)
+**Platform:** Apple Silicon only, macOS Sequoia 15.0+. Intel Macs are out of scope — Parakeet on the ANE is an Apple Silicon feature. (Deployment floor raised 14→15 to adopt CoreMLLLM for on-device AI search; AI search moved to multilingual-e5-small without CoreMLLLM in v1.23.4, the floor stays at 15.)
 
 Full product requirements live in `docs/design-requirements.md` and the shipping feature inventory in `docs/features.md`. **Read those before making non-trivial decisions.** This file is a map, not the spec.
 

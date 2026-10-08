@@ -399,6 +399,7 @@ actor LLMClient {
         // gpt-5.6 (Sol/Terra/Luna, GA 2026-07-09): unverified, assumed to
         // follow 5.5's reject behavior — the 400-retry self-heals if wrong.
         if m.hasPrefix("gpt-5.6") { return true }
+        if m.hasPrefix("gpt-6") { return true }           // verified 2026-10-08
         if m.hasPrefix("o1") || m.hasPrefix("o3") || m.hasPrefix("o4") { return true }
         return false                                      // gpt-5.1–5.4, gpt-4o, locals
     }
@@ -410,14 +411,16 @@ actor LLMClient {
     /// OpenAI /chat/completions):
     ///   - gpt-5.0 family (gpt-5 / gpt-5-mini / gpt-5-nano): accepts "minimal",
     ///     rejects "none".
-    ///   - gpt-5.5 and gpt-5.6 (sol/terra/luna): accepts "none", rejects "minimal".
+    ///   - gpt-5.5, gpt-5.6 (sol/terra/luna) and gpt-6 (luna/sol): accepts "none",
+    ///     rejects "minimal" (gpt-6 verified 2026-10-08; gpt-6.1-sol rejects
+    ///     "none" too and self-heals to its default effort).
     /// Sending the wrong token 400s — `performLLMRequest` self-heals by stripping
     /// the field and retrying, so a stale entry costs one extra round-trip.
     /// gpt-5.1–5.4, gpt-4o, o-series and local models get nil (no effort field).
     static func openAIReasoningEffort(forModel model: String) -> String? {
         let m = model.lowercased()
         if m.contains("chat") { return nil }
-        if m.hasPrefix("gpt-5.5") || m.hasPrefix("gpt-5.6") { return "none" }
+        if m.hasPrefix("gpt-5.5") || m.hasPrefix("gpt-5.6") || m.hasPrefix("gpt-6") { return "none" }
         if m == "gpt-5" || m.hasPrefix("gpt-5-") { return "minimal" }
         return nil
     }
@@ -500,9 +503,9 @@ actor LLMClient {
             "model": model,
             // `max_tokens` is REQUIRED by the Messages API — it cannot be
             // omitted — so "no limit" means "the model's own ceiling".
-            // 64000 is the full output budget of every model in
-            // `ModelCatalog` (Haiku 4.5's hard max; Sonnet 5 allows
-            // 128K but accepts this). The v1.5 cap of 4096 truncated
+            // 64000 is within the output budget of every model in
+            // `ModelCatalog` (the Claude 5.5 models allow 128K; Haiku
+            // 4.5, a legacy pick, maxes out at exactly 64000). The v1.5 cap of 4096 truncated
             // long rewrites mid-sentence, and v1.13's 16384 was still
             // an arbitrary ceiling below the model's real one. Anthropic
             // bills only tokens actually generated, so a high cap costs
@@ -514,13 +517,35 @@ actor LLMClient {
             "messages": [
                 ["role": "user", "content": userPrompt],
             ],
-            "temperature": temperature,
         ]
+        if Self.anthropicAcceptsTemperature(model) {
+            body["temperature"] = temperature
+        }
         if stream {
             body["stream"] = true
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
+    }
+
+    /// Claude 5 and later (Haiku 5.5, Sonnet 5 / 5.5, Opus 5.x) answer HTTP 400
+    /// "`temperature` is deprecated for this model" (verified 2026-10-08);
+    /// Claude 4.x still takes it. Like the OpenAI check, this only saves a
+    /// round-trip: `performLLMRequest` retries without temperature on that 400.
+    static func anthropicAcceptsTemperature(_ model: String) -> Bool {
+        guard let r = model.range(of: #"claude-(haiku|sonnet|opus|fable)-(\d+)"#, options: .regularExpression),
+              let generation = Int(model[r].split(separator: "-")[2]) else { return true }
+        return generation < 5
+    }
+
+    /// The `thinkingConfig` that switches thinking off (Gemini 3.x thinks by
+    /// default and thinking counts against the output budget). The two knobs
+    /// aren't accepted uniformly — verified 2026-10-08: gemini-3.5-flash-lite
+    /// rejects `thinkingBudget: 0` and takes `thinkingLevel: "minimal"`, while
+    /// gemini-3.8-flash rejects "minimal" and takes budget 0. Flash-Lite
+    /// models get the level; everything else keeps the budget.
+    static func geminiThinkingConfig(forModel model: String) -> [String: Any] {
+        model.contains("flash-lite") ? ["thinkingLevel": "minimal"] : ["thinkingBudget": 0]
     }
 
     private func buildGeminiRequest(
@@ -544,7 +569,7 @@ actor LLMClient {
             ],
             // Gemini 3.x thinks by default and thinking counts against the output
             // budget; disable it so capped cleanup/rewrite replies aren't truncated.
-            "generationConfig": ["temperature": temperature, "thinkingConfig": ["thinkingBudget": 0]],
+            "generationConfig": ["temperature": temperature, "thinkingConfig": Self.geminiThinkingConfig(forModel: model)],
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request

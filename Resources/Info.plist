@@ -25,6 +25,8 @@
 	<string>1.23.3</string>
 	<key>CFBundleVersion</key>
 	<string>289</string>
+	<key>JOT_SEARCH_MODEL_URL</key>
+	<string>https://github.com/vineetu/JOT-Transcribe/releases/download/models-e5-small-v1/multilingual-e5-small.zip</string>
 	<key>JotFlavor</key>
 	<string>public</string>
 	<key>LSApplicationCategoryType</key>

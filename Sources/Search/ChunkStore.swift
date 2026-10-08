@@ -125,6 +125,25 @@ enum ChunkStore {
         }
     }
 
+    /// Launch cleanup after a search-model swap: deletes rows written by a
+    /// retired model. Off the main thread; cheap when there are none.
+    nonisolated static func purgeRetiredModelVersions(_ versions: [String], container: ModelContainer) {
+        Task.detached(priority: .background) {
+            let context = ModelContext(container)
+            for version in versions {
+                let match = #Predicate<RecordingChunk> { $0.modelVersion == version }
+                guard ((try? context.fetchCount(FetchDescriptor(predicate: match))) ?? 0) > 0 else { continue }
+                do {
+                    try context.delete(model: RecordingChunk.self, where: match)
+                    try context.save()
+                    log.info("Purged search chunks from retired model \(version, privacy: .public)")
+                } catch {
+                    log.error("Couldn't purge retired search chunks: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+    }
+
     /// Deletes chunks whose recording no longer exists, fetching ids only.
     /// Returns how many recordings' chunks were removed, or nil when the
     /// delete could not be saved.

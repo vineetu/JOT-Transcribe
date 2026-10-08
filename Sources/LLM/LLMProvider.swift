@@ -105,9 +105,9 @@ enum LLMProvider: String, CaseIterable, Identifiable, Codable, Sendable {
         }
         switch self {
         case .appleIntelligence: return ""
-        case .openai:       return "gpt-5.6-luna"
-        case .anthropic:    return "claude-haiku-4-5-20251001"
-        case .gemini:       return "gemini-3.1-flash-lite"
+        case .openai:       return "gpt-6-luna"
+        case .anthropic:    return "claude-haiku-5-5"
+        case .gemini:       return "gemini-3.5-flash-lite"
         case .ollama:       return "gemma4:31b-cloud"
         // LM Studio JIT-loads whatever model the user has loaded in the
         // app; there's no sensible static default. Discovery (the local

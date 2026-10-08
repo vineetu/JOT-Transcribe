@@ -423,7 +423,7 @@ struct GeneralPane: View {
             // a no-op here — the gate inside the indexer/controller stops all
             // further work; existing chunk rows are harmless and left in place.
             guard isOn else { return }
-            Task.detached(priority: .utility) { try? await EmbeddingGemmaService.shared.prewarm() }
+            Task.detached(priority: .utility) { try? await E5EmbeddingService.shared.prewarm() }
             Task(priority: .background) { await RecordingIndexer.shared?.backfillMissing() }
         }
     }
@@ -930,7 +930,7 @@ struct GeneralPane: View {
                 Toggle("Semantic search", isOn: $semanticSearchEnabled)
                 InfoPopoverButton(
                     title: "Semantic search",
-                    body: "Finds recordings by meaning, not just exact words — searching “rent increase” can surface a recording where you said “the landlord is raising my payment.” It runs fully on-device: enabling it downloads a one-time search model (about 339 MB) and quietly indexes your existing recordings in the background. Exact-text search always works whether this is on or off.",
+                    body: "Finds recordings by meaning, not just exact words — searching “rent increase” can surface a recording where you said “the landlord is raising my payment.” It runs fully on-device: enabling it downloads a one-time search model (about 113 MB) and quietly indexes your existing recordings in the background. Exact-text search always works whether this is on or off.",
                     helpAnchor: "recordings-ai-search"
                 )
             }
@@ -958,7 +958,7 @@ struct GeneralPane: View {
                     Text("\(Int(semanticDownload.fraction * 100))%")
                         .font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
                 }
-            } else if EmbeddingGemmaService.isDownloaded() {
+            } else if E5EmbeddingService.isDownloaded() {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                     Text("Downloaded").font(.system(size: 11, weight: .medium)).foregroundStyle(.green)
@@ -999,7 +999,7 @@ struct GeneralPane: View {
         semanticDownload = SemanticDownloadState(isDownloading: true, fraction: 0, error: nil)
         Task {
             do {
-                try await EmbeddingGemmaService.shared.prewarm { progress in
+                try await E5EmbeddingService.shared.prewarm { progress in
                     let frac = progress.bytesTotal > 0
                         ? Double(progress.bytesReceived) / Double(progress.bytesTotal)
                         : 0

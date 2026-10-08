@@ -17,21 +17,20 @@ enum ModelCatalog {
     static func options(for provider: LLMProvider) -> [String] {
         switch provider {
         case .openai:
-            // gpt-5.6 (Sol/Terra/Luna) — the current generation. Verified against
-            // a live OpenAI /v1/models AND a real gpt-5.6-terra chat/completions
-            // call on 2026-07-16 (HTTP 200, reasoning_effort:"none"). luna (cheap)
-            // and terra (higher tier) are surfaced; sol is omitted as a curation
-            // choice. gpt-5.6 wants reasoning_effort:"none" (see
-            // LLMClient.openAIReasoningEffort). Older 5.4/5.5 dropped from the
-            // picker; a user's stored older id still works (catalog is honored).
-            return ["gpt-5.6-luna", "gpt-5.6-terra"]
+            // GPT-6 Luna (cheap, default) and Sol (higher tier), verified
+            // against live /v1/models and real chat/completions calls on
+            // 2026-10-08 with reasoning_effort "none". gpt-6.1-sol is left out:
+            // it can't turn thinking off ("none" → 400), so rewrites are slower.
+            return ["gpt-6-luna", "gpt-6-sol"]
         case .anthropic:
-            // claude-sonnet-5 is the canonical dateless ID (GA 2026-06-30).
-            return ["claude-sonnet-5", "claude-haiku-4-5-20251001"]
+            // Claude 5.5 generation (Haiku 5.5 released 2026-10-07). Both
+            // reject `temperature`; see LLMClient.anthropicAcceptsTemperature.
+            return ["claude-haiku-5-5", "claude-sonnet-5-5"]
         case .gemini:
-            // Already-current: gemini-3.5-flash is the newest GA Gemini
-            // (2.x retired 2026-06-15); 3-pro remains preview-only.
-            return ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
+            // Newest Flash-Lite (default) and Flash, verified 2026-10-08. Each
+            // takes a different "thinking off" knob; see
+            // LLMClient.geminiThinkingConfig.
+            return ["gemini-3.5-flash-lite", "gemini-3.8-flash"]
         case .ollama, .lmStudio, .appleIntelligence:
             return []
         #if JOT_FLAVOR_1

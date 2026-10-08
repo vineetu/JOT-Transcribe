@@ -500,23 +500,29 @@ struct JotAppWindow: View {
                 Color.clear
             }
         case .settings(let sub):
-            switch sub {
-            case .general:       GeneralPane(
-                                    audioCapture: audioCapture,
-                                    keychain: keychain,
-                                    urlSession: urlSession,
-                                    appleIntelligence: appleIntelligence,
-                                    llmConfiguration: llmConfiguration,
-                                    hotkeyRouter: hotkeyRouter
-                                )
-            case .speakerLabels: SpeakerLabelsPane()
-            case .vocabulary:    VocabularyPane()
-            case .ai:            RewritePane(
-                                    urlSession: urlSession,
-                                    appleIntelligence: appleIntelligence
-                                )
-            case .shortcuts:     ShortcutsPane()
+            // Every label, caption and value in Settings is selectable, so a
+            // user can copy an endpoint, an error or a shortcut description
+            // without each pane opting in text by text.
+            Group {
+                switch sub {
+                case .general:       GeneralPane(
+                                        audioCapture: audioCapture,
+                                        keychain: keychain,
+                                        urlSession: urlSession,
+                                        appleIntelligence: appleIntelligence,
+                                        llmConfiguration: llmConfiguration,
+                                        hotkeyRouter: hotkeyRouter
+                                    )
+                case .speakerLabels: SpeakerLabelsPane()
+                case .vocabulary:    VocabularyPane()
+                case .ai:            RewritePane(
+                                        urlSession: urlSession,
+                                        appleIntelligence: appleIntelligence
+                                    )
+                case .shortcuts:     ShortcutsPane()
+                }
             }
+            .textSelection(.enabled)
         case .help:
             HelpPane()
         case .about:
