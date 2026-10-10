@@ -119,7 +119,9 @@ enum SegmentSlicing {
 
     /// Transcribe each run's slice sequentially (the engines are
     /// single-in-flight — parallel slices would just trip their own `.busy`
-    /// guard). Returns one text per run, `""` for short runs.
+    /// guard). Returns one text per run, `""` for short runs. `onProgress`
+    /// gets the fraction of slice audio transcribed so far (by length, not
+    /// run count — one long run outweighs many short ones).
     ///
     /// Error contract: `.audioTooShort` on an individual slice degrades that
     /// slice to `""`; cancellation and every other error (including
@@ -128,10 +130,15 @@ enum SegmentSlicing {
     static func transcribeRuns(
         runs: [(speakerId: String, start: Double, end: Double)],
         samples: [Float],
-        transcribe: SliceTranscribe
+        transcribe: SliceTranscribe,
+        onProgress: (@Sendable (Double) -> Void)? = nil
     ) async throws -> [String] {
         let duration = Double(samples.count) / sampleRate
         let bounds = sliceBounds(runs: runs.map { ($0.start, $0.end) }, duration: duration)
+        let totalSamples = bounds.reduce(0) { sum, b in
+            sum + (b.map { sampleRange($0, sampleCount: samples.count).count } ?? 0)
+        }
+        var doneSamples = 0
         var texts: [String] = []
         texts.reserveCapacity(bounds.count)
         for b in bounds {
@@ -145,12 +152,17 @@ enum SegmentSlicing {
             // dispatch a sliver (possible only via end-of-file clamping).
             guard range.count >= Int(sampleRate) else {
                 texts.append("")
+                doneSamples += range.count
                 continue
             }
             do {
                 texts.append(try await transcribe(Array(samples[range])))
             } catch TranscriberError.audioTooShort {
                 texts.append("")
+            }
+            doneSamples += range.count
+            if totalSamples > 0 {
+                onProgress?(Double(doneSamples) / Double(totalSamples))
             }
         }
         return texts

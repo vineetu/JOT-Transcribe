@@ -31,6 +31,8 @@ struct RecordingDetailView: View {
     /// error, and the last non-error status ("Single speaker — nothing to
     /// label.") to show inline near the playback bar.
     @State private var isDetectingSpeakers = false
+    /// Step / percentage / time left for the running "Detect speakers".
+    @State private var detectSpeakersProgress: DiarizationRunner.Progress?
     @State private var detectSpeakersError: String?
     @State private var detectSpeakersStatus: String?
     /// Re-running "Detect speakers" replaces the stored timeline — labels,
@@ -517,9 +519,10 @@ struct RecordingDetailView: View {
             if isDetectingSpeakers {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("Detecting speakers…")
+                    Text(detectSpeakersProgress?.summary ?? "Detecting speakers…")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
             } else if let detectSpeakersStatus {
                 Text(detectSpeakersStatus)
@@ -1245,6 +1248,7 @@ struct RecordingDetailView: View {
             return
         }
         isDetectingSpeakers = true
+        detectSpeakersProgress = nil
         detectSpeakersError = nil
         detectSpeakersStatus = nil
         let url = RecordingStore.audioURL(for: recording)
@@ -1266,7 +1270,12 @@ struct RecordingDetailView: View {
                     audioURL: url,
                     transcript: transcript,
                     sliceTranscribe: sliceTranscribe
-                )
+                ) { progress in
+                    Task { @MainActor in
+                        // Ignore a last update landing after the run ended.
+                        if isDetectingSpeakers { detectSpeakersProgress = progress }
+                    }
+                }
                 await MainActor.run {
                     guard let payload = outcome.payload else {
                         // Solo recording (the single-speaker gate) — nothing

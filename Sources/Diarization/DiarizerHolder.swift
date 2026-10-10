@@ -199,10 +199,14 @@ final class DiarizerHolder: ObservableObject {
     /// D6: the ASR and diarizer CoreML graphs must never run concurrently)
     /// and runs off the main actor; between blocks the gate is released and
     /// cancellation is checked, so neither a dictation nor a cancel waits on
-    /// a whole hour-long file (A2). Two overlapping runs (a manual Detect
+    /// a whole hour-long file (A2). `onProgress` gets the fraction of audio
+    /// processed after each block. Two overlapping runs (a manual Detect
     /// plus an import) share `models`' preallocated I/O buffers; that is safe
     /// for the same reason — every model call happens inside a gated block.
-    func process(samples: [Float]) async throws -> [DiarSegment] {
+    func process(
+        samples: [Float],
+        onProgress: (@Sendable (Double) -> Void)? = nil
+    ) async throws -> [DiarSegment] {
         guard let models else { throw DiarizerHolderError.notReady }
         let run = BlockRun(diarizer: Nemotron3Diarizer(config: Self.config, models: models))
         let blockSize = Int(Self.blockSeconds * 16_000)
@@ -227,6 +231,7 @@ final class DiarizerHolder: ObservableObject {
                 frameCount += chunk.frameCount
             }
             offset = end
+            onProgress?(Double(offset) / Double(samples.count))
         } while offset < samples.count
         try Task.checkCancellation()
 

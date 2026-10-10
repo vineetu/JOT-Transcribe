@@ -233,11 +233,20 @@ struct HomePane: View {
                     Image(systemName: "person.wave.2")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
-                    Text("Detecting speakers in \(filename)…")
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Detecting speakers in \(filename)")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if let progress = fileIngest.diarizeProgress {
+                            Text(progress.summary)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                        }
+                    }
                 }
             case .pausedForDictation:
                 // Resilient import resume (docs/resilient-import-resume/

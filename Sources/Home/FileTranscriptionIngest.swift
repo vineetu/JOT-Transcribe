@@ -159,6 +159,22 @@ final class FileTranscriptionIngest: ObservableObject {
     /// reports real progress. Only ever counts down (see `startElapsedTicker`).
     @Published private(set) var importRemaining: TimeInterval?
 
+    /// Live step / percentage / time left for the auto-diarize pass, shown
+    /// while `status` is `.diarizing`. `nil` outside a diarize pass.
+    @Published private(set) var diarizeProgress: DiarizationRunner.Progress?
+
+    /// Progress handler for `DiarizationRunner.run`: hops to the main actor
+    /// and drops updates that arrive after the pass ended (the runner calls
+    /// back off-actor, so a last update can land after the job's clean-up).
+    private func diarizeProgressHandler(generation gen: Int) -> DiarizationRunner.ProgressHandler {
+        { [weak self] progress in
+            Task { @MainActor in
+                guard let self, gen == self.generation, case .diarizing = self.status else { return }
+                self.diarizeProgress = progress
+            }
+        }
+    }
+
     private let log = Logger(subsystem: "com.jot.Jot", category: "FileTranscriptionIngest")
     private let context: ModelContext
     private let transcriberHolder: TranscriberHolder
@@ -401,7 +417,8 @@ final class FileTranscriptionIngest: ObservableObject {
                 holder: diarizerHolder,
                 audioURL: RecordingStore.audioURL(for: recording),
                 transcript: recording.transcript,
-                sliceTranscribe: SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber)
+                sliceTranscribe: SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber),
+                onProgress: diarizeProgressHandler(generation: gen)
             )
             if !Task.isCancelled, let payload = outcome.payload {
                 saveDiarization(outcome, payload: payload, to: recording)
@@ -571,6 +588,7 @@ final class FileTranscriptionIngest: ObservableObject {
         importRemaining = nil
         estimatedImportSeconds = nil
         currentAudioDuration = nil
+        diarizeProgress = nil
     }
 
     /// Calls `transcriber.transcribeFile`, forwarding a live progress
@@ -955,7 +973,8 @@ final class FileTranscriptionIngest: ObservableObject {
                             holder: diarizerHolder,
                             audioURL: RecordingStore.audioURL(for: recording),
                             transcript: recording.transcript,
-                            sliceTranscribe: SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber)
+                            sliceTranscribe: SegmentSlicing.sliceTranscriber(using: transcriberHolder.transcriber),
+                            onProgress: diarizeProgressHandler(generation: gen)
                         )
                         if !Task.isCancelled, let payload = outcome.payload {
                             saveDiarization(outcome, payload: payload, to: recording)

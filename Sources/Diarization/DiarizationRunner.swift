@@ -32,6 +32,44 @@ enum DiarizationRunner {
         }
     }
 
+    /// Live progress for the "Detecting speakers" captions. Up to two timed
+    /// steps: finding speakers (the diarizer over the whole file), then — on
+    /// the segment-sliced path with more than one voice — matching words to
+    /// speakers (re-transcribing each speaker run). Both fractions are audio
+    /// processed, so they are real, not guessed.
+    struct Progress: Sendable, Equatable {
+        enum Phase: Sendable, Equatable {
+            /// Loading (or first-use downloading) the model and decoding audio.
+            case preparing
+            case findingSpeakers
+            case matchingWords
+        }
+        let phase: Phase
+        /// 1-based step and the number of timed steps this run can have.
+        let step: Int
+        let stepCount: Int
+        /// `nil` while preparing (no honest fraction).
+        let fraction: Double?
+        /// Seconds left in this step, measured from this run's own speed;
+        /// `nil` until enough of the step has run to estimate it.
+        let remaining: TimeInterval?
+    }
+
+    typealias ProgressHandler = @Sendable (Progress) -> Void
+
+    /// Time left in a step, extrapolated from elapsed time and fraction done.
+    /// Waits for 5% and 1.5 s so the first block's warm-up doesn't produce a
+    /// wild number.
+    private struct StepClock {
+        let start = Date()
+        var elapsed: TimeInterval { Date().timeIntervalSince(start) }
+        func remaining(at fraction: Double) -> TimeInterval? {
+            let e = elapsed
+            guard fraction >= 0.05, fraction < 1, e >= 1.5 else { return fraction >= 1 ? 0 : nil }
+            return e * (1 - fraction) / fraction
+        }
+    }
+
     /// Result of a full pipeline run.
     ///
     /// `payload == nil` means single-speaker (the `DiarizationProjection`
@@ -64,8 +102,12 @@ enum DiarizationRunner {
         holder: DiarizerHolder,
         audioURL: URL,
         transcript: String,
-        sliceTranscribe: SegmentSlicing.SliceTranscribe? = nil
+        sliceTranscribe: SegmentSlicing.SliceTranscribe? = nil,
+        onProgress: ProgressHandler? = nil
     ) async throws -> Outcome {
+        let stepCount = sliceTranscribe == nil ? 1 : 2
+        onProgress?(Progress(phase: .preparing, step: 1, stepCount: stepCount, fraction: nil, remaining: nil))
+        let prepareClock = StepClock()
         try await holder.prepareIfNeeded()
         let samples = await Task.detached(priority: .userInitiated) {
             (try? DiarizationAudio.readMono16kFloat(url: audioURL)) ?? []
@@ -73,8 +115,17 @@ enum DiarizationRunner {
         guard !samples.isEmpty else {
             throw RunnerError.emptyAudio
         }
-        let segments = try await holder.process(samples: samples)
         let duration = Double(samples.count) / 16_000.0
+        let prepareSeconds = prepareClock.elapsed
+
+        let findClock = StepClock()
+        onProgress?(Progress(phase: .findingSpeakers, step: 1, stepCount: stepCount, fraction: 0, remaining: nil))
+        let segments = try await holder.process(samples: samples) { fraction in
+            onProgress?(Progress(phase: .findingSpeakers, step: 1, stepCount: stepCount,
+                                 fraction: fraction, remaining: findClock.remaining(at: fraction)))
+        }
+        let findSeconds = findClock.elapsed
+        log.notice("Speaker detection timing: \(Self.clock(duration), privacy: .public) of audio — prepare+decode \(Self.secs(prepareSeconds), privacy: .public), finding speakers \(Self.secs(findSeconds), privacy: .public) (\(Self.speed(duration, findSeconds), privacy: .public))")
 
         guard let merged = DiarizationTimelineBuilder.coalescedRuns(segments: segments, duration: duration) else {
             return Outcome(payload: nil, slicedTranscript: nil)
@@ -82,11 +133,17 @@ enum DiarizationRunner {
 
         if let sliceTranscribe {
             do {
+                let matchClock = StepClock()
+                onProgress?(Progress(phase: .matchingWords, step: 2, stepCount: stepCount, fraction: 0, remaining: nil))
                 let texts = try await SegmentSlicing.transcribeRuns(
                     runs: merged,
                     samples: samples,
                     transcribe: sliceTranscribe
-                )
+                ) { fraction in
+                    onProgress?(Progress(phase: .matchingWords, step: 2, stepCount: stepCount,
+                                         fraction: fraction, remaining: matchClock.remaining(at: fraction)))
+                }
+                log.notice("Speaker detection timing: matching words to \(merged.count, privacy: .public) speaker turns \(Self.secs(matchClock.elapsed), privacy: .public) (\(Self.speed(duration, matchClock.elapsed), privacy: .public))")
                 let joined = SegmentSlicing.joinedTranscript(texts)
                 if !joined.isEmpty {
                     return Outcome(
@@ -119,5 +176,40 @@ enum DiarizationRunner {
             ),
             slicedTranscript: nil
         )
+    }
+
+    private static func secs(_ t: TimeInterval) -> String { String(format: "%.1fs", t) }
+    private static func clock(_ t: TimeInterval) -> String {
+        let total = Int(t.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+    private static func speed(_ audio: TimeInterval, _ wall: TimeInterval) -> String {
+        wall > 0 ? String(format: "%.0f× real time", audio / wall) : "—"
+    }
+}
+
+extension DiarizationRunner.Progress {
+    /// One line for the "Detecting speakers" captions, e.g.
+    /// "Finding speakers (1 of 2)… 40% · ~0:12 left".
+    var summary: String {
+        let name: String
+        switch phase {
+        case .preparing: return "Getting ready…"
+        case .findingSpeakers: name = "Finding speakers"
+        case .matchingWords: name = "Matching words to speakers"
+        }
+        var text = name + (stepCount > 1 ? " (\(step) of \(stepCount))…" : "…")
+        if let fraction {
+            text += " \(Int((min(max(fraction, 0), 1) * 100).rounded(.down)))%"
+        }
+        if let remaining {
+            if remaining < 1 {
+                text += " · almost done"
+            } else {
+                let total = Int(remaining.rounded())
+                text += " · ~" + String(format: "%d:%02d", total / 60, total % 60) + " left"
+            }
+        }
+        return text
     }
 }
